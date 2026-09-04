@@ -1,8 +1,16 @@
 #!/usr/bin/env bash
-# openOODA one-line installer.
+# openOODA one-line installer
 #   curl -fsSL https://openooda.org/install.sh | bash
-# See versions.toml in this repo for per-component version pinning.
+#
+# Idempotent. Detects OS/arch, downloads the latest release asset for
+# each openOODA component, clones the standard library, and sets up
+# the shell environment. Re-run is safe.
+#
+# Set NO_COLOR=1 to disable color. Honors non-TTY (no colors when piped).
+
 set -euo pipefail
+
+# --- config -------------------------------------------------------------------
 
 OPENOODA_HOME="${OPENOODA_HOME:-$HOME/.openooda}"
 BIN_DIR="$OPENOODA_HOME/bin"
@@ -10,19 +18,68 @@ STD_DIR="$OPENOODA_HOME/std"
 RELEASES="https://github.com/openOODA"
 
 declare -A REPOS=(
-  [ooda]="ooda" [oodac]="oodac" [oodar]="oodar"
-  [opm]="opm" [lsp]="lsp" [mcp]="mcp"
+  [ooda]="ooda"   [oodac]="oodac" [oodar]="oodar"
+  [opm]="opm"     [lsp]="lsp"     [mcp]="mcp"
 )
 declare -A BINARIES=(
-  [ooda]="ooda" [oodac]="oodac" [oodar]="liboodar.a"
-  [opm]="opm" [lsp]="ooda-lsp" [mcp]="ooda-mcp"
+  [ooda]="ooda"       [oodac]="oodac"     [oodar]="liboodar.a"
+  [opm]="opm"         [lsp]="ooda-lsp"   [mcp]="ooda-mcp"
 )
 
-# --- helpers -----------------------------------------------------------------
+# --- color + UI helpers -------------------------------------------------------
+
+USE_COLOR=1
+if [[ ! -t 1 ]] || [[ -n "${NO_COLOR:-}" ]]; then USE_COLOR=0; fi
+C() { [[ $USE_COLOR -eq 1 ]] && printf '\033[%sm' "$1" || true; }
+RESET=$(C 0); BOLD=$(C 1); DIM=$(C 2)
+CYAN=$(C 36); GREEN=$(C 32); YELLOW=$(C 33); RED=$(C 31)
+MAGENTA=$(C 35); GRAY=$(C 90); BLUE=$(C 34)
+
+# bar <pct> [width] — filled blocks + empty blocks, colored
+bar() {
+  local pct=$1 width=${2:-30}
+  local filled=$((pct * width / 100))
+  [[ $filled -gt $width ]] && filled=$width
+  [[ $filled -lt 0     ]] && filled=0
+  local empty=$((width - filled))
+  printf '%s' "$GREEN"
+  printf '%*s' "$filled" '' | tr ' ' '▰'
+  printf '%*s' "$empty"  '' | tr ' ' '▱'
+  printf '%s' "$RESET"
+}
+
+# spinner <pid> — animate while pid is alive
+spinner() {
+  local pid=$1
+  local frames=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
+  local i=0
+  while kill -0 "$pid" 2>/dev/null; do
+    printf '\r  %s%s%s ' "$CYAN" "${frames[i++ % ${#frames[@]}]}" "$RESET"
+    sleep 0.1
+  done
+  printf '\r'
+}
+
+# overwrite-bar <done> <total> — render the bar on the current line
+overwrite_bar() {
+  local done=$1 total=$2
+  local pct=$(( (done * 100 + total / 2) / total ))
+  printf '\r  %s %s%s%3d%%%s (%d/%d)' \
+    "$(bar $pct)" "$BOLD" "$MAGENTA" "$pct" "$RESET" "$done" "$total"
+}
+
+ok()   { printf '  %s✓%s %s\n' "$GREEN"  "$RESET" "$*"; }
+warn() { printf '  %s!%s %s\n' "$YELLOW" "$RESET" "$*"; }
+err()  { printf '  %s✗%s %s\n' "$RED"    "$RESET" "$*" >&2; }
+skip() { printf '  %s⊘%s %s\n' "$YELLOW" "$RESET" "$*"; }
+info() { printf '  %s•%s %s\n' "$GRAY"   "$RESET" "$*"; }
+
+# --- pin loading --------------------------------------------------------------
 
 declare -A PINS=()
 load_pins() {
-  local f="$(dirname "${BASH_SOURCE[0]:-$0}")/versions.toml"
+  local f
+  f="$(dirname "${BASH_SOURCE[0]:-$0}")/versions.toml"
   [[ -f "$f" ]] || return 0
   while IFS= read -r line; do
     [[ "$line" =~ ^[[:space:]]*([a-zA-Z]+)[[:space:]]*=[[:space:]]*\"(v[0-9]+\.[0-9]+\.[0-9]+)\" ]] || continue
@@ -35,100 +92,151 @@ release_url() {
   echo "${RELEASES}/${REPOS[$1]}/releases/${tag}/download/${BINARIES[$1]}-${OS}-${ARCH}"
 }
 
-info() { printf '  \033[36m•\033[0m %s\n' "$*"; }
-ok()   { printf '  \033[32m✓\033[0m %s\n' "$*"; }
-warn() { printf '  \033[33m!\033[0m %s\n' "$*"; }
-err()  { printf '  \033[31m✗\033[0m %s\n' "$*" >&2; }
+# --- per-component install (spinner + result) ---------------------------------
 
-# --- detect host -------------------------------------------------------------
+INSTALLED=()
+SKIPPED=()
+BYTES=0
 
+install_component() {
+  local key="$1" dest="$BIN_DIR/${BINARIES[$1]}" url code
+  url="$(release_url "$key")"
+
+  printf '  %s%s%s\n' "$BOLD" "$key" "$RESET"
+
+  # background the HEAD+download so the spinner can run
+  local codefile="/tmp/openooda-curl.$$.$key"
+  (
+    code=$(curl -sSL -o "$dest.tmp" -w '%{http_code}' "$url" 2>/dev/null || echo 000)
+    echo "$code" > "$codefile"
+  ) &
+  local pid=$!
+  spinner "$pid"
+  wait "$pid" 2>/dev/null || true
+
+  code=$(cat "$codefile" 2>/dev/null || echo 000)
+  rm -f "$codefile"
+
+  if [[ "$code" == "200" || "$code" == "302" ]] && [[ -s "$dest.tmp" ]]; then
+    mv "$dest.tmp" "$dest"
+    chmod +x "$dest"
+    local size; size=$(wc -c < "$dest" 2>/dev/null || echo 0)
+    BYTES=$((BYTES + size))
+    local mb; mb=$(awk -v s="$size" 'BEGIN{printf "%.1f", s/1048576}')
+    ok "installed $(basename "$dest") (${mb} MB)"
+    INSTALLED+=("$key")
+  else
+    rm -f "$dest" "$dest.tmp"
+    skip "$key not yet shipped for $OS-$ARCH"
+    SKIPPED+=("$key")
+  fi
+}
+
+# --- shell rc -----------------------------------------------------------------
+
+setup_shell_rc() {
+  local l1='export PATH="$HOME/.openooda/bin:$PATH"'
+  local l2='export OODA_STD_ROOT="$HOME/.openooda/std"'
+  for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
+    if [[ ! -e "$rc" ]]; then
+      : >> "$rc" 2>/dev/null || continue
+    fi
+    if grep -Fqx "$l1" "$rc" 2>/dev/null; then
+      info "$(basename "$rc") already has openOODA exports"
+    else
+      printf '\n# openOODA\n%s\n%s\n' "$l1" "$l2" >> "$rc"
+      ok "$(basename "$rc") updated"
+    fi
+  done
+}
+
+# --- main ---------------------------------------------------------------------
+
+START=$(date +%s)
+
+# detect
 OS="$(uname -s)"; case "$OS" in Linux) OS=linux ;; Darwin) OS=darwin ;;
   *) err "unsupported OS: $OS (need linux or darwin)"; exit 1 ;; esac
 ARCH="$(uname -m)"; case "$ARCH" in x86_64|amd64) ARCH=x86_64 ;;
   aarch64|arm64) ARCH=arm64 ;;
   *) err "unsupported arch: $ARCH (need x86_64 or arm64)"; exit 1 ;; esac
 
-# --- install -----------------------------------------------------------------
+# welcome
+printf '\n'
+printf '  %s%sopenOODA%s — Sovereign Systems Language for the AI Era\n' \
+  "$BOLD$MAGENTA" "" "$RESET"
+printf '  %shost: %s/%s%s\n' "$DIM" "$OS" "$ARCH" "$RESET"
+printf '\n'
 
-INSTALLED=(); SKIPPED=()
-install_component() {
-  local key="$1" url dest
-  url="$(release_url "$key")"
-  dest="$BIN_DIR/${BINARIES[$key]}"
-  local code; code="$(curl -sSL -o /dev/null -w '%{http_code}' -I "$url" || true)"
-  if [[ "$code" != "200" && "$code" != "302" ]]; then
-    info "${key}: — not yet shipped (${BINARIES[$key]}-${OS}-${ARCH})"
-    SKIPPED+=("$key"); return 0
-  fi
-  if curl -fsSL -o "$dest" "$url"; then
-    chmod +x "$dest"; ok "${key}: installed $(basename "$dest")"
-    INSTALLED+=("$key")
-  else
-    warn "${key}: download failed ($url)"; SKIPPED+=("$key")
-  fi
-}
+TOTAL=9  # 1 detect + 6 components + 1 std + 1 shell
+done=0
+mkdir -p "$BIN_DIR"
 
-clone_std() {
-  if [[ -d "$STD_DIR" ]]; then ok "std: already present at $STD_DIR"; return 0; fi
-  if ! command -v git >/dev/null 2>&1; then
-    warn "std: git not found; skipping. install git then run:"
-    warn "     git clone --depth 1 https://github.com/openOODA/std $STD_DIR"
-    return 0
-  fi
-  info "std: cloning https://github.com/openOODA/std ..."
-  if git clone --depth 1 https://github.com/openOODA/std "$STD_DIR" >/dev/null 2>&1; then
-    ok "std: cloned to $STD_DIR"
-  else
-    warn "std: clone failed; retry manually:"
-    warn "     git clone --depth 1 https://github.com/openOODA/std $STD_DIR"
-  fi
-}
+# step 1: detect
+ok "install dir: $BIN_DIR"
+done=$((done + 1)); overwrite_bar "$done" "$TOTAL"; printf '\n'
 
-setup_shell_rc() {
-  local l1='export PATH="$HOME/.openooda/bin:$PATH"'
-  local l2='export OODA_STD_ROOT="$HOME/.openooda/std"'
-  local rc
-  for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
-    # ensure the rc file exists; if it does not, try to create it
-    if [[ ! -e "$rc" ]]; then
-      if ! { : >> "$rc"; } 2>/dev/null; then
-        continue   # cannot create (e.g. $HOME not writable) — skip silently
-      fi
-    elif ! { : >> "$rc"; } 2>/dev/null; then
-      warn "shell rc: $(basename "$rc") not writable; add these lines manually:"
-      warn "           $l1"; warn "           $l2"
-      continue
-    fi
-    if grep -Fqx "$l1" "$rc" 2>/dev/null; then
-      info "shell rc: $(basename "$rc") already has openOODA exports"
-    else
-      printf '\n# openOODA\n%s\n%s\n' "$l1" "$l2" >> "$rc"
-      ok "shell rc: $(basename "$rc") updated"
-    fi
-  done
-}
-
-# --- main --------------------------------------------------------------------
-
-printf '\n\033[1mopenOODA installer\033[0m\n\n'
+# step 2: components
 load_pins
-info "host: ${OS}/${ARCH}"
-mkdir -p "$BIN_DIR"; ok "install dir: $BIN_DIR"
+for key in ooda oodac oodar opm lsp mcp; do
+  install_component "$key"
+  done=$((done + 1)); overwrite_bar "$done" "$TOTAL"; printf '\n'
+done
 
-printf '\n\033[1mComponents\033[0m\n'
-for key in "${!REPOS[@]}"; do install_component "$key"; done
+# step 3: std
+if [[ -d "$STD_DIR" ]] && [[ -f "$STD_DIR/ANCHOR.oo" ]]; then
+  ok "std already at $STD_DIR"
+elif ! command -v git >/dev/null 2>&1; then
+  warn "git not found; skipping std clone"
+  warn "  install git, then: git clone --depth 1 https://github.com/openOODA/std $STD_DIR"
+else
+  info "cloning openOODA/std ..."
+  (git clone --depth 1 https://github.com/openOODA/std "$STD_DIR" >/dev/null 2>&1) &
+  spinner $!
+  wait $! 2>/dev/null || true
+  if [[ -d "$STD_DIR" ]] && [[ -f "$STD_DIR/ANCHOR.oo" ]]; then
+    ok "cloned to $STD_DIR"
+  else
+    warn "clone may have failed; check $STD_DIR"
+  fi
+fi
+done=$((done + 1)); overwrite_bar "$done" "$TOTAL"; printf '\n'
 
-printf '\n\033[1mStandard library\033[0m\n'
-clone_std
-
-printf '\n\033[1mShell environment\033[0m\n'
+# step 4: shell
 setup_shell_rc
+done=$((done + 1)); overwrite_bar "$done" "$TOTAL"; printf '\n'
 
-printf '\n\033[1mSummary\033[0m\n'
-if [[ ${#INSTALLED[@]} -gt 0 ]]; then ok "installed: ${INSTALLED[*]}"
-else warn "no components installed (binaries not yet published)"; fi
-[[ ${#SKIPPED[@]} -gt 0 ]] && info "skipped:   ${SKIPPED[*]}"
-ok "binaries:       $BIN_DIR"
-ok "std:            $STD_DIR"
-ok "shell env:      PATH + OODA_STD_ROOT set in ~/.bashrc and ~/.zshrc"
-printf '\nRestart your shell (or: source ~/.bashrc) and try:\n  ooda --help\n\n'
+# --- summary ------------------------------------------------------------------
+
+ELAPSED=$(( $(date +%s) - START ))
+
+printf '\n%s%s Summary %s\n' "$BOLD" "$MAGENTA" "$RESET"
+if [[ ${#INSTALLED[@]} -gt 0 ]]; then
+  ok "installed:   ${INSTALLED[*]}"
+else
+  warn "no components installed yet (binaries land in future releases)"
+fi
+[[ ${#SKIPPED[@]} -gt 0 ]] && info "skipped:     ${SKIPPED[*]}"
+[[ $BYTES -gt 0 ]] && info "downloaded:  $(awk -v b="$BYTES" 'BEGIN{printf "%.1f MB", b/1048576}')"
+info "binaries:    $BIN_DIR"
+info "std:         $STD_DIR"
+info "time:        ${ELAPSED}s"
+ok   "shell rc:   PATH + OODA_STD_ROOT set in ~/.bashrc and ~/.zshrc"
+
+# --- CLI command list (the actual reason they installed openOODA) ----------
+
+printf '\n%s%s Try these commands %s\n' "$BOLD" "$CYAN" "$RESET"
+printf '  %s$ ooda --help%s              show all 13 subcommands\n' "$GREEN" "$RESET"
+printf '  %s$ ooda build main.oo%s       build your first .oo program\n' "$GREEN" "$RESET"
+printf '  %s$ ooda run main.oo%s         compile and execute\n' "$GREEN" "$RESET"
+printf '  %s$ ooda init%s                scaffold a new project\n' "$GREEN" "$RESET"
+printf '  %s$ ooda install openOODA/std%s  install or upgrade std\n' "$GREEN" "$RESET"
+printf '  %s$ ooda token issue%s         create a capability token\n' "$GREEN" "$RESET"
+printf '\n'
+printf '  %s▸%s restart your shell (or: source ~/.bashrc) and run %sooda --help%s\n' \
+  "$DIM" "$RESET" "$GREEN" "$RESET"
+
+# final closing bar
+printf '\n  %s %s100%%%s\n\n' "$(bar 100)" "$BOLD$MAGENTA" "$RESET"
+printf '  %s%sReady. Welcome to openOODA.%s\n' "$BOLD$MAGENTA" "" "$RESET"
+printf '  https://openooda.org\n\n'
