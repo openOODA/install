@@ -1,0 +1,19 @@
+# Build artifacts (debs, rpms, pkg.tar.*, exe/msi installers)
+*.deb
+*.rpm
+*.pkg.tar*
+*.pkg.tar.zst
+*.exe
+*.msi
+*.dmg
+
+# Editor / OS / secrets
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.env
+.env.*
