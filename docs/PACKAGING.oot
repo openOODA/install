@@ -1,0 +1,33 @@
+# packaging — distribution
+File: packaging/docs/PACKAGING.oot
+
+How the toolchain lands on a machine. Tag v0.1.6.
+Ships `install.sh` plus apt, dnf, and pacman recipes.
+winget is deferred.
+
+The public URL `https://openooda.org/install.sh` redirects
+to this repo's `install.sh` on GitHub `main`.
+
+## Install
+
+```
+curl -fsSL https://openooda.org/install.sh | bash
+```
+
+Installs to `~/.openooda/`. Adds `~/.openooda/bin` to PATH.
+
+## Surface
+
+| Path | Role |
+|------|------|
+| `install.sh` | One-line installer. Idempotent. |
+| `apt/` | Debian package |
+| `dnf/` | Fedora and RHEL spec |
+| `pacman/` | Arch PKGBUILD |
+| `docs/INSTALL.md` | Install paths and flags |
+
+Flags: `OPENOODA_DRY_RUN=1`, `NO_COLOR=1`,
+`OPENOODA_HOME=…`.
+
+Binaries: ooda, oodac, liboodar.a, opm, ooda-lsp, ooda-mcp.
+std is a git clone under `~/.openooda/std`.
