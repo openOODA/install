@@ -59,6 +59,25 @@ to set them by hand (e.g. on a remote CI machine), add them to your shell rc:
 `PATH` and `OODA_STD_ROOT` are the only two the installer manages. Other
 variables are owned by the tools themselves.
 
+## Installer flags
+
+These control `install.sh` itself (set them on the same line, before `bash`):
+
+| Flag                   | Default       | Effect                                                       |
+|------------------------|---------------|--------------------------------------------------------------|
+| `OPENOODA_DRY_RUN=1`   | unset         | Preview only — no downloads, no `~/.openooda/`, no shell-rc edits. Prints the bar and command list, then exits. |
+| `NO_COLOR=1`           | unset         | Plain text output. The installer also auto-disables color when stdout is not a TTY. |
+| `OPENOODA_HOME=…`      | `~/.openooda` | Relocate the install root. `bin/` and `std/` go under this dir. |
+
+Example:
+
+```sh
+OPENOODA_DRY_RUN=1 NO_COLOR=1 curl -fsSL https://openooda.org/install.sh | bash
+```
+
+The installer also auto-detects UTF-8 from `LANG` / `LC_ALL` and swaps the
+progress bar from `▰▱` to `##--` on non-UTF-8 terminals — no flag needed.
+
 ## Updating
 
 Once `ooda` itself is on your `PATH`, you can run:
