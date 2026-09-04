@@ -1,0 +1,10 @@
+# openOODA version overrides for install.sh.
+# Default: install.sh uses the latest release of each component.
+# Override per-component by uncommenting and pinning:
+# ooda = "v0.2.6"
+# oodac = "v0.1.10"
+# oodar = "v2.0.3"
+# opm = "v0.8.6"
+# lsp = "v0.6.7"
+# mcp = "v0.6.6"
+# std = "v1.0.7"
