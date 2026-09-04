@@ -7,5 +7,44 @@ on:
     branches: [main]
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck install.sh
+        run: |
+          sudo apt-get install -y shellcheck
+          shellcheck --severity=warning install.sh
+
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: dry-run install (banner + bar + command list)
+        env:
+          OPENOODA_DRY_RUN: '1'
+          NO_COLOR: '1'
+        run: |
+          output=$(bash install.sh)
+          echo "$output"
+          for needle in \
+            "observe → orient → decide → act →" \
+            "openOODA" \
+            "Welcome, " \
+            "install dir:" \
+            "100%" \
+            "Try these commands" \
+            "\$ ooda --help" \
+            "\$ ooda build main.oo" \
+            "\$ ooda run main.oo" \
+            "\$ ooda init" \
+            "\$ ooda token issue" \
+            "Ready. Welcome to openOODA."; do
+            echo "$output" | grep -qF -- "$needle" || { echo "missing: $needle"; exit 1; }
+          done
+          echo "$output" | grep -qF 'ooda install openOODA/std' \
+            && { echo "command list still suggests std install (it is auto-cloned)"; exit 1; } \
+            || true
+
   auto-release:
     uses: openOODA/openOODA/.github/workflows/auto-release.yml@v1.0.14

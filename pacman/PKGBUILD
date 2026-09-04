@@ -6,16 +6,21 @@ arch=('x86_64' 'aarch64')
 url="https://openooda.org"
 license=('MIT')
 depends=('glibc')
+makedepends=('git')
 source=("https://github.com/openOODA/packaging/archive/v${pkgver}.tar.gz")
 sha256sums=('SKIP')
 
 package() {
     mkdir -p "${pkgdir}/usr/bin"
     mkdir -p "${pkgdir}/usr/lib/openooda"
+    mkdir -p "${pkgdir}/etc/profile.d"
     if ls "${srcdir}/../dist/"*-linux-* >/dev/null 2>&1; then
         install -m 0755 "${srcdir}/../dist/"*-linux-* "${pkgdir}/usr/bin/"
     fi
     if ls "${srcdir}/../dist/"*-linux-*.a >/dev/null 2>&1; then
         install -m 0644 "${srcdir}/../dist/"*-linux-*.a "${pkgdir}/usr/lib/openooda/"
     fi
+    git clone --depth 1 https://github.com/openOODA/std "${pkgdir}/usr/lib/openooda/std"
+    rm -rf "${pkgdir}/usr/lib/openooda/std/.git"
+    install -m 0644 "${srcdir}/profile.d.sh" "${pkgdir}/etc/profile.d/openooda.sh"
 }

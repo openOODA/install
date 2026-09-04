@@ -7,6 +7,7 @@ override_dh_auto_install:
 	dh_auto_install
 	install -d debian/openooda/usr/bin
 	install -d debian/openooda/usr/lib/openooda
+	install -d debian/openooda/etc/profile.d
 	# Stage binaries from ../dist/*-linux-* (built upstream by the release pipeline).
 	if ls ../dist/*-linux-* >/dev/null 2>&1; then \
 		install -m 0755 ../dist/*-linux-* debian/openooda/usr/bin/ ; \
@@ -14,3 +15,8 @@ override_dh_auto_install:
 	if ls ../dist/*-linux-*.a >/dev/null 2>&1; then \
 		install -m 0644 ../dist/*-linux-*.a debian/openooda/usr/lib/openooda/ ; \
 	fi
+	# Bundle std library (git clone of openOODA/std at build time).
+	git clone --depth 1 https://github.com/openOODA/std debian/openooda/usr/lib/openooda/std
+	rm -rf debian/openooda/usr/lib/openooda/std/.git
+	# Login-shell hint for OODA_STD_ROOT.
+	install -m 0644 debian/profile.d.sh debian/openooda/etc/profile.d/openooda.sh

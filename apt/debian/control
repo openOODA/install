@@ -2,7 +2,7 @@ Source: openooda
 Section: devel
 Maintainer: openOODA Authors <ops@openooda.org>
 Standards-Version: 4.6.2
-Build-Depends: debhelper-compat (= 13)
+Build-Depends: debhelper-compat (= 13), git
 
 Package: openooda
 Architecture: any
