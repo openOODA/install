@@ -290,7 +290,6 @@ printf '  %s$ ooda --help%s              show all 13 subcommands\n' "$GREEN" "$R
 printf '  %s$ ooda build main.oo%s       build your first .oo program\n' "$GREEN" "$RESET"
 printf '  %s$ ooda run main.oo%s         compile and execute\n' "$GREEN" "$RESET"
 printf '  %s$ ooda init%s                scaffold a new project\n' "$GREEN" "$RESET"
-printf '  %s$ ooda install openOODA/std%s  install or upgrade std\n' "$GREEN" "$RESET"
 printf '  %s$ ooda token issue%s         create a capability token\n' "$GREEN" "$RESET"
 printf '\n'
 printf '  %s▸%s restart your shell (or: source ~/.bashrc) and run %sooda --help%s\n' \
