@@ -28,13 +28,9 @@ declare -A BINARIES=(
   [opm]="opm"         [lsp]="ooda-lsp"   [mcp]="ooda-mcp"
 )
 
-# --- locale + color -----------------------------------------------------------
+# --- color --------------------------------------------------------------------
 
-case "${LC_ALL:-${LANG:-}}" in
-  *UTF-8*|*utf8*|*UTF8*) HAS_UTF=1 ;;
-  *) HAS_UTF=0 ;;
-esac
-if [[ $HAS_UTF -eq 1 ]]; then FILL="▰"; EMPTY="▱"; else FILL="#"; EMPTY="-"; fi
+FILL="#"; EMPTY="-"
 
 USE_COLOR=1
 if [[ ! -t 1 ]] || [[ -n "${NO_COLOR:-}" ]]; then USE_COLOR=0; fi
@@ -54,6 +50,7 @@ bar() {
   local empty=$((width - filled))
   printf '%s' "$GREEN"
   printf '%*s' "$filled" '' | tr ' ' "$FILL"
+  printf '%s' "$DIM"
   printf '%*s' "$empty"  '' | tr ' ' "$EMPTY"
   printf '%s' "$RESET"
 }
