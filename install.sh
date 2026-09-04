@@ -6,7 +6,8 @@
 # each openOODA component, clones the standard library, and sets up
 # the shell environment. Re-run is safe.
 #
-# Set NO_COLOR=1 to disable color. Honors non-TTY (no colors when piped).
+# Set NO_COLOR=1 to disable color.
+# Set OPENOODA_DRY_RUN=1 to preview without downloading.
 
 set -euo pipefail
 
@@ -16,6 +17,7 @@ OPENOODA_HOME="${OPENOODA_HOME:-$HOME/.openooda}"
 BIN_DIR="$OPENOODA_HOME/bin"
 STD_DIR="$OPENOODA_HOME/std"
 RELEASES="https://github.com/openOODA"
+DRY_RUN="${OPENOODA_DRY_RUN:-0}"
 
 declare -A REPOS=(
   [ooda]="ooda"   [oodac]="oodac" [oodar]="oodar"
@@ -26,7 +28,13 @@ declare -A BINARIES=(
   [opm]="opm"         [lsp]="ooda-lsp"   [mcp]="ooda-mcp"
 )
 
-# --- color + UI helpers -------------------------------------------------------
+# --- locale + color -----------------------------------------------------------
+
+case "${LC_ALL:-${LANG:-}}" in
+  *UTF-8*|*utf8*|*UTF8*) HAS_UTF=1 ;;
+  *) HAS_UTF=0 ;;
+esac
+if [[ $HAS_UTF -eq 1 ]]; then FILL="▰"; EMPTY="▱"; else FILL="#"; EMPTY="-"; fi
 
 USE_COLOR=1
 if [[ ! -t 1 ]] || [[ -n "${NO_COLOR:-}" ]]; then USE_COLOR=0; fi
@@ -35,7 +43,9 @@ RESET=$(C 0); BOLD=$(C 1); DIM=$(C 2)
 CYAN=$(C 36); GREEN=$(C 32); YELLOW=$(C 33); RED=$(C 31)
 MAGENTA=$(C 35); GRAY=$(C 90); BLUE=$(C 34)
 
-# bar <pct> [width] — filled blocks + empty blocks, colored
+# --- UI primitives -------------------------------------------------------------
+
+# bar <pct> [width] — filled + empty blocks, colored
 bar() {
   local pct=$1 width=${2:-30}
   local filled=$((pct * width / 100))
@@ -43,8 +53,8 @@ bar() {
   [[ $filled -lt 0     ]] && filled=0
   local empty=$((width - filled))
   printf '%s' "$GREEN"
-  printf '%*s' "$filled" '' | tr ' ' '▰'
-  printf '%*s' "$empty"  '' | tr ' ' '▱'
+  printf '%*s' "$filled" '' | tr ' ' "$FILL"
+  printf '%*s' "$empty"  '' | tr ' ' "$EMPTY"
   printf '%s' "$RESET"
 }
 
@@ -74,7 +84,7 @@ err()  { printf '  %s✗%s %s\n' "$RED"    "$RESET" "$*" >&2; }
 skip() { printf '  %s⊘%s %s\n' "$YELLOW" "$RESET" "$*"; }
 info() { printf '  %s•%s %s\n' "$GRAY"   "$RESET" "$*"; }
 
-# --- pin loading --------------------------------------------------------------
+# --- version pin loading ------------------------------------------------------
 
 declare -A PINS=()
 load_pins() {
@@ -92,6 +102,20 @@ release_url() {
   echo "${RELEASES}/${REPOS[$1]}/releases/${tag}/download/${BINARIES[$1]}-${OS}-${ARCH}"
 }
 
+# --- "what's new" line (best-effort) ------------------------------------------
+
+whatnew() {
+  local body
+  body=$(curl -sSL --max-time 3 "https://api.github.com/repos/openOODA/openOODA/releases/latest" 2>/dev/null \
+    | grep -oE '"body":[[:space:]]*"[^"]*"' | head -1 \
+    | sed -E 's/^"body":[[:space:]]*"([^"]*)".*/\1/')
+  if [[ -n "$body" ]]; then
+    local first
+    first=$(printf '%s' "$body" | head -1 | tr -d '\r' | head -c 100)
+    printf '  %s↳%s latest: %s%s%s\n' "$DIM" "$RESET" "$DIM" "$first" "$RESET"
+  fi
+}
+
 # --- per-component install (spinner + result) ---------------------------------
 
 INSTALLED=()
@@ -104,15 +128,38 @@ install_component() {
 
   printf '  %s%s%s\n' "$BOLD" "$key" "$RESET"
 
-  # background the HEAD+download so the spinner can run
+  if [[ "$DRY_RUN" == "1" ]]; then
+    code=$(curl -sSL -o /dev/null -w '%{http_code}' -I "$url" 2>/dev/null || echo 000)
+    if [[ "$code" == "200" || "$code" == "302" ]]; then
+      ok "[dry-run] would install $(basename "$dest")"
+      INSTALLED+=("$key")
+    else
+      skip "[dry-run] $key not yet shipped for $OS-$ARCH"
+      SKIPPED+=("$key")
+    fi
+    return
+  fi
+
   local codefile="/tmp/openooda-curl.$$.$key"
   (
     code=$(curl -sSL -o "$dest.tmp" -w '%{http_code}' "$url" 2>/dev/null || echo 000)
     echo "$code" > "$codefile"
   ) &
   local pid=$!
+
+  # "still working" hint at 8s
+  (
+    sleep 8
+    if kill -0 "$pid" 2>/dev/null; then
+      printf '\n  %s(taking a moment; press Ctrl-C to cancel)%s\n' "$DIM" "$RESET" >&2
+    fi
+  ) &
+  local slow_pid=$!
+
   spinner "$pid"
   wait "$pid" 2>/dev/null || true
+  kill "$slow_pid" 2>/dev/null || true
+  wait "$slow_pid" 2>/dev/null || true
 
   code=$(cat "$codefile" 2>/dev/null || echo 000)
   rm -f "$codefile"
@@ -163,9 +210,14 @@ ARCH="$(uname -m)"; case "$ARCH" in x86_64|amd64) ARCH=x86_64 ;;
 
 # welcome
 printf '\n'
+printf '  %s%sobserve → orient → decide → act →%s\n' "$DIM$MAGENTA" "" "$RESET"
+printf '\n'
 printf '  %s%sopenOODA%s — Sovereign Systems Language for the AI Era\n' \
   "$BOLD$MAGENTA" "" "$RESET"
+whatnew
 printf '  %shost: %s/%s%s\n' "$DIM" "$OS" "$ARCH" "$RESET"
+printf '  %sWelcome, %s%s%s.%s\n' "$DIM" "$CYAN" "${USER:-friend}" "$RESET" "$RESET"
+[[ "$DRY_RUN" == "1" ]] && printf '  %s[DRY RUN — no downloads, no shell-rc edits]%s\n' "$YELLOW" "$RESET"
 printf '\n'
 
 TOTAL=9  # 1 detect + 6 components + 1 std + 1 shell
@@ -184,7 +236,9 @@ for key in ooda oodac oodar opm lsp mcp; do
 done
 
 # step 3: std
-if [[ -d "$STD_DIR" ]] && [[ -f "$STD_DIR/ANCHOR.oo" ]]; then
+if [[ "$DRY_RUN" == "1" ]]; then
+  skip "[dry-run] skipping std clone"
+elif [[ -d "$STD_DIR" ]] && [[ -f "$STD_DIR/ANCHOR.oo" ]]; then
   ok "std already at $STD_DIR"
 elif ! command -v git >/dev/null 2>&1; then
   warn "git not found; skipping std clone"
@@ -203,7 +257,11 @@ fi
 done=$((done + 1)); overwrite_bar "$done" "$TOTAL"; printf '\n'
 
 # step 4: shell
-setup_shell_rc
+if [[ "$DRY_RUN" == "1" ]]; then
+  skip "[dry-run] skipping shell rc"
+else
+  setup_shell_rc
+fi
 done=$((done + 1)); overwrite_bar "$done" "$TOTAL"; printf '\n'
 
 # --- summary ------------------------------------------------------------------
@@ -221,9 +279,11 @@ fi
 info "binaries:    $BIN_DIR"
 info "std:         $STD_DIR"
 info "time:        ${ELAPSED}s"
-ok   "shell rc:   PATH + OODA_STD_ROOT set in ~/.bashrc and ~/.zshrc"
+if [[ "$DRY_RUN" != "1" ]]; then
+  ok "shell rc:   PATH + OODA_STD_ROOT set in ~/.bashrc and ~/.zshrc"
+fi
 
-# --- CLI command list (the actual reason they installed openOODA) ----------
+# --- CLI command list --------------------------------------------------------
 
 printf '\n%s%s Try these commands %s\n' "$BOLD" "$CYAN" "$RESET"
 printf '  %s$ ooda --help%s              show all 13 subcommands\n' "$GREEN" "$RESET"
@@ -235,6 +295,9 @@ printf '  %s$ ooda token issue%s         create a capability token\n' "$GREEN" "
 printf '\n'
 printf '  %s▸%s restart your shell (or: source ~/.bashrc) and run %sooda --help%s\n' \
   "$DIM" "$RESET" "$GREEN" "$RESET"
+if [[ "$DRY_RUN" == "1" ]]; then
+  printf '\n  %sRe-run without OPENOODA_DRY_RUN=1 to actually install.%s\n' "$DIM" "$RESET"
+fi
 
 # final closing bar
 printf '\n  %s %s100%%%s\n\n' "$(bar 100)" "$BOLD$MAGENTA" "$RESET"
