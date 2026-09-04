@@ -1,0 +1,12 @@
+Source: openooda
+Section: devel
+Maintainer: openOODA Authors <ops@openooda.org>
+Standards-Version: 4.6.2
+Build-Depends: debhelper-compat (= 13)
+
+Package: openooda
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: openOODA — Sovereign Systems Language for the AI Era
+ The openOODA toolchain: driver, compiler, runtime, standard library,
+ package manager, language server, and MCP server.
