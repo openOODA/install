@@ -8,4 +8,4 @@ on:
 
 jobs:
   auto-release:
-    uses: openOODA/openOODA/.github/workflows/auto-release.yml@v1.0.6
+    uses: openOODA/openOODA/.github/workflows/auto-release.yml@v1.0.14
