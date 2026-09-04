@@ -1,0 +1,11 @@
+name: packaging CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  auto-release:
+    uses: openOODA/openOODA/.github/workflows/auto-release.yml@v1.0.6
