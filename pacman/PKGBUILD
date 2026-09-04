@@ -7,7 +7,7 @@ url="https://openooda.org"
 license=('MIT')
 depends=('glibc')
 makedepends=('git')
-source=("https://github.com/openOODA/packaging/archive/v${pkgver}.tar.gz")
+source=("https://github.com/openOODA/install/archive/v${pkgver}.tar.gz")
 sha256sums=('SKIP')
 
 package() {

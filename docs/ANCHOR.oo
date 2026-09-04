@@ -1,13 +1,14 @@
-// # packaging/docs — Package Manual
+// # install/docs — Package Manual
 //
 // Logline: Per-package docs for how the toolchain lands on a
 //          machine. apt, dnf, pacman, and install.sh.
 //
-// Setup: RFC-0005. Website Source: openOODA/packaging/docs/.
+// Setup: RFC-0005. Website Source: openOODA/install/docs/.
 //        INSTALL.md is host residual. New docs are .oot.
+//        This repo is not `ooda install`.
 //
 // Beats:
-//   1. PACKAGING.oot — distro surface and public install URL.
+//   1. SURFACE.oot — distro surface and public install URL.
 //   2. INSTALL.md — flags, ~/.openooda/ layout, three paths.
 
-import "PACKAGING.oot";
+import "SURFACE.oot";

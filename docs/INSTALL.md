@@ -116,7 +116,7 @@ Pre-built `.deb` packages live in this repo under `apt/`. To build one:
 
 ```sh
 sudo apt-get install build-essential debhelper devscripts
-cd packaging/apt
+cd apt
 make
 sudo dpkg -i ../openooda_*.deb
 ```
@@ -129,7 +129,7 @@ Pre-built `.rpm` packages live under `dnf/`. To build one:
 sudo dnf install rpm-build rpmdevtools
 rpmdev-setuptree
 cp <source-tarball> ~/rpmbuild/SOURCES/
-rpmbuild -ba packaging/dnf/openooda.spec
+rpmbuild -ba dnf/openooda.spec
 sudo dnf install ~/rpmbuild/RPMS/*/openooda-*.rpm
 ```
 
@@ -139,7 +139,7 @@ Pre-built Arch packages live under `pacman/`. To build one:
 
 ```sh
 sudo pacman -S --needed base-devel
-cd packaging/pacman
+cd pacman
 makepkg -si
 ```
 

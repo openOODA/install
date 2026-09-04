@@ -1,4 +1,4 @@
-name: packaging CI
+name: install CI
 
 on:
   push:

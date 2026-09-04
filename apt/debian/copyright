@@ -1,7 +1,7 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: openooda
 Upstream-Contact: openOODA Authors <ops@openooda.org>
-Source: https://github.com/openOODA/packaging
+Source: https://github.com/openOODA/install
 
 Files: *
 Copyright: 2024-2026 The openOODA Authors

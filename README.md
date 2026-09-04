@@ -16,9 +16,10 @@
 
 ---
 
-## This repo: packaging
+## This repo: install
 
-Distribution packaging for openOODA: install.sh, apt, dnf, pacman (winget deferred).
+How the toolchain lands on a machine: `install.sh`, apt, dnf,
+pacman (winget deferred). Not the `ooda install` subcommand.
 
 ## Install
 
@@ -43,10 +44,9 @@ All design, RFCs, practices, and onboarding live in [openOODA/openOODA](https://
 | [openOODA/oodar](https://github.com/openOODA/oodar) | Runtime substrate |
 | [openOODA/oodac](https://github.com/openOODA/oodac) | Compiler |
 | [openOODA/website](https://github.com/openOODA/website) | Website source |
-| [openOODA/packaging](https://github.com/openOODA/packaging) | Distribution packaging (apt, dnf, pacman) |
+| [openOODA/install](https://github.com/openOODA/install) | How the toolchain lands (install.sh, apt, dnf, pacman) |
 | [openOODA/.github](https://github.com/openOODA/.github) | Org profile, shared community files, workflows |
 
 ## License
 
-Dual-licensed under your choice of MIT or Apache 2.0. See [LICENSE](LICENSE)
-for full text and the canonical URLs.
+Licensed under MIT. See [LICENSE](LICENSE).

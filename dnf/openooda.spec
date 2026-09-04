@@ -4,7 +4,7 @@ Release:        1%{?dist}
 Summary:        openOODA — Sovereign Systems Language for the AI Era
 License:        MIT
 URL:            https://openooda.org
-Source0:        https://github.com/openOODA/packaging/archive/v%{version}.tar.gz
+Source0:        https://github.com/openOODA/install/archive/v%{version}.tar.gz
 BuildArch:      x86_64 aarch64
 BuildRequires:  git
 Requires:       glibc

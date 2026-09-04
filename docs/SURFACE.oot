@@ -1,18 +1,15 @@
-# packaging — distribution
-File: packaging/docs/PACKAGING.oot
+# install — how bits land
+File: install/docs/SURFACE.oot
 
-How the toolchain lands on a machine. Tag v0.1.6.
-Ships `install.sh` plus apt, dnf, and pacman recipes.
-winget is deferred.
+How the toolchain lands on a machine. Git tags are the
+version (RFC-0006). Ships `install.sh` plus apt, dnf, and
+pacman recipes. winget is deferred.
+
+This repo is `openOODA/install`. It is not the
+`ooda install` subcommand.
 
 The public URL `https://openooda.org/install.sh` redirects
 to this repo's `install.sh` on GitHub `main`.
-
-## Install
-
-```
-curl -fsSL https://openooda.org/install.sh | bash
-```
 
 Installs to `~/.openooda/`. Adds `~/.openooda/bin` to PATH.
 
