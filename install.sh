@@ -16,8 +16,8 @@ STD_DIR="$OPENOODA_HOME/std"
 RELEASES="https://github.com/openOODA"
 DRY_RUN="${OPENOODA_DRY_RUN:-0}"
 
-declare -A REPOS=([ooda]=ooda [oodac]=oodac [oodar]=oodar [opm]=opm [lsp]=lsp [mcp]=mcp)
-declare -A BINARIES=([ooda]=ooda [oodac]=oodac [oodar]=liboodar.a [opm]=opm [lsp]=ooda-lsp [mcp]=ooda-mcp)
+declare -A REPOS=([ooda]=ooda [oodac]=oodac [oodar]=oodar [opm]=opm [lsp]=lsp [mcp]=mcp [blackbox]=blackbox)
+declare -A BINARIES=([ooda]=ooda [oodac]=oodac [oodar]=liboodar.a [opm]=opm [lsp]=ooda-lsp [mcp]=ooda-mcp [blackbox]=blackbox)
 
 # --- color --------------------------------------------------------------------
 
@@ -72,7 +72,11 @@ load_pins() {
 
 release_url() {
   local tag="${PINS[$1]:-latest}"
-  echo "${RELEASES}/${REPOS[$1]}/releases/${tag}/download/${BINARIES[$1]}-${OS}-${ARCH}"
+  if [[ "$tag" == "latest" ]]; then
+    echo "${RELEASES}/${REPOS[$1]}/releases/latest/download/${BINARIES[$1]}-${OS}-${ARCH}"
+  else
+    echo "${RELEASES}/${REPOS[$1]}/releases/download/${tag}/${BINARIES[$1]}-${OS}-${ARCH}"
+  fi
 }
 
 # --- "what's new" line (best-effort, 3s timeout) -----------------------------
@@ -100,7 +104,7 @@ install_component() {
 
   if [[ "$DRY_RUN" == "1" ]]; then
     code=$(curl -sSL -o /dev/null -w '%{http_code}' -I "$url" 2>/dev/null || echo 000)
-    if [[ "$code" == "200" || "$code" == "302" ]]; then
+    if [[ "$code" == "200" ]]; then
       ok "[dry-run] would install $(basename "$dest")"; INSTALLED+=("$key")
     else
       skip "[dry-run] $key not yet shipped for $OS-$ARCH"; SKIPPED+=("$key")
@@ -108,8 +112,9 @@ install_component() {
     return
   fi
 
-  local codefile="/tmp/openooda-curl.$$.$key"
-  ( code=$(curl -sSL -o "$dest.tmp" -w '%{http_code}' "$url" 2>/dev/null || echo 000)
+  local codefile
+  codefile=$(mktemp 2>/dev/null || echo "/tmp/openooda-curl.$$.$key")
+  ( code=$(curl -sSL --connect-timeout 10 --max-time 120 -o "$dest.tmp" -w '%{http_code}' "$url" 2>/dev/null || echo 000)
     echo "$code" > "$codefile" ) &
   local pid=$!
   ( sleep 8; kill -0 "$pid" 2>/dev/null \
@@ -123,14 +128,43 @@ install_component() {
 
   code=$(cat "$codefile" 2>/dev/null || echo 000)
   rm -f "$codefile"
-  if [[ "$code" == "200" || "$code" == "302" ]] && [[ -s "$dest.tmp" ]]; then
+  if [[ "$code" == "200" ]] && [[ -s "$dest.tmp" ]]; then
+    local sha_url="${url}.sha256"
+    local sha_tmp="$dest.tmp.sha256"
+    local sha_code
+    sha_code=$(curl -sSL --connect-timeout 5 --max-time 15 -o "$sha_tmp" -w '%{http_code}' "$sha_url" 2>/dev/null || echo 000)
+    if [[ "$sha_code" == "200" ]] && [[ -s "$sha_tmp" ]]; then
+      local expected_hash actual_hash
+      expected_hash=$(awk '{print $1}' "$sha_tmp" | tr -d '\r\n ')
+      if command -v sha256sum >/dev/null 2>&1; then
+        actual_hash=$(sha256sum "$dest.tmp" | awk '{print $1}')
+      elif command -v shasum >/dev/null 2>&1; then
+        actual_hash=$(shasum -a 256 "$dest.tmp" | awk '{print $1}')
+      else
+        actual_hash="$expected_hash"
+      fi
+      rm -f "$sha_tmp"
+      if [[ -n "$expected_hash" && "$expected_hash" != "$actual_hash" ]]; then
+        rm -f "$dest.tmp"
+        err "$key: SHA-256 checksum mismatch (expected $expected_hash, got $actual_hash)"
+        return 1
+      fi
+      info "$key: SHA-256 verified (${expected_hash:0:16}...)"
+    else
+      rm -f "$sha_tmp"
+    fi
+
     mv "$dest.tmp" "$dest"; chmod +x "$dest"
     local size; size=$(wc -c < "$dest" 2>/dev/null || echo 0); BYTES=$((BYTES + size))
     local mb; mb=$(awk -v s="$size" 'BEGIN{printf "%.1f", s/1048576}')
     ok "installed $(basename "$dest") (${mb} MB)"; INSTALLED+=("$key")
   else
-    rm -f "$dest" "$dest.tmp"
-    skip "$key not yet shipped for $OS-$ARCH"; SKIPPED+=("$key")
+    rm -f "$dest.tmp"
+    if [[ -x "$dest" ]]; then
+      warn "$key download failed; preserved existing $(basename "$dest")"
+    else
+      skip "$key not yet shipped for $OS-$ARCH"; SKIPPED+=("$key")
+    fi
   fi
 }
 
@@ -139,12 +173,13 @@ install_component() {
 setup_shell_rc() {
   local l1='export PATH="$HOME/.openooda/bin:$PATH"'
   local l2='export OODA_STD_ROOT="$HOME/.openooda/std"'
+  local l3='export OODA_COMPILER="$HOME/.openooda/bin/oodac"'
   for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
     [[ -e "$rc" ]] || : >> "$rc" 2>/dev/null || continue
     if grep -Fqx "$l1" "$rc" 2>/dev/null; then
       info "$(basename "$rc") already has openOODA exports"
     else
-      printf '\n# openOODA\n%s\n%s\n' "$l1" "$l2" >> "$rc"
+      printf '\n# openOODA\n%s\n%s\n%s\n' "$l1" "$l2" "$l3" >> "$rc"
       ok "$(basename "$rc") updated"
     fi
   done
@@ -168,7 +203,7 @@ printf '  %sWelcome, %s%s%s.%s\n' "$DIM" "$CYAN" "${USER:-friend}" "$RESET" "$RE
 [[ "$DRY_RUN" == "1" ]] && printf '  %s[DRY RUN — no downloads, no shell-rc edits]%s\n' "$YELLOW" "$RESET"
 printf '\n'
 
-TOTAL=9; done=0
+TOTAL=10; done=0
 mkdir -p "$BIN_DIR"
 tick() { done=$((done + 1)); overwrite_bar "$done" "$TOTAL"; printf '\n'; }
 
@@ -177,7 +212,7 @@ ok "install dir: $BIN_DIR"; tick
 
 # step 2: components
 load_pins
-for key in ooda oodac oodar opm lsp mcp; do install_component "$key"; tick; done
+for key in ooda oodac oodar opm lsp mcp blackbox; do install_component "$key"; tick; done
 
 # step 3: std
 if [[ "$DRY_RUN" == "1" ]]; then
@@ -214,9 +249,14 @@ info "time:        ${ELAPSED}s"
 [[ "$DRY_RUN" != "1" ]] && ok "shell rc:   PATH + OODA_STD_ROOT set in ~/.bashrc and ~/.zshrc"
 
 printf '\n%s%s Try these commands %s\n' "$BOLD" "$CYAN" "$RESET"
-printf '  %s$ ooda --help%s              show all 13 subcommands\n  %s$ ooda build main.oo%s       build your first .oo program\n  %s$ ooda run main.oo%s         compile and execute\n  %s$ ooda init%s                scaffold a new project\n  %s$ ooda token issue%s         create a capability token\n' \
-  "$GREEN" "$RESET" "$GREEN" "$RESET" "$GREEN" "$RESET" "$GREEN" "$RESET" "$GREEN" "$RESET"
+printf '  %s$ ooda --help%s              show all 13 subcommands\n  %s$ ooda build main.oo%s       build your first .oo program\n  %s$ ooda run main.oo%s         compile and execute\n  %s$ ooda init%s                scaffold a new project\n  %s$ ooda token issue%s         create a capability token\n  %s$ blackbox --help%s          flight recorder & crash autopsy\n' \
+  "$GREEN" "$RESET" "$GREEN" "$RESET" "$GREEN" "$RESET" "$GREEN" "$RESET" "$GREEN" "$RESET" "$GREEN" "$RESET"
 printf '\n  %s▸%s restart your shell (or: source ~/.bashrc) and run %sooda --help%s\n' "$DIM" "$RESET" "$GREEN" "$RESET"
-[[ "$DRY_RUN" == "1" ]] && printf '\n  %sRe-run without OPENOODA_DRY_RUN=1 to actually install.%s\n' "$DIM" "$RESET"
+if [[ "$DRY_RUN" == "1" ]]; then
+  printf '\n  %sRe-run without OPENOODA_DRY_RUN=1 to actually install.%s\n' "$DIM" "$RESET"
+elif [[ ! -x "$BIN_DIR/ooda" || ! -x "$BIN_DIR/oodac" ]]; then
+  err "installation failed: core binaries (ooda, oodac) not found in $BIN_DIR"
+  exit 1
+fi
 printf '\n  %s %s100%%%s\n\n  %s%sReady. Welcome to openOODA.%s\n  https://openooda.org\n\n' \
   "$(bar 100)" "$BOLD$MAGENTA" "$RESET" "$BOLD$MAGENTA" "" "$RESET"
