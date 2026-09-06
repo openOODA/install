@@ -1036,9 +1036,10 @@ printf '\n  %s%sopenOODA%s — Sovereign Systems Language for the AI Era\n' "$BO
 whatnew
 printf '  %shost: %s/%s%s\n' "$DIM" "$OS" "$ARCH" "$RESET"
 printf '  %sWelcome, %s%s%s.%s\n' "$DIM" "$CYAN" "${USER:-friend}" "$RESET" "$RESET"
-# version line — right after hi, before y/n
-INSTALLER_VERSION="$(cat "$(dirname "${BASH_SOURCE[0]:-$0}")/VERSION" 2>/dev/null || echo "0.1.0")"
+# version line — right after hi, before y/n (works for both file and curl | bash)
+INSTALLER_VERSION="$(cat "$(dirname "${BASH_SOURCE[0]:-$0}")/VERSION" 2>/dev/null || cat "$(dirname "$0")/VERSION" 2>/dev/null || curl -sSL --max-time 3 "https://raw.githubusercontent.com/openOODA/install/main/VERSION" 2>/dev/null || echo "0.1.0")"
 INSTALLER_VERSION="$(printf '%s' "$INSTALLER_VERSION" | tr -d '\r\n ' | head -c 20)"
+[[ -z "$INSTALLER_VERSION" ]] && INSTALLER_VERSION="0.1.0"
 printf '  %sWelcome to version %s of the openOODA installer.%s\n' "$DIM" "$INSTALLER_VERSION" "$RESET"
 [[ "$DRY_RUN" == "1" ]] && printf '  %s[DRY RUN — no downloads, no shell-rc edits]%s\n' "$YELLOW" "$RESET"
 printf '\n'
