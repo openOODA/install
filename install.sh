@@ -431,8 +431,8 @@ detect_harnesses() {
   if command -v zed >/dev/null 2>&1 || [[ -f "$xdg/zed/settings.json" ]]; then HARNESS_DETECTED+=("zed"); else HARNESS_SKIPPED+=("zed"); fi
   if command -v code >/dev/null 2>&1 || [[ -d "$xdg/Code" ]]; then HARNESS_DETECTED+=("vscode"); else HARNESS_SKIPPED+=("vscode"); fi
   if command -v goose >/dev/null 2>&1 || [[ -f "$xdg/goose/config.yaml" ]]; then HARNESS_DETECTED+=("goose"); else HARNESS_SKIPPED+=("goose"); fi
-  if command -v mistral-vibe >/dev/null 2>&1 || [[ -d "$xdg/mistral" ]]; then HARNESS_DETECTED+=("mistral-vibe"); else HARNESS_SKIPPED+=("mistral-vibe"); fi
-  if command -v grok-build >/dev/null 2>&1; then HARNESS_DETECTED+=("grok-build"); else HARNESS_SKIPPED+=("grok-build"); fi
+  if command -v mistral-vibe >/dev/null 2>&1 || command -v vibe >/dev/null 2>&1 || command -v vibe-acp >/dev/null 2>&1 || [[ -d "$HOME/.vibe" ]] || [[ -d "$xdg/mistral" ]] || [[ -d "$HOME/.local/share/uv/tools/mistral-vibe" ]]; then HARNESS_DETECTED+=("mistral-vibe"); else HARNESS_SKIPPED+=("mistral-vibe"); fi
+  if command -v grok-build >/dev/null 2>&1 || command -v grok >/dev/null 2>&1 || command -v xai-grok-pager >/dev/null 2>&1 || [[ -d "$HOME/.grok" ]] || [[ -f "$HOME/.grok/bin/grok" ]]; then HARNESS_DETECTED+=("grok-build"); else HARNESS_SKIPPED+=("grok-build"); fi
   if command -v devin >/dev/null 2>&1; then HARNESS_DETECTED+=("devin"); else HARNESS_SKIPPED+=("devin"); fi
   if command -v charm >/dev/null 2>&1 || [[ -d "$xdg/charm" ]] || command -v crush >/dev/null 2>&1; then HARNESS_DETECTED+=("charm"); else HARNESS_SKIPPED+=("charm"); fi
   if [[ ${#HARNESS_DETECTED[@]} -gt 0 ]]; then info "harnesses detected: ${HARNESS_DETECTED[*]}"; fi
@@ -904,7 +904,6 @@ text=""
 try:
     with open(cfg) as f: text=f.read()
 except: text=""
-# minimal yaml append if not present — keep existing content
 if "openooda" not in text:
     with open(cfg,"a") as f:
         f.write("\n# openOODA — added by install.sh\n")
@@ -913,6 +912,37 @@ if "openooda" not in text:
         f.write(f"  blackbox:\n    command: /usr/bin/stdbuf\n    args: [\"-o0\", \"-e0\", \"{bindir}/blackbox\", \"mcp\", \"--stdio\"]\n    env:\n      OODA_FS_READDIR: {home}/Projects/openOODA\n      OODA_COMPILER: {bindir}/oodac\n")
 PY
   ok "wired goose: $cfg"; HARNESS_WIRED+=("goose")
+}
+
+wire_mistral_vibe() {
+  # vibe binary, config at ~/.vibe/config.toml with [[mcp_servers]]
+  local vibe_bin=""
+  for b in vibe mistral-vibe vibe-acp; do if command -v "$b" >/dev/null 2>&1; then vibe_bin="$b"; break; fi; done
+  if [[ -z "$vibe_bin" && ! -d "$HOME/.vibe" && ! -d "$HOME/.local/share/uv/tools/mistral-vibe" ]]; then skip "mistral-vibe not installed — skipping"; return 0; fi
+  [[ -z "$vibe_bin" ]] && vibe_bin="vibe"
+  local codex; codex="$(_ooda_codex_path)"
+  if [[ "$DRY_RUN" == "1" ]]; then ok "[dry-run] would wire mistral-vibe: $vibe_bin mcp add openooda/blackbox (transport stdio)"; HARNESS_WIRED+=("mistral-vibe"); return 0; fi
+  # use vibe mcp add CLI (stdio transport) — idempotent, handles config.toml creation
+  "$vibe_bin" mcp add openooda --transport stdio --command "$BIN_DIR/ooda-mcp" --arg=--stdio --env OODA_CODEX="$codex" --env OODACODEX="$codex" --env OODA_FS_READDIR="$HOME/Projects/openOODA" --env OODA_FS_WRITEDIR="$HOME" --env OODA_COMPILER="$BIN_DIR/oodac" --env OODAC_BIN="$BIN_DIR/oodac" >/dev/null 2>&1 || warn "vibe mcp add openooda failed"
+  "$vibe_bin" mcp add blackbox --transport stdio --command /usr/bin/stdbuf --arg=-o0 --arg=-e0 --arg="$BIN_DIR/blackbox" --arg=mcp --arg=--stdio --env OODA_FS_READDIR="$HOME/Projects/openOODA" --env OODA_COMPILER="$BIN_DIR/oodac" --env OODAC_BIN="$BIN_DIR/oodac" >/dev/null 2>&1 || {
+    "$vibe_bin" mcp add blackbox --transport stdio --command "$BIN_DIR/blackbox" --arg=mcp --arg=--stdio --env OODA_FS_READDIR="$HOME/Projects/openOODA" --env OODA_COMPILER="$BIN_DIR/oodac" >/dev/null 2>&1 || warn "vibe mcp add blackbox failed"
+  }
+  ok "wired mistral-vibe: $vibe_bin mcp (openooda + blackbox)"; HARNESS_WIRED+=("mistral-vibe")
+}
+
+wire_grok_build() {
+  if ! command -v grok >/dev/null 2>&1 && ! command -v grok-build >/dev/null 2>&1 && ! command -v xai-grok-pager >/dev/null 2>&1 && [[ ! -d "$HOME/.grok" ]]; then skip "grok-build not installed — skipping"; return 0; fi
+  if [[ "$DRY_RUN" == "1" ]]; then ok "[dry-run] would wire grok-build: ~/.grok/config.toml + lsp.json (openooda + blackbox)"; HARNESS_WIRED+=("grok-build"); return 0; fi
+  # grok-build shares ~/.grok/config.toml with grok — avoid duplicate HARNESS_WIRED entry
+  if [[ " ${HARNESS_WIRED[*]} " == *" grok "* ]]; then
+    if [[ " ${HARNESS_WIRED[*]} " != *" grok-build "* ]]; then HARNESS_WIRED+=("grok-build"); ok "wired grok-build: ~/.grok/config.toml (alias of grok)"; else ok "wired grok-build: already wired"; fi
+    return 0
+  fi
+  # grok not yet wired in this run — wire it (adds "grok"), then also mark grok-build
+  wire_grok >/dev/null 2>&1 || true
+  if [[ " ${HARNESS_WIRED[*]} " != *" grok-build "* ]]; then HARNESS_WIRED+=("grok-build"); fi
+  # ensure at least one ok line if grok wiring was suppressed
+  if [[ " ${HARNESS_WIRED[*]} " == *" grok-build "* ]] && [[ " ${HARNESS_WIRED[*]} " != *" grok "* ]]; then ok "wired grok-build: ~/.grok/config.toml (alias of grok)"; fi
 }
 
 wire_harnesses() {
@@ -925,7 +955,7 @@ wire_harnesses() {
   if [[ ${#HARNESS_DETECTED[@]} -gt 0 ]]; then
     if ! ask_confirm "Connect detected harnesses (${HARNESS_DETECTED[*]}) to mcp, lsp, and blackbox?" "Y"; then
       info "skipping harness wiring by user choice"
-      for h in mistral-vibe grok-build devin charm; do
+      for h in devin charm; do
         if [[ " ${HARNESS_SKIPPED[*]} " == *" $h "* ]]; then
           info "harness $h not installed — stub skipped"
         fi
@@ -977,11 +1007,13 @@ wire_harnesses() {
       zed)             wire_zed ;;
       vscode)          wire_vscode ;;
       goose)           wire_goose ;;
+      mistral-vibe)    wire_mistral_vibe ;;
+      grok-build)      wire_grok_build ;;
       *) info "harness $h detected — no verified adapter yet (skipped)" ;;
     esac
   done
   # stubs for explicitly absent but user-asked names — already in skipped list
-  for h in mistral-vibe grok-build devin charm; do
+  for h in devin charm; do
     if [[ " ${HARNESS_SKIPPED[*]} " == *" $h "* ]]; then
       info "harness $h not installed — stub skipped"
     fi
@@ -1085,17 +1117,19 @@ tick
 wire_harnesses
 # tell users to restart any open harnesses — config is on disk, hosts read it at startup
 if [[ "$DRY_RUN" == "1" ]]; then
-  [[ ${#HARNESS_WIRED[@]} -gt 0 ]] && info "on real install: restart any open harnesses (agy, opencode, grok, muse, gemini, claude, cursor, windsurf, codex, zed, vscode, goose) to pick up new mcp/lsp/blackbox config"
+  [[ ${#HARNESS_WIRED[@]} -gt 0 ]] && info "on real install: restart any open harnesses (agy, opencode, grok, muse, gemini, claude, cursor, windsurf, codex, zed, vscode, goose, vibe, grok-build) to pick up new mcp/lsp/blackbox config"
 else
   if [[ ${#HARNESS_WIRED[@]} -gt 0 ]]; then
     _running=""
-    for _h in agy opencode grok muse gemini claude cursor windsurf codex zed code goose; do
-      if pgrep -x "$_h" >/dev/null 2>&1 || pgrep -f "[/ ]$_h([[:space:]]|\$)" >/dev/null 2>&1; then _running="$_running $_h"; fi
+    for _h in agy opencode grok muse gemini claude cursor windsurf codex zed code goose vibe grok-build; do
+      if pgrep -x "$_h" >/dev/null 2>&1 || pgrep -f "[/ ]$_h([[:space:]]|\$)" >/dev/null 2>&1 || pgrep -f "$_h" >/dev/null 2>&1; then _running="$_running $_h"; fi
     done
+    # dedupe and trim
+    _running=$(printf '%s' "$_running" | tr -s ' ' | sed 's/^ *//;s/ *$//')
     if [[ -n "$_running" ]]; then
       warn "restart any open harnesses to load new config:$_running (new mcp/lsp/blackbox is on disk, hosts read it at startup)"
     else
-      info "if a harness was open during install (agy, opencode, grok, muse, gemini, claude, cursor, windsurf, codex, zed, vscode, goose), restart it to pick up new mcp/lsp/blackbox config"
+      info "if a harness was open during install (agy, opencode, grok, muse, gemini, claude, cursor, windsurf, codex, zed, vscode, goose, vibe, grok-build), restart it to pick up new mcp/lsp/blackbox config"
     fi
   fi
 fi
@@ -1125,8 +1159,18 @@ info "time:        ${ELAPSED}s"
 [[ "$DRY_RUN" != "1" ]] && ok "shell rc:   PATH + OODA_STD_ROOT set in ~/.bashrc and ~/.zshrc"
 
 printf '\n%s%s Try these commands %s\n' "$BOLD" "$CYAN" "$RESET"
-printf '  %s$ ooda --help%s              show all 13 subcommands\n  %s$ ooda build main.oo%s       build your first .oo program\n  %s$ ooda run main.oo%s         compile and execute\n  %s$ ooda init%s                scaffold a new project\n  %s$ ooda token issue%s         create a capability token\n  %s$ blackbox --help%s          flight recorder & crash autopsy\n' \
-  "$GREEN" "$RESET" "$GREEN" "$RESET" "$GREEN" "$RESET" "$GREEN" "$RESET" "$GREEN" "$RESET" "$GREEN" "$RESET"
+printf '  %s$ ooda --help%s              show all 13 subcommands\n' "$GREEN" "$RESET"
+printf '  %s$ ooda init%s                scaffold a new project (creates ANCHOR.oo)\n' "$GREEN" "$RESET"
+printf '  %s$ ooda build main.oo%s       build your first .oo program\n' "$GREEN" "$RESET"
+printf '  %s$ ooda run main.oo%s         compile and execute with caps\n' "$GREEN" "$RESET"
+printf '  %s$ ooda test%s                run tests in the repo\n' "$GREEN" "$RESET"
+printf '  %s$ ooda fmt%s                 format all .oo files\n' "$GREEN" "$RESET"
+printf '  %s$ ooda fix%s                 auto-fix lint issues\n' "$GREEN" "$RESET"
+printf '  %s$ ooda health%s              check toolchain health\n' "$GREEN" "$RESET"
+printf '  %s$ ooda token issue%s         create a capability token\n' "$GREEN" "$RESET"
+printf '  %s$ opm --help%s               package manager (add/install packages)\n' "$GREEN" "$RESET"
+printf '  %s$ blackbox --help%s          flight recorder & crash autopsy\n' "$GREEN" "$RESET"
+printf '  %s$ blackbox trace%s           show recent traces\n' "$GREEN" "$RESET"
 printf '\n  %s▸%s restart your shell (or: source ~/.bashrc) and run %sooda --help%s\n' "$DIM" "$RESET" "$GREEN" "$RESET"
 if [[ "$DRY_RUN" == "1" ]]; then
   printf '\n  %sRe-run without OPENOODA_DRY_RUN=1 to actually install.%s\n' "$DIM" "$RESET"
