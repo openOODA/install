@@ -177,8 +177,8 @@ setup_shell_rc() {
   local old_l3='export OODA_COMPILER="${OODA_COMPILER:-$HOME/.local/bin/oodac}"'
   for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
     [[ -e "$rc" ]] || : >> "$rc" 2>/dev/null || continue
-    if grep -Fq 'OODA_COMPILER.*\.local/bin/oodac' "$rc" 2>/dev/null; then
-      sed -i 's|export OODA_COMPILER.*\.local/bin/oodac.*|'"$l3"'|' "$rc" 2>/dev/null || true
+    if grep -q '\.local/bin/oodac' "$rc" 2>/dev/null; then
+      sed -i 's|.*\.local/bin/oodac.*|'"$l3"'|' "$rc" 2>/dev/null || true
       ok "$(basename "$rc") fixed OODA_COMPILER -> ~/.openooda/bin/oodac"
     fi
     if grep -Fqx "$l1" "$rc" 2>/dev/null; then
