@@ -14,7 +14,8 @@ grep -q "OODA_COMPILER" install.sh || { echo "FAIL no OODA_COMPILER env"; exit 1
 grep -q "OODA_FS_READDIR" install.sh || { echo "FAIL no OODA_FS_READDIR"; exit 1; }
 grep -q "TOTAL=12" install.sh || { echo "FAIL TOTAL not 12 (harness step missing)"; exit 1; }
 grep -q "ask_confirm" install.sh || { echo "FAIL no y/n prompt"; exit 1; }
-grep -q "Install openOODA?" install.sh || { echo "FAIL no install y/n"; exit 1; }
+grep -q "Welcome to version" install.sh || { echo "FAIL no version welcome"; exit 1; }
+grep -q "Would you like to install openOODA" install.sh || { echo "FAIL no install y/n new"; exit 1; }
 grep -q "Connect detected harnesses" install.sh || { echo "FAIL no harness connect y/n"; exit 1; }
 grep -q "restart any open harnesses" install.sh || { echo "FAIL no restart reminder"; exit 1; }
 grep -q "claude-code" install.sh || { echo "FAIL no claude-code probe"; exit 1; }
