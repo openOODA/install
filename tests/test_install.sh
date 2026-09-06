@@ -13,4 +13,8 @@ grep -q "mistral-vibe" install.sh || { echo "FAIL no mistral-vibe stub"; exit 1;
 grep -q "OODA_COMPILER" install.sh || { echo "FAIL no OODA_COMPILER env"; exit 1; }
 grep -q "OODA_FS_READDIR" install.sh || { echo "FAIL no OODA_FS_READDIR"; exit 1; }
 grep -q "TOTAL=12" install.sh || { echo "FAIL TOTAL not 12 (harness step missing)"; exit 1; }
-echo "PASS install 9.1 sha256+blackbox+harnesses"
+grep -q "ask_confirm" install.sh || { echo "FAIL no y/n prompt"; exit 1; }
+grep -q "Install openOODA?" install.sh || { echo "FAIL no install y/n"; exit 1; }
+grep -q "Connect detected harnesses" install.sh || { echo "FAIL no harness connect y/n"; exit 1; }
+grep -q "restart any open harnesses" install.sh || { echo "FAIL no restart reminder"; exit 1; }
+echo "PASS install 9.1 sha256+blackbox+harnesses+y/n+restart"

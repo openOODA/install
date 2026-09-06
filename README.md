@@ -27,6 +27,8 @@ pacman (winget deferred). Not the `ooda install` subcommand.
 curl -fsSL https://openooda.org/install.sh | bash
 ```
 
+Right after launch the installer asks `Install openOODA? [Y/n]` (auto-yes for `curl | bash` with no tty, `CI`, `OPENOODA_YES=1`, or `OPENOODA_DRY_RUN=1`). After the core toolchain lands, it scans for LLM harnesses and asks `Connect detected harnesses (…) to mcp, lsp, and blackbox? [Y/n]` — answering `n` skips wiring. When harnesses were wired, it reminds you to restart any open harnesses (`agy`, `opencode`, `grok`, `muse`, `gemini`) so the new config is read (hosts read at startup). Use `OPENOODA_YES=1` or `printf "y\ny\n" | bash install.sh` for non-interactive.
+
 On each run the installer auto-detects installed LLM harnesses (`antigravity-cli`/`agy`, `opencode`, `muse`, `grok`, `gemini`, plus stubs for `mistral-vibe`, `grok-build`, `devin`, `charm`) and idempotently wires `ooda-mcp --stdio`, `ooda-lsp --stdio`, and `blackbox mcp --stdio` with `OODA_COMPILER`, `OODA_FS_READDIR`, `OODA_FS_WRITEDIR`, `OODA_CODEX`/`OODACODEX`. `OPENOODA_DRY_RUN=1` previews without touching disk. Re-run is safe — existing `mcpServers`/`mcp` entries are merged, unrelated servers are preserved, and a `*.bak.openooda` backup is kept.
 
 ## Docs

@@ -7,6 +7,7 @@
 #
 # Set NO_COLOR=1 to disable color.
 # Set OPENOODA_DRY_RUN=1 to preview without downloading.
+# Set OPENOODA_YES=1 to auto-answer y to all prompts (non-interactive).
 
 set -euo pipefail
 
@@ -58,6 +59,57 @@ warn() { printf '  %s!%s %s\n' "$YELLOW" "$RESET" "$*"; }
 err()  { printf '  %s✗%s %s\n' "$RED"    "$RESET" "$*" >&2; }
 skip() { printf '  %s⊘%s %s\n' "$YELLOW" "$RESET" "$*"; }
 info() { printf '  %s•%s %s\n' "$GRAY"   "$RESET" "$*"; }
+
+ask_confirm() {
+  local prompt="$1" def="${2:-Y}" ans="" src=""
+  if [[ "$DRY_RUN" == "1" ]]; then return 0; fi
+  if [[ "${OPENOODA_YES:-}" == "1" || "${OPENOODA_AUTO_YES:-}" == "1" || "${OPENOODA_ASSUME_YES:-}" == "1" ]]; then return 0; fi
+  if [[ -n "${CI:-}" ]]; then return 0; fi
+  # decide where to read answer from:
+  # - if stdin is a pipe with data and script is a file (bash install.sh), read from stdin
+  # - if stdin is script itself (curl | bash, no file), read from /dev/tty
+  # - if no tty at all, auto yes
+  if [[ ! -t 0 ]]; then
+    # stdin is not a tty (pipe)
+    if [[ -f "${BASH_SOURCE[0]:-}" ]] && [[ -s "${BASH_SOURCE[0]}" ]]; then
+      # script is a file on disk -> stdin is likely user piped answer (e.g., printf "n" | bash install.sh)
+      src="stdin"
+    else
+      # no file (curl | bash) -> stdin is script, use /dev/tty for user input
+      src="tty"
+    fi
+  else
+    src="tty"
+  fi
+  if [[ "$src" == "tty" && ! -e /dev/tty ]]; then return 0; fi
+  if [[ ! -t 0 && ! -t 1 && ! -e /dev/tty ]]; then return 0; fi
+  local prompt_str
+  prompt_str=$(printf '  %s%s%s [%s/n] ' "$BOLD" "$prompt" "$RESET" "$def")
+  if [[ "$src" == "tty" && -e /dev/tty ]]; then
+    printf '%s' "$prompt_str" > /dev/tty 2>/dev/null || printf '%s' "$prompt_str"
+    if read -t 120 -r ans < /dev/tty 2>/dev/null; then
+      ans=$(printf '%s' "$ans" | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+      ans=$(printf '%s' "$ans" | tr '[:upper:]' '[:lower:]')
+      [[ -z "$ans" ]] && ans=$(printf '%s' "$def" | tr '[:upper:]' '[:lower:]')
+      [[ "$ans" == "y" || "$ans" == "yes" ]] && return 0 || return 1
+    else
+      # timeout or EOF -> default yes
+      printf '\n' > /dev/tty 2>/dev/null || true
+      return 0
+    fi
+  else
+    printf '%s' "$prompt_str"
+    if read -t 120 -r ans 2>/dev/null; then
+      ans=$(printf '%s' "$ans" | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+      ans=$(printf '%s' "$ans" | tr '[:upper:]' '[:lower:]')
+      [[ -z "$ans" ]] && ans=$(printf '%s' "$def" | tr '[:upper:]' '[:lower:]')
+      [[ "$ans" == "y" || "$ans" == "yes" ]] && return 0 || return 1
+    else
+      printf '\n'
+      return 0
+    fi
+  fi
+}
 
 # --- version pin loading + release URL ---------------------------------------
 
@@ -433,7 +485,26 @@ PY
 }
 
 wire_harnesses() {
-  detect_harnesses
+  # if already detected (main did scan before asking), reuse; else detect now
+  if [[ ${#HARNESS_DETECTED[@]} -eq 0 && ${#HARNESS_SKIPPED[@]} -eq 0 ]]; then
+    detect_harnesses
+  elif [[ ${#HARNESS_DETECTED[@]} -eq 0 && ${#HARNESS_SKIPPED[@]} -gt 0 ]]; then
+    # already scanned and found nothing — re-log briefly
+    info "harnesses detected: none"
+  fi
+  # after openOODA is installed: scan is done, now ask user if they want to wire to mcp/lsp/blackbox
+  if [[ ${#HARNESS_DETECTED[@]} -gt 0 ]]; then
+    if ! ask_confirm "Connect detected harnesses (${HARNESS_DETECTED[*]}) to mcp, lsp, and blackbox?" "Y"; then
+      info "skipping harness wiring by user choice"
+      # still log stubs for completeness
+      for h in mistral-vibe grok-build devin charm; do
+        if [[ " ${HARNESS_SKIPPED[*]} " == *" $h "* ]]; then
+          info "harness $h not installed — stub skipped"
+        fi
+      done
+      return 0
+    fi
+  fi
   # present harnesses — wire
   for h in "${HARNESS_DETECTED[@]}"; do
     case "$h" in
@@ -471,6 +542,11 @@ printf '  %shost: %s/%s%s\n' "$DIM" "$OS" "$ARCH" "$RESET"
 printf '  %sWelcome, %s%s%s.%s\n' "$DIM" "$CYAN" "${USER:-friend}" "$RESET" "$RESET"
 [[ "$DRY_RUN" == "1" ]] && printf '  %s[DRY RUN — no downloads, no shell-rc edits]%s\n' "$YELLOW" "$RESET"
 printf '\n'
+
+# y/n — verify user wants to install (right after start, skipped for DRY_RUN / non-tty / CI / OPENOODA_YES=1)
+if ! ask_confirm "Install openOODA?" "Y"; then
+  info "install cancelled"; exit 0
+fi
 
 TOTAL=12; done=0
 mkdir -p "$BIN_DIR"
