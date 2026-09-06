@@ -27,6 +27,8 @@ pacman (winget deferred). Not the `ooda install` subcommand.
 curl -fsSL https://openooda.org/install.sh | bash
 ```
 
+On each run the installer auto-detects installed LLM harnesses (`antigravity-cli`/`agy`, `opencode`, `muse`, `grok`, `gemini`, plus stubs for `mistral-vibe`, `grok-build`, `devin`, `charm`) and idempotently wires `ooda-mcp --stdio`, `ooda-lsp --stdio`, and `blackbox mcp --stdio` with `OODA_COMPILER`, `OODA_FS_READDIR`, `OODA_FS_WRITEDIR`, `OODA_CODEX`/`OODACODEX`. `OPENOODA_DRY_RUN=1` previews without touching disk. Re-run is safe — existing `mcpServers`/`mcp` entries are merged, unrelated servers are preserved, and a `*.bak.openooda` backup is kept.
+
 ## Docs
 
 All design, RFCs, practices, and onboarding live in [openOODA/openOODA](https://github.com/openOODA/openOODA) or at [openooda.org](https://openooda.org).

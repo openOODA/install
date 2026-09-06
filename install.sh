@@ -225,6 +225,236 @@ restart_stale_servers() {
   fi
 }
 
+# --- harness auto-detect + wire mcp/lsp/blackbox ------------------------------
+
+HARNESS_DETECTED=()
+HARNESS_WIRED=()
+HARNESS_SKIPPED=()
+
+_ooda_codex_path() {
+  # NORTHSTAR.oot is the codex; try polyrepo root then OPENOODA_HOME
+  if [[ -f "$HOME/Projects/openOODA/openOODA/NORTHSTAR.oot" ]]; then
+    echo "$HOME/Projects/openOODA/openOODA/NORTHSTAR.oot"
+  elif [[ -f "$OPENOODA_HOME/../openOODA/NORTHSTAR.oot" ]]; then
+    echo "$OPENOODA_HOME/../openOODA/NORTHSTAR.oot"
+  else
+    echo "$HOME/Projects/openOODA/openOODA/NORTHSTAR.oot"
+  fi
+}
+
+detect_harnesses() {
+  HARNESS_DETECTED=(); HARNESS_SKIPPED=()
+  if command -v agy >/dev/null 2>&1 || [[ -d "$HOME/.gemini/antigravity-cli" ]]; then HARNESS_DETECTED+=("antigravity-cli"); else HARNESS_SKIPPED+=("antigravity-cli"); fi
+  if command -v opencode >/dev/null 2>&1 || [[ -d "$HOME/.config/opencode" ]]; then HARNESS_DETECTED+=("opencode"); else HARNESS_SKIPPED+=("opencode"); fi
+  if command -v muse >/dev/null 2>&1 || [[ -d "$HOME/.config/muse" ]]; then HARNESS_DETECTED+=("muse"); else HARNESS_SKIPPED+=("muse"); fi
+  if command -v grok >/dev/null 2>&1 || [[ -d "$HOME/.grok" ]]; then HARNESS_DETECTED+=("grok"); else HARNESS_SKIPPED+=("grok"); fi
+  if [[ -d "$HOME/.gemini" ]]; then HARNESS_DETECTED+=("gemini"); else HARNESS_SKIPPED+=("gemini"); fi
+  if command -v mistral-vibe >/dev/null 2>&1 || [[ -d "$HOME/.config/mistral" ]]; then HARNESS_DETECTED+=("mistral-vibe"); else HARNESS_SKIPPED+=("mistral-vibe"); fi
+  if command -v grok-build >/dev/null 2>&1; then HARNESS_DETECTED+=("grok-build"); else HARNESS_SKIPPED+=("grok-build"); fi
+  if command -v devin >/dev/null 2>&1; then HARNESS_DETECTED+=("devin"); else HARNESS_SKIPPED+=("devin"); fi
+  if command -v charm >/dev/null 2>&1 || [[ -d "$HOME/.config/charm" ]]; then HARNESS_DETECTED+=("charm"); else HARNESS_SKIPPED+=("charm"); fi
+  if [[ ${#HARNESS_DETECTED[@]} -gt 0 ]]; then info "harnesses detected: ${HARNESS_DETECTED[*]}"; fi
+  if [[ ${#HARNESS_SKIPPED[@]} -gt 0 ]]; then info "harnesses skipped (not installed): ${HARNESS_SKIPPED[*]}"; fi
+}
+
+_wire_json_backup() {
+  local f="$1"
+  if [[ -f "$f" && ! -f "$f.bak.openooda" ]]; then cp -p "$f" "$f.bak.openooda" 2>/dev/null || true; fi
+}
+
+wire_agy() {
+  if ! command -v agy >/dev/null 2>&1; then skip "agy not installed — skipping antigravity-cli wire"; return 0; fi
+  local codex; codex="$(_ooda_codex_path)"
+  if [[ "$DRY_RUN" == "1" ]]; then ok "[dry-run] would wire agy: openooda + blackbox (OODA_COMPILER=$BIN_DIR/oodac)"; HARNESS_WIRED+=("antigravity-cli"); return 0; fi
+  local envs=(--env "OODA_CODEX=$codex" --env "OODACODEX=$codex" --env "OODA_FS_READDIR=$HOME/Projects/openOODA" --env "OODA_FS_WRITEDIR=$HOME" --env "OODA_COMPILER=$BIN_DIR/oodac" --env "OODAC_BIN=$BIN_DIR/oodac")
+  agy mcp add "${envs[@]}" openooda "$BIN_DIR/ooda-mcp" -- --stdio >/dev/null 2>&1 || warn "agy mcp add openooda failed"
+  agy mcp add "${envs[@]}" blackbox /usr/bin/stdbuf -- -o0 -e0 "$BIN_DIR/blackbox" mcp --stdio >/dev/null 2>&1 || {
+    # fallback without stdbuf wrapper
+    agy mcp add "${envs[@]}" blackbox "$BIN_DIR/blackbox" -- mcp --stdio >/dev/null 2>&1 || warn "agy mcp add blackbox failed"
+  }
+  ok "wired agy: openooda + blackbox"; HARNESS_WIRED+=("antigravity-cli")
+}
+
+wire_opencode() {
+  local cfg="$HOME/.config/opencode/opencode.jsonc"
+  if [[ ! -d "$HOME/.config/opencode" ]] && ! command -v opencode >/dev/null 2>&1; then skip "opencode not installed — skipping"; return 0; fi
+  if [[ "$DRY_RUN" == "1" ]]; then ok "[dry-run] would wire opencode: $cfg (openooda + blackbox)"; HARNESS_WIRED+=("opencode"); return 0; fi
+  mkdir -p "$(dirname "$cfg")"
+  _wire_json_backup "$cfg"
+  local codex; codex="$(_ooda_codex_path)"
+  python3 - "$cfg" "$BIN_DIR" "$codex" <<'PY' 2>/dev/null
+import json, os, sys, re
+cfg=sys.argv[1]; bindir=sys.argv[2]; codex=sys.argv[3]
+home=os.path.expanduser("~")
+text=""
+if os.path.exists(cfg):
+    try:
+        with open(cfg) as f: text=f.read()
+    except: text=""
+else:
+    text='{"$schema":"https://opencode.ai/config.json"}'
+stripped=re.sub(r'//.*','',text)
+stripped=re.sub(r'/\*.*?\*/','',stripped,flags=re.S)
+stripped=re.sub(r',\s*([}\]])','\1',stripped)
+try:
+    data=json.loads(stripped) if stripped.strip() else {}
+except:
+    data={"$schema":"https://opencode.ai/config.json"}
+if not isinstance(data, dict): data={}
+if "$schema" not in data: data["$schema"]="https://opencode.ai/config.json"
+mcp=data.get("mcp") or {}
+if not isinstance(mcp, dict): mcp={}
+mcp["openooda"]={"type":"local","command":[bindir+"/ooda-mcp","--stdio"],"enabled":True,"environment":{"OODA_CODEX":codex,"OODACODEX":codex,"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_FS_WRITEDIR":home,"OODA_COMPILER":bindir+"/oodac","OODAC_BIN":bindir+"/oodac"}}
+mcp["blackbox"]={"type":"local","command":["/usr/bin/stdbuf","-o0","-e0",bindir+"/blackbox","mcp","--stdio"],"enabled":True,"environment":{"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_COMPILER":bindir+"/oodac","OODAC_BIN":bindir+"/oodac"}}
+data["mcp"]=mcp
+with open(cfg,"w") as f: json.dump(data,f,indent=2); f.write("\n")
+PY
+  if [[ $? -eq 0 ]] && grep -q '"openooda"' "$cfg" 2>/dev/null; then
+    ok "wired opencode: $cfg"; HARNESS_WIRED+=("opencode"); return 0
+  fi
+  warn "opencode wire: python3 merge failed, writing minimal json"
+  printf '{\n  "$schema": "https://opencode.ai/config.json",\n  "mcp": {\n    "openooda": { "type": "local", "command": ["%s/ooda-mcp", "--stdio"], "enabled": true, "environment": { "OODA_CODEX": "%s", "OODACODEX": "%s", "OODA_FS_READDIR": "%s/Projects/openOODA", "OODA_FS_WRITEDIR": "%s", "OODA_COMPILER": "%s/oodac" } },\n    "blackbox": { "type": "local", "command": ["/usr/bin/stdbuf", "-o0", "-e0", "%s/blackbox", "mcp", "--stdio"], "enabled": true, "environment": { "OODA_FS_READDIR": "%s/Projects/openOODA", "OODA_COMPILER": "%s/oodac", "OODAC_BIN": "%s/oodac" } }\n  }\n}\n' "$BIN_DIR" "$codex" "$codex" "$HOME" "$HOME" "$BIN_DIR" "$BIN_DIR" "$HOME" "$BIN_DIR" "$BIN_DIR" > "$cfg"
+  ok "wired opencode: $cfg"; HARNESS_WIRED+=("opencode")
+}
+
+wire_gemini() {
+  local cfg="$HOME/.gemini/config/mcp_config.json"
+  if [[ ! -d "$HOME/.gemini" ]]; then skip "gemini not installed — skipping"; return 0; fi
+  if [[ "$DRY_RUN" == "1" ]]; then ok "[dry-run] would wire gemini: $cfg (openooda + blackbox)"; HARNESS_WIRED+=("gemini"); return 0; fi
+  mkdir -p "$(dirname "$cfg")"
+  _wire_json_backup "$cfg"
+  local codex; codex="$(_ooda_codex_path)"
+  python3 - "$cfg" "$BIN_DIR" "$codex" <<'PY' 2>/dev/null || { warn "gemini wire: python merge failed"; return 0; }
+import json, os, sys
+cfg=sys.argv[1]; bindir=sys.argv[2]; codex=sys.argv[3]
+home=os.path.expanduser("~")
+data={}
+if os.path.exists(cfg):
+    try:
+        with open(cfg) as f: data=json.load(f)
+    except: data={}
+if not isinstance(data, dict): data={}
+ms=data.get("mcpServers") or {}
+if not isinstance(ms, dict): ms={}
+ms["openooda"]={"command":bindir+"/ooda-mcp","args":["--stdio"],"env":{"OODA_CODEX":codex,"OODACODEX":codex,"OODA_FS_READDIR":home,"OODA_FS_WRITEDIR":home}}
+ms["blackbox"]={"command":"/usr/bin/stdbuf","args":["-o0","-e0",bindir+"/blackbox","mcp","--stdio"],"env":{"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_COMPILER":bindir+"/oodac","OODAC_BIN":bindir+"/oodac"}}
+data["mcpServers"]=ms
+with open(cfg,"w") as f: json.dump(data,f,indent=2); f.write("\n")
+PY
+  ok "wired gemini: $cfg"; HARNESS_WIRED+=("gemini")
+}
+
+wire_grok() {
+  local toml="$HOME/.grok/config.toml" lsp="$HOME/.grok/lsp.json"
+  if [[ ! -d "$HOME/.grok" ]] && ! command -v grok >/dev/null 2>&1; then skip "grok not installed — skipping"; return 0; fi
+  if [[ "$DRY_RUN" == "1" ]]; then ok "[dry-run] would verify grok: $toml + $lsp"; HARNESS_WIRED+=("grok"); return 0; fi
+  local codex; codex="$(_ooda_codex_path)"
+  # ensure mcp_servers via python toml-ish append if missing
+  if [[ -f "$toml" ]]; then
+    _wire_json_backup "$toml"
+    if ! grep -q "mcp_servers.blackbox" "$toml" 2>/dev/null; then
+      cat >> "$toml" <<TOML
+
+[mcp_servers.blackbox]
+command = "/usr/bin/stdbuf"
+args = ["-o0", "-e0", "$BIN_DIR/blackbox", "mcp", "--stdio"]
+enabled = true
+startup_timeout_sec = 60
+
+[mcp_servers.blackbox.env]
+OODA_FS_READDIR = "$HOME/Projects/openOODA"
+OODA_COMPILER = "$BIN_DIR/oodac"
+OODAC_BIN = "$BIN_DIR/oodac"
+TOML
+    fi
+    if ! grep -q "mcp_servers.openooda" "$toml" 2>/dev/null; then
+      cat >> "$toml" <<TOML
+
+[mcp_servers.openooda]
+command = "$BIN_DIR/ooda-mcp-grok"
+args = []
+enabled = true
+startup_timeout_sec = 60
+
+[mcp_servers.openooda.env]
+OODA_CODEX = "$codex"
+OODA_FS_READDIR = "$HOME/Projects/openOODA"
+TOML
+    fi
+  fi
+  if [[ -f "$lsp" ]]; then
+    _wire_json_backup "$lsp"
+    python3 - "$lsp" "$BIN_DIR" <<'PY' 2>/dev/null || true
+import json, os, sys
+cfg=sys.argv[1]; bindir=sys.argv[2]
+home=os.path.expanduser("~")
+try:
+    with open(cfg) as f: data=json.load(f)
+except: data={}
+if "ooda" not in data:
+    data["ooda"]={"command":bindir+"/ooda-lsp-grok","args":[],"extensionToLanguage":{".oo":"ooda",".oot":"ooda"},"env":{"OODA_COMPILER":bindir+"/oodac","OODA_FS_READDIR":home+"/Projects/openOODA"},"workspaceFolder":home+"/Projects/openOODA","startupTimeout":60000,"restartOnCrash":True}
+else:
+    env=data["ooda"].get("env") or {}
+    env["OODA_COMPILER"]=bindir+"/oodac"
+    env["OODA_FS_READDIR"]=home+"/Projects/openOODA"
+    data["ooda"]["env"]=env
+    data["ooda"]["command"]=bindir+"/ooda-lsp-grok"
+with open(cfg,"w") as f: json.dump(data,f,indent=2); f.write("\n")
+PY
+  fi
+  ok "wired grok: $toml + $lsp"; HARNESS_WIRED+=("grok")
+}
+
+wire_muse() {
+  local cfg="$HOME/.config/muse/settings.json"
+  if [[ ! -d "$HOME/.config/muse" ]] && ! command -v muse >/dev/null 2>&1; then skip "muse not installed — skipping"; return 0; fi
+  if [[ "$DRY_RUN" == "1" ]]; then ok "[dry-run] would wire muse: $cfg (openooda + blackbox)"; HARNESS_WIRED+=("muse"); return 0; fi
+  mkdir -p "$(dirname "$cfg")"
+  _wire_json_backup "$cfg"
+  local codex; codex="$(_ooda_codex_path)"
+  python3 - "$cfg" "$BIN_DIR" "$codex" <<'PY' 2>/dev/null || { warn "muse wire: python merge failed"; return 0; }
+import json, os, sys
+cfg=sys.argv[1]; bindir=sys.argv[2]; codex=sys.argv[3]
+home=os.path.expanduser("~")
+data={}
+if os.path.exists(cfg):
+    try:
+        with open(cfg) as f: data=json.load(f)
+    except: data={}
+# muse uses mcpServers or mcp_servers; we set both for compat
+ms=data.get("mcpServers") or data.get("mcp_servers") or {}
+if not isinstance(ms, dict): ms={}
+ms["openooda"]={"command":bindir+"/ooda-mcp","args":["--stdio"],"env":{"OODA_CODEX":codex,"OODACODEX":codex,"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_FS_WRITEDIR":home,"OODA_COMPILER":bindir+"/oodac"}}
+ms["blackbox"]={"command":bindir+"/blackbox","args":["mcp","--stdio"],"env":{"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_COMPILER":bindir+"/oodac"}}
+data["mcpServers"]=ms
+# keep existing unrelated keys
+with open(cfg,"w") as f: json.dump(data,f,indent=2); f.write("\n")
+PY
+  ok "wired muse: $cfg"; HARNESS_WIRED+=("muse")
+}
+
+wire_harnesses() {
+  detect_harnesses
+  # present harnesses — wire
+  for h in "${HARNESS_DETECTED[@]}"; do
+    case "$h" in
+      antigravity-cli) wire_agy ;;
+      opencode)        wire_opencode ;;
+      gemini)          wire_gemini ;;
+      grok)            wire_grok ;;
+      muse)           wire_muse ;;
+      *) info "harness $h detected — no verified adapter yet (skipped)" ;;
+    esac
+  done
+  # stubs for explicitly absent but user-asked names — already in skipped list
+  for h in mistral-vibe grok-build devin charm; do
+    if [[ " ${HARNESS_SKIPPED[*]} " == *" $h "* ]]; then
+      info "harness $h not installed — stub skipped"
+    fi
+  done
+  if [[ ${#HARNESS_WIRED[@]} -gt 0 ]]; then ok "harnesses wired: ${HARNESS_WIRED[*]}"; fi
+}
+
 # --- main --------------------------------------------------------------------
 
 START=$(date +%s)
@@ -243,7 +473,7 @@ printf '  %sWelcome, %s%s%s.%s\n' "$DIM" "$CYAN" "${USER:-friend}" "$RESET" "$RE
 [[ "$DRY_RUN" == "1" ]] && printf '  %s[DRY RUN — no downloads, no shell-rc edits]%s\n' "$YELLOW" "$RESET"
 printf '\n'
 
-TOTAL=11; done=0
+TOTAL=12; done=0
 mkdir -p "$BIN_DIR"
 tick() { done=$((done + 1)); overwrite_bar "$done" "$TOTAL"; printf '\n'; }
 
@@ -274,6 +504,10 @@ tick
 
 # step 5: shims + stale servers (post-install, new binaries are on disk but old PIDs still hold old images)
 if [[ "$DRY_RUN" == "1" ]]; then skip "[dry-run] skipping shim/server refresh"; else refresh_grok_shims; restart_stale_servers; fi
+tick
+
+# step 6: harness auto-detect + wire mcp/lsp/blackbox
+wire_harnesses
 tick
 
 # --- summary + command list --------------------------------------------------
