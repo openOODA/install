@@ -12,4 +12,4 @@
 //   4. Idempotent, DRY_RUN preview, *.bak.openooda backup, y/n gated in install.sh, restart reminder
 //   5. To propose a change, keep every .oo ≤256 lines and fail closed. No python fallback in .oo path.
 
-import "harness_wire.oo";
+// harness_wire.oo is the cap-closed wire — see beats above (no import needed for structural anchor)
