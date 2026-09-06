@@ -507,6 +507,23 @@ tick
 
 # step 6: harness auto-detect + wire mcp/lsp/blackbox
 wire_harnesses
+# tell users to restart any open harnesses — config is on disk, hosts read it at startup
+if [[ "$DRY_RUN" == "1" ]]; then
+  [[ ${#HARNESS_WIRED[@]} -gt 0 ]] && info "on real install: restart any open harnesses (agy, opencode, grok, muse, gemini) to pick up new mcp/lsp/blackbox config"
+else
+  if [[ ${#HARNESS_WIRED[@]} -gt 0 ]]; then
+    # check which harnesses actually have a running process
+    _running=""
+    for _h in agy opencode grok muse gemini; do
+      if pgrep -f "$_h" >/dev/null 2>&1; then _running="$_running $_h"; fi
+    done
+    if [[ -n "$_running" ]]; then
+      warn "restart any open harnesses to load new config:$_running (new mcp/lsp/blackbox is on disk, hosts read it at startup)"
+    else
+      info "if a harness was open during install (agy, opencode, grok, muse, gemini), restart it to pick up new mcp/lsp/blackbox config"
+    fi
+  fi
+fi
 tick
 
 # --- summary + command list --------------------------------------------------
