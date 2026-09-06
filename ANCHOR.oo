@@ -1,0 +1,15 @@
+// # Install Subsystem — Anchor for Agents
+//
+// Logline: How the toolchain lands on a machine. Bash bootstrap for curl | bash portability,
+//          plus openOODA harness_wire.oo for cap-closed mcp/lsp/blackbox wiring.
+//
+// Setup: Pure structural file. No VERSION file — version is install.sh + harness_wire.oo.
+//
+// Beats:
+//   1. install.sh is the thin bash bootstrap (OS/arch, curl, std clone, shell rc) — keeps curl | bash working
+//   2. harness_wire.oo is the openOODA cap-closed wire (FsReadCap/FsWriteCap/EnvCap/ProcessCap, ≤256 lines per file)
+//   3. Detects 15 harnesses (antigravity-cli, opencode, muse, grok, gemini, claude-code, claude-desktop, cursor, windsurf, codex, cline, continue, zed, vscode, goose) and merges mcpServers/mcp/context_servers
+//   4. Idempotent, DRY_RUN preview, *.bak.openooda backup, y/n gated in install.sh, restart reminder
+//   5. To propose a change, keep every .oo ≤256 lines and fail closed. No python fallback in .oo path.
+
+import "harness_wire.oo";

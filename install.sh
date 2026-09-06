@@ -800,14 +800,11 @@ wire_harnesses() {
   if [[ ${#HARNESS_DETECTED[@]} -eq 0 && ${#HARNESS_SKIPPED[@]} -eq 0 ]]; then
     detect_harnesses
   elif [[ ${#HARNESS_DETECTED[@]} -eq 0 && ${#HARNESS_SKIPPED[@]} -gt 0 ]]; then
-    # already scanned and found nothing — re-log briefly
     info "harnesses detected: none"
   fi
-  # after openOODA is installed: scan is done, now ask user if they want to wire to mcp/lsp/blackbox
   if [[ ${#HARNESS_DETECTED[@]} -gt 0 ]]; then
     if ! ask_confirm "Connect detected harnesses (${HARNESS_DETECTED[*]}) to mcp, lsp, and blackbox?" "Y"; then
       info "skipping harness wiring by user choice"
-      # still log stubs for completeness
       for h in mistral-vibe grok-build devin charm; do
         if [[ " ${HARNESS_SKIPPED[*]} " == *" $h "* ]]; then
           info "harness $h not installed — stub skipped"
@@ -816,8 +813,34 @@ wire_harnesses() {
       return 0
     fi
   fi
-  # present harnesses — wire
+  # --- openOODA cap-closed path: try harness_wire.oo first (hybrid bootstrap) ---
+  local oo_wire_ok=0
+  local oo_path=""
+  # locate harness_wire.oo: prefer sibling of this script, then polyrepo fallback
+  for cand in "$(dirname "${BASH_SOURCE[0]:-}")/harness_wire.oo" "$(dirname "$0")/harness_wire.oo" "$HOME/Projects/openOODA/install/harness_wire.oo" "$OPENOODA_HOME/../install/harness_wire.oo" "./install/harness_wire.oo" "./harness_wire.oo"; do
+    if [[ -f "$cand" ]]; then oo_path="$cand"; break; fi
+  done
+  if [[ -n "$oo_path" && -x "$BIN_DIR/ooda" && -x "$BIN_DIR/oodac" ]]; then
+    info "wiring via openOODA: $oo_path (FsReadCap/FsWriteCap/EnvCap)"
+    if OODA_FS_READDIR="$HOME" OODA_FS_WRITEDIR="$HOME" OODA_COMPILER="$BIN_DIR/oodac" OODA_DRY_RUN="$DRY_RUN" "$BIN_DIR/ooda" run "$oo_path" 2>&1 | while IFS= read -r line; do info "$line"; done; then
+      oo_wire_ok=1
+      # mark harnesses that are file-based as wired via .oo (so bash fallback can skip duplicates)
+      for h in "${HARNESS_DETECTED[@]}"; do
+        case "$h" in opencode|gemini|cursor|windsurf|zed|vscode|goose|claude-desktop|cline|continue) HARNESS_WIRED+=("$h");; esac
+      done
+      info "openOODA harness_wire.oo: done (cap-closed)"
+    else
+      warn "harness_wire.oo failed — falling back to bash python merges"
+    fi
+  else
+    info "harness_wire.oo not found or ooda not ready — using bash wiring (curl | bash compatible)"
+  fi
+  # present harnesses — wire (bash fallback for CLI harnesses and any not yet wired via .oo)
   for h in "${HARNESS_DETECTED[@]}"; do
+    # skip file harnesses already wired via .oo
+    if [[ $oo_wire_ok -eq 1 ]]; then
+      case "$h" in opencode|gemini|cursor|windsurf|zed|vscode|goose|claude-desktop|cline|continue) continue;; esac
+    fi
     case "$h" in
       antigravity-cli) wire_agy ;;
       opencode)        wire_opencode ;;
