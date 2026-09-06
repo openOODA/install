@@ -174,7 +174,6 @@ setup_shell_rc() {
   local l1='export PATH="$HOME/.openooda/bin:$PATH"'
   local l2='export OODA_STD_ROOT="$HOME/.openooda/std"'
   local l3='export OODA_COMPILER="$HOME/.openooda/bin/oodac"'
-  local old_l3='export OODA_COMPILER="${OODA_COMPILER:-$HOME/.local/bin/oodac}"'
   for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
     [[ -e "$rc" ]] || : >> "$rc" 2>/dev/null || continue
     if grep -q '\.local/bin/oodac' "$rc" 2>/dev/null; then
