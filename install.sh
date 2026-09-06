@@ -300,10 +300,21 @@ detect_harnesses() {
   if command -v muse >/dev/null 2>&1 || [[ -d "$HOME/.config/muse" ]]; then HARNESS_DETECTED+=("muse"); else HARNESS_SKIPPED+=("muse"); fi
   if command -v grok >/dev/null 2>&1 || [[ -d "$HOME/.grok" ]]; then HARNESS_DETECTED+=("grok"); else HARNESS_SKIPPED+=("grok"); fi
   if [[ -d "$HOME/.gemini" ]]; then HARNESS_DETECTED+=("gemini"); else HARNESS_SKIPPED+=("gemini"); fi
+  # --- high-priority MCP hosts from web sweep ---
+  if command -v claude >/dev/null 2>&1 || [[ -f "$HOME/.claude.json" ]] || [[ -d "$HOME/.config/claude" ]] || [[ -f "$HOME/.config/claude/config.json" ]]; then HARNESS_DETECTED+=("claude-code"); else HARNESS_SKIPPED+=("claude-code"); fi
+  if [[ -f "$HOME/.config/Claude/claude_desktop_config.json" ]] || [[ -f "$HOME/Library/Application Support/Claude/claude_desktop_config.json" ]] || [[ -d "$HOME/.config/Claude" ]]; then HARNESS_DETECTED+=("claude-desktop"); else HARNESS_SKIPPED+=("claude-desktop"); fi
+  if command -v cursor >/dev/null 2>&1 || [[ -d "$HOME/.cursor" ]] || [[ -f "$HOME/.cursor/mcp.json" ]]; then HARNESS_DETECTED+=("cursor"); else HARNESS_SKIPPED+=("cursor"); fi
+  if command -v windsurf >/dev/null 2>&1 || [[ -d "$HOME/.codeium" ]] || [[ -d "$HOME/.windsurf" ]] || [[ -f "$HOME/.codeium/windsurf/mcp_config.json" ]]; then HARNESS_DETECTED+=("windsurf"); else HARNESS_SKIPPED+=("windsurf"); fi
+  if command -v codex >/dev/null 2>&1 || [[ -d "$HOME/.codex" ]]; then HARNESS_DETECTED+=("codex"); else HARNESS_SKIPPED+=("codex"); fi
+  if [[ -f "$HOME/.config/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json" ]] || [[ -f "$HOME/.config/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/cline_mcp_settings.json" ]] || [[ -f "$HOME/.cline/mcp_settings.json" ]]; then HARNESS_DETECTED+=("cline"); else HARNESS_SKIPPED+=("cline"); fi
+  if type -P continue >/dev/null 2>&1 || [[ -f "$HOME/.continue/config.json" ]] || [[ -d "$HOME/.continue" ]]; then HARNESS_DETECTED+=("continue"); else HARNESS_SKIPPED+=("continue"); fi
+  if command -v zed >/dev/null 2>&1 || [[ -f "$HOME/.config/zed/settings.json" ]]; then HARNESS_DETECTED+=("zed"); else HARNESS_SKIPPED+=("zed"); fi
+  if command -v code >/dev/null 2>&1 || [[ -d "$HOME/.config/Code" ]]; then HARNESS_DETECTED+=("vscode"); else HARNESS_SKIPPED+=("vscode"); fi
+  if command -v goose >/dev/null 2>&1 || [[ -f "$HOME/.config/goose/config.yaml" ]]; then HARNESS_DETECTED+=("goose"); else HARNESS_SKIPPED+=("goose"); fi
   if command -v mistral-vibe >/dev/null 2>&1 || [[ -d "$HOME/.config/mistral" ]]; then HARNESS_DETECTED+=("mistral-vibe"); else HARNESS_SKIPPED+=("mistral-vibe"); fi
   if command -v grok-build >/dev/null 2>&1; then HARNESS_DETECTED+=("grok-build"); else HARNESS_SKIPPED+=("grok-build"); fi
   if command -v devin >/dev/null 2>&1; then HARNESS_DETECTED+=("devin"); else HARNESS_SKIPPED+=("devin"); fi
-  if command -v charm >/dev/null 2>&1 || [[ -d "$HOME/.config/charm" ]]; then HARNESS_DETECTED+=("charm"); else HARNESS_SKIPPED+=("charm"); fi
+  if command -v charm >/dev/null 2>&1 || [[ -d "$HOME/.config/charm" ]] || command -v crush >/dev/null 2>&1; then HARNESS_DETECTED+=("charm"); else HARNESS_SKIPPED+=("charm"); fi
   if [[ ${#HARNESS_DETECTED[@]} -gt 0 ]]; then info "harnesses detected: ${HARNESS_DETECTED[*]}"; fi
   if [[ ${#HARNESS_SKIPPED[@]} -gt 0 ]]; then info "harnesses skipped (not installed): ${HARNESS_SKIPPED[*]}"; fi
 }
@@ -472,16 +483,316 @@ if os.path.exists(cfg):
     try:
         with open(cfg) as f: data=json.load(f)
     except: data={}
-# muse uses mcpServers or mcp_servers; we set both for compat
 ms=data.get("mcpServers") or data.get("mcp_servers") or {}
 if not isinstance(ms, dict): ms={}
 ms["openooda"]={"command":bindir+"/ooda-mcp","args":["--stdio"],"env":{"OODA_CODEX":codex,"OODACODEX":codex,"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_FS_WRITEDIR":home,"OODA_COMPILER":bindir+"/oodac"}}
 ms["blackbox"]={"command":bindir+"/blackbox","args":["mcp","--stdio"],"env":{"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_COMPILER":bindir+"/oodac"}}
 data["mcpServers"]=ms
-# keep existing unrelated keys
 with open(cfg,"w") as f: json.dump(data,f,indent=2); f.write("\n")
 PY
   ok "wired muse: $cfg"; HARNESS_WIRED+=("muse")
+}
+
+wire_claude_code() {
+  local cfg="$HOME/.claude.json" cfg2="$HOME/.config/claude/config.json"
+  if ! command -v claude >/dev/null 2>&1 && [[ ! -f "$cfg" ]] && [[ ! -f "$cfg2" ]]; then skip "claude-code not installed — skipping"; return 0; fi
+  local codex; codex="$(_ooda_codex_path)"
+  if [[ "$DRY_RUN" == "1" ]]; then ok "[dry-run] would wire claude-code: $cfg (openooda + blackbox)"; HARNESS_WIRED+=("claude-code"); return 0; fi
+  # try CLI first (hot, no file guess)
+  if command -v claude >/dev/null 2>&1; then
+    claude mcp add --transport stdio openooda -- env OODA_CODEX="$codex" OODACODEX="$codex" OODA_FS_READDIR="$HOME/Projects/openOODA" OODA_FS_WRITEDIR="$HOME" OODA_COMPILER="$BIN_DIR/oodac" -- "$BIN_DIR/ooda-mcp" --stdio >/dev/null 2>&1 || true
+    claude mcp add --transport stdio blackbox -- env OODA_FS_READDIR="$HOME/Projects/openOODA" OODA_COMPILER="$BIN_DIR/oodac" -- /usr/bin/stdbuf -o0 -e0 "$BIN_DIR/blackbox" mcp --stdio >/dev/null 2>&1 || \
+    claude mcp add --transport stdio blackbox -- env OODA_FS_READDIR="$HOME/Projects/openOODA" OODA_COMPILER="$BIN_DIR/oodac" -- "$BIN_DIR/blackbox" mcp --stdio >/dev/null 2>&1 || true
+  fi
+  for cfg in "$HOME/.claude.json" "$HOME/.config/claude/config.json"; do
+    mkdir -p "$(dirname "$cfg")" 2>/dev/null || true
+    [[ -f "$cfg" ]] || continue
+    _wire_json_backup "$cfg"
+    python3 - "$cfg" "$BIN_DIR" "$codex" <<'PY' 2>/dev/null || true
+import json, os, sys
+cfg=sys.argv[1]; bindir=sys.argv[2]; codex=sys.argv[3]
+home=os.path.expanduser("~")
+try:
+    with open(cfg) as f: data=json.load(f)
+except: data={}
+if not isinstance(data, dict): data={}
+# claude uses mcpServers at top-level or under projects
+ms=data.get("mcpServers") or {}
+if not isinstance(ms, dict): ms={}
+ms["openooda"]={"command":bindir+"/ooda-mcp","args":["--stdio"],"env":{"OODA_CODEX":codex,"OODACODEX":codex,"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_FS_WRITEDIR":home,"OODA_COMPILER":bindir+"/oodac","OODAC_BIN":bindir+"/oodac"}}
+ms["blackbox"]={"command":"/usr/bin/stdbuf","args":["-o0","-e0",bindir+"/blackbox","mcp","--stdio"],"env":{"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_COMPILER":bindir+"/oodac","OODAC_BIN":bindir+"/oodac"}}
+data["mcpServers"]=ms
+with open(cfg,"w") as f: json.dump(data,f,indent=2); f.write("\n")
+PY
+  done
+  # also ensure at least one file exists if none did
+  if [[ ! -f "$HOME/.claude.json" ]] && [[ ! -f "$HOME/.config/claude/config.json" ]]; then
+    cfg="$HOME/.claude.json"; mkdir -p "$(dirname "$cfg")"; _wire_json_backup "$cfg"
+    python3 - "$cfg" "$BIN_DIR" "$codex" <<'PY' 2>/dev/null || true
+import json, os, sys
+cfg=sys.argv[1]; bindir=sys.argv[2]; codex=sys.argv[3]
+home=os.path.expanduser("~")
+data={"mcpServers":{"openooda":{"command":bindir+"/ooda-mcp","args":["--stdio"],"env":{"OODA_CODEX":codex,"OODACODEX":codex,"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_FS_WRITEDIR":home,"OODA_COMPILER":bindir+"/oodac"}},"blackbox":{"command":"/usr/bin/stdbuf","args":["-o0","-e0",bindir+"/blackbox","mcp","--stdio"],"env":{"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_COMPILER":bindir+"/oodac"}}}}
+with open(cfg,"w") as f: json.dump(data,f,indent=2); f.write("\n")
+PY
+  fi
+  ok "wired claude-code: $HOME/.claude.json"; HARNESS_WIRED+=("claude-code")
+}
+
+wire_claude_desktop() {
+  local cfgs=("$HOME/.config/Claude/claude_desktop_config.json" "$HOME/Library/Application Support/Claude/claude_desktop_config.json")
+  local found=0; for c in "${cfgs[@]}"; do [[ -f "$c" || -d "$(dirname "$c")" ]] && found=1; done
+  if [[ $found -eq 0 ]]; then skip "claude-desktop not installed — skipping"; return 0; fi
+  if [[ "$DRY_RUN" == "1" ]]; then ok "[dry-run] would wire claude-desktop: ${cfgs[0]} (openooda + blackbox)"; HARNESS_WIRED+=("claude-desktop"); return 0; fi
+  local codex; codex="$(_ooda_codex_path)"
+  for cfg in "${cfgs[@]}"; do
+    [[ -f "$cfg" ]] || [[ -d "$(dirname "$cfg")" ]] || continue
+    mkdir -p "$(dirname "$cfg")"
+    _wire_json_backup "$cfg"
+    python3 - "$cfg" "$BIN_DIR" "$codex" <<'PY' 2>/dev/null || true
+import json, os, sys
+cfg=sys.argv[1]; bindir=sys.argv[2]; codex=sys.argv[3]
+home=os.path.expanduser("~")
+try:
+    with open(cfg) as f: data=json.load(f)
+except: data={}
+if not isinstance(data, dict): data={}
+ms=data.get("mcpServers") or {}
+if not isinstance(ms, dict): ms={}
+ms["openooda"]={"command":bindir+"/ooda-mcp","args":["--stdio"],"env":{"OODA_CODEX":codex,"OODACODEX":codex,"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_FS_WRITEDIR":home,"OODA_COMPILER":bindir+"/oodac"}}
+ms["blackbox"]={"command":"/usr/bin/stdbuf","args":["-o0","-e0",bindir+"/blackbox","mcp","--stdio"],"env":{"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_COMPILER":bindir+"/oodac"}}
+data["mcpServers"]=ms
+with open(cfg,"w") as f: json.dump(data,f,indent=2); f.write("\n")
+PY
+  done
+  ok "wired claude-desktop: ${cfgs[0]}"; HARNESS_WIRED+=("claude-desktop")
+}
+
+wire_cursor() {
+  local cfg="$HOME/.cursor/mcp.json"
+  if ! command -v cursor >/dev/null 2>&1 && [[ ! -d "$HOME/.cursor" ]] && [[ ! -f "$cfg" ]]; then skip "cursor not installed — skipping"; return 0; fi
+  if [[ "$DRY_RUN" == "1" ]]; then ok "[dry-run] would wire cursor: $cfg (openooda + blackbox)"; HARNESS_WIRED+=("cursor"); return 0; fi
+  mkdir -p "$(dirname "$cfg")"; _wire_json_backup "$cfg"
+  local codex; codex="$(_ooda_codex_path)"
+  python3 - "$cfg" "$BIN_DIR" "$codex" <<'PY' 2>/dev/null || { warn "cursor wire: python merge failed"; return 0; }
+import json, os, sys
+cfg=sys.argv[1]; bindir=sys.argv[2]; codex=sys.argv[3]
+home=os.path.expanduser("~")
+try:
+    with open(cfg) as f: data=json.load(f)
+except: data={}
+if not isinstance(data, dict): data={}
+ms=data.get("mcpServers") or {}
+if not isinstance(ms, dict): ms={}
+ms["openooda"]={"command":bindir+"/ooda-mcp","args":["--stdio"],"env":{"OODA_CODEX":codex,"OODACODEX":codex,"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_FS_WRITEDIR":home,"OODA_COMPILER":bindir+"/oodac"}}
+ms["blackbox"]={"command":"/usr/bin/stdbuf","args":["-o0","-e0",bindir+"/blackbox","mcp","--stdio"],"env":{"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_COMPILER":bindir+"/oodac"}}
+data["mcpServers"]=ms
+with open(cfg,"w") as f: json.dump(data,f,indent=2); f.write("\n")
+PY
+  ok "wired cursor: $cfg"; HARNESS_WIRED+=("cursor")
+}
+
+wire_windsurf() {
+  local cfgs=("$HOME/.codeium/windsurf/mcp_config.json" "$HOME/.windsurf/mcp.json" "$HOME/.config/windsurf/mcp.json")
+  local found=0; for c in "${cfgs[@]}"; do [[ -f "$c" || -d "$(dirname "$c")" ]] && found=1; done
+  if ! command -v windsurf >/dev/null 2>&1 && [[ $found -eq 0 ]]; then skip "windsurf not installed — skipping"; return 0; fi
+  if [[ "$DRY_RUN" == "1" ]]; then ok "[dry-run] would wire windsurf: ${cfgs[0]} (openooda + blackbox)"; HARNESS_WIRED+=("windsurf"); return 0; fi
+  local codex; codex="$(_ooda_codex_path)"
+  for cfg in "${cfgs[@]}"; do
+    if [[ -f "$cfg" ]] || [[ -d "$(dirname "$cfg")" ]] || [[ "$cfg" == "${cfgs[0]}" ]]; then
+      mkdir -p "$(dirname "$cfg")"
+      _wire_json_backup "$cfg"
+      python3 - "$cfg" "$BIN_DIR" "$codex" <<'PY' 2>/dev/null || true
+import json, os, sys
+cfg=sys.argv[1]; bindir=sys.argv[2]; codex=sys.argv[3]
+home=os.path.expanduser("~")
+try:
+    with open(cfg) as f: data=json.load(f)
+except: data={}
+if not isinstance(data, dict): data={}
+ms=data.get("mcpServers") or data.get("servers") or {}
+if not isinstance(ms, dict): ms={}
+ms["openooda"]={"command":bindir+"/ooda-mcp","args":["--stdio"],"env":{"OODA_CODEX":codex,"OODACODEX":codex,"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_FS_WRITEDIR":home,"OODA_COMPILER":bindir+"/oodac"}}
+ms["blackbox"]={"command":"/usr/bin/stdbuf","args":["-o0","-e0",bindir+"/blackbox","mcp","--stdio"],"env":{"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_COMPILER":bindir+"/oodac"}}
+data["mcpServers"]=ms
+with open(cfg,"w") as f: json.dump(data,f,indent=2); f.write("\n")
+PY
+      break
+    fi
+  done
+  ok "wired windsurf: ${cfgs[0]}"; HARNESS_WIRED+=("windsurf")
+}
+
+wire_codex() {
+  local cfg="$HOME/.codex/config.toml"
+  if ! command -v codex >/dev/null 2>&1 && [[ ! -f "$cfg" ]] && [[ ! -d "$HOME/.codex" ]]; then skip "codex not installed — skipping"; return 0; fi
+  if [[ "$DRY_RUN" == "1" ]]; then ok "[dry-run] would wire codex: $cfg (openooda + blackbox)"; HARNESS_WIRED+=("codex"); return 0; fi
+  if command -v codex >/dev/null 2>&1; then
+    local codex_path; codex_path="$(_ooda_codex_path)"
+    codex mcp add openooda -- env OODA_CODEX="$codex_path" OODACODEX="$codex_path" OODA_FS_READDIR="$HOME/Projects/openOODA" -- "$BIN_DIR/ooda-mcp" --stdio >/dev/null 2>&1 || true
+    codex mcp add blackbox -- env OODA_FS_READDIR="$HOME/Projects/openOODA" OODA_COMPILER="$BIN_DIR/oodac" -- /usr/bin/stdbuf -o0 -e0 "$BIN_DIR/blackbox" mcp --stdio >/dev/null 2>&1 || true
+  fi
+  mkdir -p "$(dirname "$cfg")"; _wire_json_backup "$cfg"
+  local codex_p; codex_p="$(_ooda_codex_path)"
+  if ! grep -q "mcp_servers.openooda" "$cfg" 2>/dev/null; then
+    cat >> "$cfg" <<TOML 2>/dev/null || true
+
+[mcp_servers.openooda]
+command = "$BIN_DIR/ooda-mcp"
+args = ["--stdio"]
+enabled = true
+
+[mcp_servers.openooda.env]
+OODA_CODEX = "$codex_p"
+OODACODEX = "$codex_p"
+OODA_FS_READDIR = "$HOME/Projects/openOODA"
+OODA_FS_WRITEDIR = "$HOME"
+OODA_COMPILER = "$BIN_DIR/oodac"
+TOML
+  fi
+  if ! grep -q "mcp_servers.blackbox" "$cfg" 2>/dev/null; then
+    cat >> "$cfg" <<TOML 2>/dev/null || true
+
+[mcp_servers.blackbox]
+command = "/usr/bin/stdbuf"
+args = ["-o0", "-e0", "$BIN_DIR/blackbox", "mcp", "--stdio"]
+enabled = true
+
+[mcp_servers.blackbox.env]
+OODA_FS_READDIR = "$HOME/Projects/openOODA"
+OODA_COMPILER = "$BIN_DIR/oodac"
+OODAC_BIN = "$BIN_DIR/oodac"
+TOML
+  fi
+  ok "wired codex: $cfg"; HARNESS_WIRED+=("codex")
+}
+
+wire_cline() {
+  local cfgs=("$HOME/.config/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json" "$HOME/.config/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/cline_mcp_settings.json" "$HOME/.cline/mcp_settings.json")
+  local found=0; for c in "${cfgs[@]}"; do [[ -f "$c" ]] && found=1; done
+  if [[ $found -eq 0 ]]; then skip "cline not installed — skipping"; return 0; fi
+  if [[ "$DRY_RUN" == "1" ]]; then ok "[dry-run] would wire cline: ${cfgs[0]} (openooda + blackbox)"; HARNESS_WIRED+=("cline"); return 0; fi
+  local codex; codex="$(_ooda_codex_path)"
+  for cfg in "${cfgs[@]}"; do
+    [[ -f "$cfg" ]] || continue
+    _wire_json_backup "$cfg"
+    python3 - "$cfg" "$BIN_DIR" "$codex" <<'PY' 2>/dev/null || true
+import json, os, sys
+cfg=sys.argv[1]; bindir=sys.argv[2]; codex=sys.argv[3]
+home=os.path.expanduser("~")
+try:
+    with open(cfg) as f: data=json.load(f)
+except: data={}
+if not isinstance(data, dict): data={}
+ms=data.get("mcpServers") or {}
+if not isinstance(ms, dict): ms={}
+ms["openooda"]={"command":bindir+"/ooda-mcp","args":["--stdio"],"env":{"OODA_CODEX":codex,"OODACODEX":codex,"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_FS_WRITEDIR":home,"OODA_COMPILER":bindir+"/oodac"}}
+ms["blackbox"]={"command":"/usr/bin/stdbuf","args":["-o0","-e0",bindir+"/blackbox","mcp","--stdio"],"env":{"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_COMPILER":bindir+"/oodac"}}
+data["mcpServers"]=ms
+with open(cfg,"w") as f: json.dump(data,f,indent=2); f.write("\n")
+PY
+  done
+  ok "wired cline: ${cfgs[0]}"; HARNESS_WIRED+=("cline")
+}
+
+wire_continue() {
+  local cfg="$HOME/.continue/config.json"
+  if [[ ! -f "$cfg" ]] && ! command -v continue >/dev/null 2>&1 && [[ ! -d "$HOME/.continue" ]]; then skip "continue not installed — skipping"; return 0; fi
+  if [[ "$DRY_RUN" == "1" ]]; then ok "[dry-run] would wire continue: $cfg (openooda + blackbox)"; HARNESS_WIRED+=("continue"); return 0; fi
+  mkdir -p "$(dirname "$cfg")"; _wire_json_backup "$cfg"
+  local codex; codex="$(_ooda_codex_path)"
+  python3 - "$cfg" "$BIN_DIR" "$codex" <<'PY' 2>/dev/null || { warn "continue wire: python merge failed"; return 0; }
+import json, os, sys
+cfg=sys.argv[1]; bindir=sys.argv[2]; codex=sys.argv[3]
+home=os.path.expanduser("~")
+try:
+    with open(cfg) as f: data=json.load(f)
+except: data={}
+if not isinstance(data, dict): data={}
+ms=data.get("mcpServers") or data.get("mcp") or {}
+if not isinstance(ms, dict): ms={}
+ms["openooda"]={"command":bindir+"/ooda-mcp","args":["--stdio"],"env":{"OODA_CODEX":codex,"OODACODEX":codex,"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_FS_WRITEDIR":home,"OODA_COMPILER":bindir+"/oodac"}}
+ms["blackbox"]={"command":"/usr/bin/stdbuf","args":["-o0","-e0",bindir+"/blackbox","mcp","--stdio"],"env":{"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_COMPILER":bindir+"/oodac"}}
+data["mcpServers"]=ms
+with open(cfg,"w") as f: json.dump(data,f,indent=2); f.write("\n")
+PY
+  ok "wired continue: $cfg"; HARNESS_WIRED+=("continue")
+}
+
+wire_zed() {
+  local cfg="$HOME/.config/zed/settings.json"
+  if [[ ! -f "$cfg" ]] && ! command -v zed >/dev/null 2>&1; then skip "zed not installed — skipping"; return 0; fi
+  if [[ "$DRY_RUN" == "1" ]]; then ok "[dry-run] would wire zed: $cfg (openooda + blackbox)"; HARNESS_WIRED+=("zed"); return 0; fi
+  mkdir -p "$(dirname "$cfg")"; _wire_json_backup "$cfg"
+  local codex; codex="$(_ooda_codex_path)"
+  python3 - "$cfg" "$BIN_DIR" "$codex" <<'PY' 2>/dev/null || { warn "zed wire: python merge failed"; return 0; }
+import json, os, sys
+cfg=sys.argv[1]; bindir=sys.argv[2]; codex=sys.argv[3]
+home=os.path.expanduser("~")
+try:
+    with open(cfg) as f: data=json.load(f)
+except: data={}
+if not isinstance(data, dict): data={}
+cs=data.get("context_servers") or data.get("lsp") or {}
+if not isinstance(cs, dict): cs={}
+cs["openooda"]={"command":bindir+"/ooda-mcp","args":["--stdio"],"env":{"OODA_CODEX":codex,"OODACODEX":codex,"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_FS_WRITEDIR":home,"OODA_COMPILER":bindir+"/oodac"}}
+cs["blackbox"]={"command":"/usr/bin/stdbuf","args":["-o0","-e0",bindir+"/blackbox","mcp","--stdio"],"env":{"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_COMPILER":bindir+"/oodac"}}
+data["context_servers"]=cs
+# also expose as lsp for editors that read lsp key
+with open(cfg,"w") as f: json.dump(data,f,indent=2); f.write("\n")
+PY
+  ok "wired zed: $cfg"; HARNESS_WIRED+=("zed")
+}
+
+wire_vscode() {
+  local cfgs=("$HOME/.config/Code/User/mcp.json" "$HOME/.config/Code/User/settings.json" "$HOME/.vscode/mcp.json")
+  local found=0; for c in "${cfgs[@]}"; do [[ -f "$c" || -d "$(dirname "$c")" ]] && found=1; done
+  if ! command -v code >/dev/null 2>&1 && [[ $found -eq 0 ]]; then skip "vscode not installed — skipping"; return 0; fi
+  if [[ "$DRY_RUN" == "1" ]]; then ok "[dry-run] would wire vscode: ${cfgs[0]} (openooda + blackbox)"; HARNESS_WIRED+=("vscode"); return 0; fi
+  local cfg="${cfgs[0]}"; mkdir -p "$(dirname "$cfg")"; _wire_json_backup "$cfg"
+  local codex; codex="$(_ooda_codex_path)"
+  python3 - "$cfg" "$BIN_DIR" "$codex" <<'PY' 2>/dev/null || true
+import json, os, sys
+cfg=sys.argv[1]; bindir=sys.argv[2]; codex=sys.argv[3]
+home=os.path.expanduser("~")
+try:
+    with open(cfg) as f: data=json.load(f)
+except: data={}
+if not isinstance(data, dict): data={}
+# vscode mcp.json uses servers or mcpServers
+ms=data.get("servers") or data.get("mcpServers") or data.get("mcp") or {}
+if not isinstance(ms, dict): ms={}
+ms["openooda"]={"command":bindir+"/ooda-mcp","args":["--stdio"],"env":{"OODA_CODEX":codex,"OODACODEX":codex,"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_FS_WRITEDIR":home,"OODA_COMPILER":bindir+"/oodac"}}
+ms["blackbox"]={"command":"/usr/bin/stdbuf","args":["-o0","-e0",bindir+"/blackbox","mcp","--stdio"],"env":{"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_COMPILER":bindir+"/oodac"}}
+# prefer servers key for vscode
+data["servers"]=ms
+with open(cfg,"w") as f: json.dump(data,f,indent=2); f.write("\n")
+PY
+  ok "wired vscode: $cfg"; HARNESS_WIRED+=("vscode")
+}
+
+wire_goose() {
+  local cfg="$HOME/.config/goose/config.yaml"
+  if ! command -v goose >/dev/null 2>&1 && [[ ! -f "$cfg" ]]; then skip "goose not installed — skipping"; return 0; fi
+  if [[ "$DRY_RUN" == "1" ]]; then ok "[dry-run] would wire goose: $cfg (openooda + blackbox)"; HARNESS_WIRED+=("goose"); return 0; fi
+  mkdir -p "$(dirname "$cfg")"; _wire_json_backup "$cfg"
+  python3 - "$cfg" "$BIN_DIR" <<'PY' 2>/dev/null || { warn "goose wire: python yaml merge failed"; return 0; }
+import os, sys
+cfg=sys.argv[1]; bindir=sys.argv[2]
+home=os.path.expanduser("~")
+text=""
+try:
+    with open(cfg) as f: text=f.read()
+except: text=""
+# minimal yaml append if not present — keep existing content
+if "openooda" not in text:
+    with open(cfg,"a") as f:
+        f.write("\n# openOODA — added by install.sh\n")
+        f.write("extensions:\n")
+        f.write(f"  openooda:\n    command: {bindir}/ooda-mcp\n    args: [\"--stdio\"]\n    env:\n      OODA_CODEX: {home}/Projects/openOODA/openOODA/NORTHSTAR.oot\n      OODA_FS_READDIR: {home}/Projects/openOODA\n      OODA_COMPILER: {bindir}/oodac\n")
+        f.write(f"  blackbox:\n    command: /usr/bin/stdbuf\n    args: [\"-o0\", \"-e0\", \"{bindir}/blackbox\", \"mcp\", \"--stdio\"]\n    env:\n      OODA_FS_READDIR: {home}/Projects/openOODA\n      OODA_COMPILER: {bindir}/oodac\n")
+PY
+  ok "wired goose: $cfg"; HARNESS_WIRED+=("goose")
 }
 
 wire_harnesses() {
@@ -513,6 +824,16 @@ wire_harnesses() {
       gemini)          wire_gemini ;;
       grok)            wire_grok ;;
       muse)           wire_muse ;;
+      claude-code)     wire_claude_code ;;
+      claude-desktop)  wire_claude_desktop ;;
+      cursor)          wire_cursor ;;
+      windsurf)        wire_windsurf ;;
+      codex)           wire_codex ;;
+      cline)           wire_cline ;;
+      continue)        wire_continue ;;
+      zed)             wire_zed ;;
+      vscode)          wire_vscode ;;
+      goose)           wire_goose ;;
       *) info "harness $h detected — no verified adapter yet (skipped)" ;;
     esac
   done
@@ -585,18 +906,17 @@ tick
 wire_harnesses
 # tell users to restart any open harnesses — config is on disk, hosts read it at startup
 if [[ "$DRY_RUN" == "1" ]]; then
-  [[ ${#HARNESS_WIRED[@]} -gt 0 ]] && info "on real install: restart any open harnesses (agy, opencode, grok, muse, gemini) to pick up new mcp/lsp/blackbox config"
+  [[ ${#HARNESS_WIRED[@]} -gt 0 ]] && info "on real install: restart any open harnesses (agy, opencode, grok, muse, gemini, claude, cursor, windsurf, codex, zed, vscode, goose) to pick up new mcp/lsp/blackbox config"
 else
   if [[ ${#HARNESS_WIRED[@]} -gt 0 ]]; then
-    # check which harnesses actually have a running process
     _running=""
-    for _h in agy opencode grok muse gemini; do
-      if pgrep -f "$_h" >/dev/null 2>&1; then _running="$_running $_h"; fi
+    for _h in agy opencode grok muse gemini claude cursor windsurf codex zed code goose; do
+      if pgrep -x "$_h" >/dev/null 2>&1 || pgrep -f "[/ ]$_h([[:space:]]|\$)" >/dev/null 2>&1; then _running="$_running $_h"; fi
     done
     if [[ -n "$_running" ]]; then
       warn "restart any open harnesses to load new config:$_running (new mcp/lsp/blackbox is on disk, hosts read it at startup)"
     else
-      info "if a harness was open during install (agy, opencode, grok, muse, gemini), restart it to pick up new mcp/lsp/blackbox config"
+      info "if a harness was open during install (agy, opencode, grok, muse, gemini, claude, cursor, windsurf, codex, zed, vscode, goose), restart it to pick up new mcp/lsp/blackbox config"
     fi
   fi
 fi

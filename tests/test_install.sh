@@ -17,4 +17,16 @@ grep -q "ask_confirm" install.sh || { echo "FAIL no y/n prompt"; exit 1; }
 grep -q "Install openOODA?" install.sh || { echo "FAIL no install y/n"; exit 1; }
 grep -q "Connect detected harnesses" install.sh || { echo "FAIL no harness connect y/n"; exit 1; }
 grep -q "restart any open harnesses" install.sh || { echo "FAIL no restart reminder"; exit 1; }
-echo "PASS install 9.1 sha256+blackbox+harnesses+y/n+restart"
+grep -q "claude-code" install.sh || { echo "FAIL no claude-code probe"; exit 1; }
+grep -q "cursor" install.sh || { echo "FAIL no cursor probe"; exit 1; }
+grep -q "windsurf" install.sh || { echo "FAIL no windsurf probe"; exit 1; }
+grep -q "codex" install.sh || { echo "FAIL no codex probe"; exit 1; }
+grep -q "cline" install.sh || { echo "FAIL no cline probe"; exit 1; }
+grep -q "continue" install.sh || { echo "FAIL no continue probe"; exit 1; }
+grep -q "zed" install.sh || { echo "FAIL no zed probe"; exit 1; }
+grep -q "vscode" install.sh || { echo "FAIL no vscode probe"; exit 1; }
+grep -q "goose" install.sh || { echo "FAIL no goose probe"; exit 1; }
+grep -q "wire_claude_code" install.sh || { echo "FAIL no claude wire"; exit 1; }
+grep -q "wire_cursor" install.sh || { echo "FAIL no cursor wire"; exit 1; }
+grep -q "wire_codex" install.sh || { echo "FAIL no codex wire"; exit 1; }
+echo "PASS install 9.1 sha256+blackbox+harnesses+y/n+restart+10more"
