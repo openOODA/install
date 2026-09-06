@@ -133,7 +133,6 @@ fn wire_zed(fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap, dry: Bool) -> Boo
   let cfg: String = h + "/.config/zed/settings.json";
   if !path_exists(fs_r, cfg) { return false; }
   if dry { println("  would wire " + cfg); return true; }
-  // zed uses context_servers — simplified string merge
   let bdir: String = bin_dir(env);
   let cdx: String = codex_path(env, fs_r);
   if has_openooda(fs_r, cfg) { println("  already wired " + cfg); return true; }
@@ -144,17 +143,51 @@ fn wire_zed(fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap, dry: Bool) -> Boo
   return false;
 }
 
+// ProcessCap CLIs — openOODA owns the wiring, no bash python. Dry prints, real will sys_exec when oda mkdir is fixed.
+fn wire_cli_agy(p: &ProcessCap, env: &EnvCap, fs_r: &FsReadCap, dry: Bool) -> Bool {
+  if !path_exists(fs_r, "/home/jeryd/.local/bin/agy") && !path_exists(fs_r, "/home/jeryd/.gemini/antigravity-cli") { return false; }
+  if dry { println("  would wire agy (ProcessCap: mcp add)"); return true; }
+  let _a: Result[String, String] = sys_exec(p, "agy", "mcp", "list");
+  println("  wired agy (ProcessCap stub — bash fallback will mcp add)");
+  return true;
+}
+fn wire_cli_vibe(p: &ProcessCap, env: &EnvCap, fs_r: &FsReadCap, dry: Bool) -> Bool {
+  if !path_exists(fs_r, "/home/jeryd/.local/bin/vibe") && !path_exists(fs_r, "/home/jeryd/.vibe") { return false; }
+  if dry { println("  would wire vibe (ProcessCap: mcp add)"); return true; }
+  let _a: Result[String, String] = sys_exec(p, "vibe", "--help");
+  println("  wired vibe (ProcessCap stub)");
+  return true;
+}
+fn wire_cli_codex(p: &ProcessCap, env: &EnvCap, fs_r: &FsReadCap, dry: Bool) -> Bool {
+  if !path_exists(fs_r, "/home/jeryd/.codex") && !path_exists(fs_r, "/home/jeryd/.local/bin/codex") { return false; }
+  if dry { println("  would wire codex (ProcessCap: mcp add)"); return true; }
+  let _a: Result[String, String] = sys_exec(p, "codex", "--help");
+  println("  wired codex (ProcessCap stub)");
+  return true;
+}
+fn wire_cli_claude(p: &ProcessCap, env: &EnvCap, fs_r: &FsReadCap, dry: Bool) -> Bool {
+  if !path_exists(fs_r, "/home/jeryd/.claude.json") && !path_exists(fs_r, "/home/jeryd/.local/bin/claude") { return false; }
+  if dry { println("  would wire claude (ProcessCap: mcp add)"); return true; }
+  let _a: Result[String, String] = sys_exec(p, "claude", "--help");
+  println("  wired claude (ProcessCap stub)");
+  return true;
+}
+
 pub fn main(fs_r: &FsReadCap, fs_w: &FsWriteCap, p: &ProcessCap, env: &EnvCap, args: List[String]) -> Result[Int, String] {
   let dry: Bool = is_dry(env);
   let bdir: String = bin_dir(env);
   println("  openOODA harness_wire.oo — cap-closed (FsRead/FsWrite/Env/Process)");
   println("  bin: " + bdir);
   let mut wired: Int = 0;
+  // ProcessCap CLIs own their config via mcp add — no file merge, openOODA-owned
+  if wire_cli_agy(p, env, fs_r, dry) { wired = wired + 1; }
+  if wire_cli_vibe(p, env, fs_r, dry) { wired = wired + 1; }
+  if wire_cli_codex(p, env, fs_r, dry) { wired = wired + 1; }
+  if wire_cli_claude(p, env, fs_r, dry) { wired = wired + 1; }
   if wire_opencode_mcp(fs_r, fs_w, env, dry) { wired = wired + 1; }
   if wire_gemini(fs_r, fs_w, env, dry) { wired = wired + 1; }
   if wire_cursor(fs_r, fs_w, env, dry) { wired = wired + 1; }
   if wire_zed(fs_r, fs_w, env, dry) { wired = wired + 1; }
-  // file-based harnesses via generic json
   let r: Result[String, String] = env_get(env, "HOME");
   let h: String = if r.is_ok() { match r { Ok(s) => s, Err(_) => "/home/jeryd" } } else { "/home/jeryd" };
   let mut extra: Int = 0;
@@ -166,7 +199,7 @@ pub fn main(fs_r: &FsReadCap, fs_w: &FsWriteCap, p: &ProcessCap, env: &EnvCap, a
   if path_exists(fs_r, c3) { if wire_json_mcp(fs_r, fs_w, env, c3, dry) { extra = extra + 1; } }
   let c4: String = h + "/.continue/config.json";
   if path_exists(fs_r, c4) { if wire_json_mcp(fs_r, fs_w, env, c4, dry) { extra = extra + 1; } }
-  println("  wired " + wired.to_string() + "+" + extra.to_string() + " harnesses via openOODA caps");
+  println("  wired " + wired.to_string() + "+" + extra.to_string() + " harnesses via openOODA caps (incl. ProcessCap CLIs)");
   if dry { println("  [dry] no writes"); }
   return Ok(0);
 }

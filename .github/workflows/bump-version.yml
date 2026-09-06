@@ -33,9 +33,14 @@ jobs:
             exit 0
           fi
           echo "$ver" > VERSION
+          # keep embedded fallback in install.sh in sync so curl|bash offline still shows right version
+          if grep -q '|| echo "0\.' install.sh 2>/dev/null; then
+            sed -i "s/|| echo \"0\.[^\"]*\"/|| echo \"$ver\"/g" install.sh
+            sed -i "s/INSTALLER_VERSION=\"0\.[^\"]*\"/INSTALLER_VERSION=\"$ver\"/g" install.sh
+          fi
           git config user.name "openOODA Auto-Release"
           git config user.email "ops@openooda.org"
-          git add VERSION
+          git add VERSION install.sh 2>/dev/null || git add VERSION
           # avoid triggering auto-release loop if commit is just VERSION bump
           git commit -m "chore: bump VERSION to $ver [skip ci]" || exit 0
           git push origin HEAD:main

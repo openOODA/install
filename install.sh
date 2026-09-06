@@ -1037,9 +1037,9 @@ whatnew
 printf '  %shost: %s/%s%s\n' "$DIM" "$OS" "$ARCH" "$RESET"
 printf '  %sWelcome, %s%s%s.%s\n' "$DIM" "$CYAN" "${USER:-friend}" "$RESET" "$RESET"
 # version line — right after hi, before y/n (works for both file and curl | bash)
-INSTALLER_VERSION="$(cat "$(dirname "${BASH_SOURCE[0]:-$0}")/VERSION" 2>/dev/null || cat "$(dirname "$0")/VERSION" 2>/dev/null || curl -sSL --max-time 3 "https://raw.githubusercontent.com/openOODA/install/main/VERSION" 2>/dev/null || echo "0.1.0")"
+INSTALLER_VERSION="$(cat "$(dirname "${BASH_SOURCE[0]:-$0}")/VERSION" 2>/dev/null || cat "$(dirname "$0")/VERSION" 2>/dev/null || curl -sSL --max-time 3 "https://raw.githubusercontent.com/openOODA/install/main/VERSION" 2>/dev/null || echo "0.1.26")"
 INSTALLER_VERSION="$(printf '%s' "$INSTALLER_VERSION" | tr -d '\r\n ' | head -c 20)"
-[[ -z "$INSTALLER_VERSION" ]] && INSTALLER_VERSION="0.1.0"
+[[ -z "$INSTALLER_VERSION" ]] && INSTALLER_VERSION="0.1.26"
 printf '  %sWelcome to version %s of the openOODA installer.%s\n' "$DIM" "$INSTALLER_VERSION" "$RESET"
 [[ "$DRY_RUN" == "1" ]] && printf '  %s[DRY RUN — no downloads, no shell-rc edits]%s\n' "$YELLOW" "$RESET"
 printf '\n'
@@ -1085,7 +1085,7 @@ TMPD=""
 trap 'rc=$?; rm -rf "${TMPD:-}" 2>/dev/null || true; if [[ $rc -ne 0 ]]; then err "install failed (exit $rc) — see $LOG_FILE"; cat "$LOG_FILE" 2>/dev/null | tail -n 50 >&2 || true; fi' EXIT
 trap 'err "interrupted"; exit 130' INT TERM
 
-TOTAL=12; done=0
+TOTAL=13; done=0
 mkdir -p "$BIN_DIR"
 tick() { done=$((done + 1)); overwrite_bar "$done" "$TOTAL"; printf '\n'; }
 
@@ -1140,12 +1140,13 @@ else
 fi
 tick
 
-# post-flight verify (binaries + harness wiring)
+# post-flight verify (binaries + harness wiring) — now a tick for symmetry
 if [[ "$DRY_RUN" == "1" ]]; then
   skip "[dry-run] skipping post-flight verify"
 else
   post_flight
 fi
+tick
 
 # --- summary + command list --------------------------------------------------
 
