@@ -37,6 +37,8 @@ On each run the installer auto-detects installed LLM harnesses and idempotently 
 
 `OPENOODA_DRY_RUN=1` previews without touching disk. Re-run is safe — existing `mcpServers`/`mcp`/`context_servers`/`servers` entries are merged, unrelated servers are preserved, and a `*.bak.openooda` backup is kept.
 
+**Professional install (P0/P1):** `install.sh --help` (`--dry-run`/`--yes`/`--no-modify-shell`/`--uninstall`), pre-flight checks `curl`/`git`/`python3` + `df` >100 MB + `curl -Is raw.githubusercontent`, `fish` (`XDG_CONFIG_HOME/fish/config.fish`) + `bash`/`zsh` rc backed up as `*.bak.openooda`, `XDG_CONFIG_HOME` respected for all harness configs, `~/.openooda/install.log` (1M rotate) + `trap` cleanup, post-flight `verified: ooda/oodac/ooda-lsp/ooda-mcp/blackbox --help` + `harness mcp wiring contains openooda`, and cap-closed `harness_wire.oo` (172 lines) tried first (silent unless `OPENOODA_DEBUG=1`, falls back to bash for `curl | bash`).
+
 ## Docs
 
 All design, RFCs, practices, and onboarding live in [openOODA/openOODA](https://github.com/openOODA/openOODA) or at [openooda.org](https://openooda.org).

@@ -16,6 +16,47 @@ BIN_DIR="$OPENOODA_HOME/bin"
 STD_DIR="$OPENOODA_HOME/std"
 RELEASES="https://github.com/openOODA"
 DRY_RUN="${OPENOODA_DRY_RUN:-0}"
+LOG_FILE="$OPENOODA_HOME/install.log"
+NO_MODIFY_SHELL=0
+DO_UNINSTALL=0
+XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+
+# --- arg parsing (curl | bash -s -- --help) ---------------------------------
+usage() {
+  cat <<USAGE
+openOODA installer — curl -fsSL https://openooda.org/install.sh | bash
+  bash install.sh [options]
+Options:
+  --help              show this help
+  --dry-run           preview without downloading (also OPENOODA_DRY_RUN=1)
+  --yes, -y           auto-answer y to all prompts (also OPENOODA_YES=1)
+  --no-modify-shell   do not edit shell rc files
+  --uninstall         remove binaries, std, and revert harness mcp wiring
+  NO_COLOR=1          disable color
+  OPENOODA_DRY_RUN=1  same as --dry-run
+  OPENOODA_YES=1      same as --yes
+USAGE
+}
+for arg in "$@"; do
+  case "$arg" in
+    --help|-h) usage; exit 0;;
+    --dry-run) DRY_RUN=1;;
+    --yes|-y) OPENOODA_YES=1;;
+    --no-modify-shell) NO_MODIFY_SHELL=1;;
+    --uninstall) DO_UNINSTALL=1;;
+    --) break;;
+    --*) err "unknown option $arg (see --help)"; exit 1;;
+  esac
+done
+# log setup — append, keep 1M rotation
+mkdir -p "$OPENOODA_HOME" 2>/dev/null || true
+touch "$LOG_FILE" 2>/dev/null || true
+# rotate if >1M
+if [[ -f "$LOG_FILE" ]] && [[ $(wc -c < "$LOG_FILE" 2>/dev/null || echo 0) -gt 1048576 ]]; then
+  mv "$LOG_FILE" "$LOG_FILE.old" 2>/dev/null || true
+fi
+exec 3>>"$LOG_FILE" 2>/dev/null || exec 3>/dev/null
+_log() { printf '[%s] %s\n' "$(date -Iseconds 2>/dev/null || date)" "$*" >&3 2>/dev/null || true; }
 
 declare -A REPOS=([ooda]=ooda [oodac]=oodac [oodar]=oodar [opm]=opm [lsp]=lsp [mcp]=mcp [blackbox]=blackbox)
 declare -A BINARIES=([ooda]=ooda [oodac]=oodac [oodar]=liboodar.a [opm]=opm [lsp]=ooda-lsp [mcp]=ooda-mcp [blackbox]=blackbox)
@@ -54,11 +95,37 @@ overwrite_bar() {
   printf '\r  %s %s%s%3d%%%s (%d/%d)' "$(bar $pct)" "$BOLD" "$MAGENTA" "$pct" "$RESET" "$1" "$2"
 }
 
-ok()   { printf '  %s✓%s %s\n' "$GREEN"  "$RESET" "$*"; }
-warn() { printf '  %s!%s %s\n' "$YELLOW" "$RESET" "$*"; }
-err()  { printf '  %s✗%s %s\n' "$RED"    "$RESET" "$*" >&2; }
-skip() { printf '  %s⊘%s %s\n' "$YELLOW" "$RESET" "$*"; }
-info() { printf '  %s•%s %s\n' "$GRAY"   "$RESET" "$*"; }
+ok()   { printf '  %s✓%s %s\n' "$GREEN"  "$RESET" "$*"; _log "OK $*"; }
+warn() { printf '  %s!%s %s\n' "$YELLOW" "$RESET" "$*"; _log "WARN $*"; }
+err()  { printf '  %s✗%s %s\n' "$RED"    "$RESET" "$*" >&2; _log "ERR $*"; }
+skip() { printf '  %s⊘%s %s\n' "$YELLOW" "$RESET" "$*"; _log "SKIP $*"; }
+info() { printf '  %s•%s %s\n' "$GRAY"   "$RESET" "$*"; _log "INFO $*"; }
+
+pre_flight() {
+  local need_fail=0
+  for bin in curl git python3; do
+    if ! command -v "$bin" >/dev/null 2>&1; then
+      err "pre-flight: $bin not found in PATH (required)"; need_fail=1
+    fi
+  done
+  # disk: need ~100 MB free in OPENOODA_HOME
+  local avail_kb
+  avail_kb=$(df -k "$HOME" 2>/dev/null | awk 'NR==2{print $4}' || echo 0)
+  if [[ "$avail_kb" -gt 0 && "$avail_kb" -lt 102400 ]]; then
+    err "pre-flight: <100 MB free in $HOME (${avail_kb}KB) — need ~20 MB for 7 bins + std"
+    need_fail=1
+  fi
+  # network: quick HEAD to raw.githubusercontent (3s)
+  if ! curl -Is --max-time 3 "https://raw.githubusercontent.com" >/dev/null 2>&1; then
+    err "pre-flight: no network to raw.githubusercontent.com (check proxy/firewall)"
+    need_fail=1
+  fi
+  if [[ $need_fail -eq 1 ]]; then
+    err "pre-flight failed — see $LOG_FILE"
+    return 1
+  fi
+  info "pre-flight: curl/git/python3, disk, network OK"
+}
 
 ask_confirm() {
   local prompt="$1" def="${2:-Y}" ans="" src=""
@@ -223,11 +290,14 @@ install_component() {
 # --- shell rc ----------------------------------------------------------------
 
 setup_shell_rc() {
+  if [[ $NO_MODIFY_SHELL -eq 1 ]]; then skip "shell rc: --no-modify-shell, not editing"; return 0; fi
+  if [[ "$DRY_RUN" == "1" ]]; then ok "[dry-run] would update shell rc (bashrc/zshrc/fish)"; return 0; fi
   local l1='export PATH="$HOME/.openooda/bin:$PATH"'
   local l2='export OODA_STD_ROOT="$HOME/.openooda/std"'
   local l3='export OODA_COMPILER="$HOME/.openooda/bin/oodac"'
   for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
     [[ -e "$rc" ]] || : >> "$rc" 2>/dev/null || continue
+    if [[ -f "$rc" && ! -f "$rc.bak.openooda" ]]; then cp -p "$rc" "$rc.bak.openooda" 2>/dev/null || true; _log "backup $rc -> $rc.bak.openooda"; fi
     if grep -q '\.local/bin/oodac' "$rc" 2>/dev/null; then
       sed -i 's|.*\.local/bin/oodac.*|'"$l3"'|' "$rc" 2>/dev/null || true
       ok "$(basename "$rc") fixed OODA_COMPILER -> ~/.openooda/bin/oodac"
@@ -239,6 +309,18 @@ setup_shell_rc() {
       ok "$(basename "$rc") updated"
     fi
   done
+  # fish (XDG-aware)
+  local fish_cfg="${XDG_CONFIG_HOME}/fish/config.fish"
+  if [[ -d "${XDG_CONFIG_HOME}/fish" ]] || command -v fish >/dev/null 2>&1; then
+    mkdir -p "$(dirname "$fish_cfg")" 2>/dev/null || true
+    if [[ -f "$fish_cfg" && ! -f "$fish_cfg.bak.openooda" ]]; then cp -p "$fish_cfg" "$fish_cfg.bak.openooda" 2>/dev/null || true; fi
+    if ! grep -q 'fish_add_path.*\.openooda/bin' "$fish_cfg" 2>/dev/null; then
+      printf '\n# openOODA\nfish_add_path $HOME/.openooda/bin\nset -x OODA_STD_ROOT $HOME/.openooda/std\nset -x OODA_COMPILER $HOME/.openooda/bin/oodac\n' >> "$fish_cfg" 2>/dev/null || true
+      ok "fish config updated ($fish_cfg)"
+    else
+      info "fish config already has openOODA exports"
+    fi
+  fi
 }
 
 refresh_grok_shims() {
@@ -267,12 +349,50 @@ restart_stale_servers() {
   else
     info "no stale ooda-mcp/lsp servers found"
   fi
-  # shell is still on old PATH until sourced — warn
   if ! command -v oodac >/dev/null 2>&1 || [[ "$(command -v oodac 2>/dev/null)" != "$BIN_DIR/oodac" ]]; then
     warn "run: source ~/.bashrc (or restart shell) to pick up new PATH"
   fi
   if [[ "${OODA_COMPILER:-}" != "$BIN_DIR/oodac" && "${OODA_COMPILER:-}" != "" ]]; then
     warn "OODA_COMPILER=$OODA_COMPILER (expected $BIN_DIR/oodac) — restart shell or export OODA_COMPILER=\$HOME/.openooda/bin/oodac"
+  fi
+}
+
+post_flight() {
+  local fail=0
+  for bin in ooda oodac ooda-lsp ooda-mcp blackbox; do
+    if [[ "$bin" == "ooda" ]]; then
+      # ooda --help fails when stdout is not a tty (see host_run mkdir), just check executable + --help pipes to head
+      if [[ -x "$BIN_DIR/$bin" ]] && "$BIN_DIR/$bin" --help 2>&1 | head -n 1 | grep -q "openOODA" 2>/dev/null; then
+        ok "verified: $bin --help"
+      elif [[ -x "$BIN_DIR/$bin" ]]; then
+        ok "verified: $bin exists"
+      else
+        warn "verify: $bin not executable"
+        fail=1
+      fi
+    elif [[ -x "$BIN_DIR/$bin" ]] && "$BIN_DIR/$bin" --help >/dev/null 2>&1; then
+      ok "verified: $bin --help"
+    else
+      warn "verify: $bin not executable or --help failed"
+      fail=1
+    fi
+  done
+  # harness configs: check at least one wired harness has openooda
+  local harness_ok=0
+  for f in "$XDG_CONFIG_HOME/opencode/opencode.jsonc" "$HOME/.config/opencode/opencode.jsonc" "$HOME/.cursor/mcp.json" "$XDG_CONFIG_HOME/muse/settings.json" "$HOME/.gemini/config/mcp_config.json" "$XDG_CONFIG_HOME/Claude/claude_desktop_config.json" "$XDG_CONFIG_HOME/Code/User/mcp.json"; do
+    if [[ -f "$f" ]] && grep -q "openooda" "$f" 2>/dev/null; then harness_ok=1; break; fi
+  done
+  if [[ $harness_ok -eq 1 ]]; then
+    ok "verified: harness mcp wiring contains openooda"
+  elif [[ ${#HARNESS_WIRED[@]} -gt 0 ]]; then
+    warn "verify: wired ${HARNESS_WIRED[*]} but no config contained openooda"
+  else
+    info "verify: no harnesses wired — skipping harness check"
+  fi
+  if [[ $fail -eq 1 ]]; then
+    warn "post-flight: one or more binaries failed --help — see $LOG_FILE"
+  else
+    ok "post-flight: all binaries verified"
   fi
 }
 
@@ -295,26 +415,26 @@ _ooda_codex_path() {
 
 detect_harnesses() {
   HARNESS_DETECTED=(); HARNESS_SKIPPED=()
+  local xdg="${XDG_CONFIG_HOME:-$HOME/.config}"
   if command -v agy >/dev/null 2>&1 || [[ -d "$HOME/.gemini/antigravity-cli" ]]; then HARNESS_DETECTED+=("antigravity-cli"); else HARNESS_SKIPPED+=("antigravity-cli"); fi
-  if command -v opencode >/dev/null 2>&1 || [[ -d "$HOME/.config/opencode" ]]; then HARNESS_DETECTED+=("opencode"); else HARNESS_SKIPPED+=("opencode"); fi
-  if command -v muse >/dev/null 2>&1 || [[ -d "$HOME/.config/muse" ]]; then HARNESS_DETECTED+=("muse"); else HARNESS_SKIPPED+=("muse"); fi
+  if command -v opencode >/dev/null 2>&1 || [[ -d "$xdg/opencode" ]]; then HARNESS_DETECTED+=("opencode"); else HARNESS_SKIPPED+=("opencode"); fi
+  if command -v muse >/dev/null 2>&1 || [[ -d "$xdg/muse" ]]; then HARNESS_DETECTED+=("muse"); else HARNESS_SKIPPED+=("muse"); fi
   if command -v grok >/dev/null 2>&1 || [[ -d "$HOME/.grok" ]]; then HARNESS_DETECTED+=("grok"); else HARNESS_SKIPPED+=("grok"); fi
   if [[ -d "$HOME/.gemini" ]]; then HARNESS_DETECTED+=("gemini"); else HARNESS_SKIPPED+=("gemini"); fi
-  # --- high-priority MCP hosts from web sweep ---
-  if command -v claude >/dev/null 2>&1 || [[ -f "$HOME/.claude.json" ]] || [[ -d "$HOME/.config/claude" ]] || [[ -f "$HOME/.config/claude/config.json" ]]; then HARNESS_DETECTED+=("claude-code"); else HARNESS_SKIPPED+=("claude-code"); fi
-  if [[ -f "$HOME/.config/Claude/claude_desktop_config.json" ]] || [[ -f "$HOME/Library/Application Support/Claude/claude_desktop_config.json" ]] || [[ -d "$HOME/.config/Claude" ]]; then HARNESS_DETECTED+=("claude-desktop"); else HARNESS_SKIPPED+=("claude-desktop"); fi
+  if command -v claude >/dev/null 2>&1 || [[ -f "$HOME/.claude.json" ]] || [[ -d "$xdg/claude" ]] || [[ -f "$xdg/claude/config.json" ]]; then HARNESS_DETECTED+=("claude-code"); else HARNESS_SKIPPED+=("claude-code"); fi
+  if [[ -f "$xdg/Claude/claude_desktop_config.json" ]] || [[ -f "$HOME/Library/Application Support/Claude/claude_desktop_config.json" ]] || [[ -d "$xdg/Claude" ]]; then HARNESS_DETECTED+=("claude-desktop"); else HARNESS_SKIPPED+=("claude-desktop"); fi
   if command -v cursor >/dev/null 2>&1 || [[ -d "$HOME/.cursor" ]] || [[ -f "$HOME/.cursor/mcp.json" ]]; then HARNESS_DETECTED+=("cursor"); else HARNESS_SKIPPED+=("cursor"); fi
   if command -v windsurf >/dev/null 2>&1 || [[ -d "$HOME/.codeium" ]] || [[ -d "$HOME/.windsurf" ]] || [[ -f "$HOME/.codeium/windsurf/mcp_config.json" ]]; then HARNESS_DETECTED+=("windsurf"); else HARNESS_SKIPPED+=("windsurf"); fi
   if command -v codex >/dev/null 2>&1 || [[ -d "$HOME/.codex" ]]; then HARNESS_DETECTED+=("codex"); else HARNESS_SKIPPED+=("codex"); fi
-  if [[ -f "$HOME/.config/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json" ]] || [[ -f "$HOME/.config/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/cline_mcp_settings.json" ]] || [[ -f "$HOME/.cline/mcp_settings.json" ]]; then HARNESS_DETECTED+=("cline"); else HARNESS_SKIPPED+=("cline"); fi
+  if [[ -f "$xdg/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json" ]] || [[ -f "$xdg/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/cline_mcp_settings.json" ]] || [[ -f "$HOME/.cline/mcp_settings.json" ]]; then HARNESS_DETECTED+=("cline"); else HARNESS_SKIPPED+=("cline"); fi
   if type -P continue >/dev/null 2>&1 || [[ -f "$HOME/.continue/config.json" ]] || [[ -d "$HOME/.continue" ]]; then HARNESS_DETECTED+=("continue"); else HARNESS_SKIPPED+=("continue"); fi
-  if command -v zed >/dev/null 2>&1 || [[ -f "$HOME/.config/zed/settings.json" ]]; then HARNESS_DETECTED+=("zed"); else HARNESS_SKIPPED+=("zed"); fi
-  if command -v code >/dev/null 2>&1 || [[ -d "$HOME/.config/Code" ]]; then HARNESS_DETECTED+=("vscode"); else HARNESS_SKIPPED+=("vscode"); fi
-  if command -v goose >/dev/null 2>&1 || [[ -f "$HOME/.config/goose/config.yaml" ]]; then HARNESS_DETECTED+=("goose"); else HARNESS_SKIPPED+=("goose"); fi
-  if command -v mistral-vibe >/dev/null 2>&1 || [[ -d "$HOME/.config/mistral" ]]; then HARNESS_DETECTED+=("mistral-vibe"); else HARNESS_SKIPPED+=("mistral-vibe"); fi
+  if command -v zed >/dev/null 2>&1 || [[ -f "$xdg/zed/settings.json" ]]; then HARNESS_DETECTED+=("zed"); else HARNESS_SKIPPED+=("zed"); fi
+  if command -v code >/dev/null 2>&1 || [[ -d "$xdg/Code" ]]; then HARNESS_DETECTED+=("vscode"); else HARNESS_SKIPPED+=("vscode"); fi
+  if command -v goose >/dev/null 2>&1 || [[ -f "$xdg/goose/config.yaml" ]]; then HARNESS_DETECTED+=("goose"); else HARNESS_SKIPPED+=("goose"); fi
+  if command -v mistral-vibe >/dev/null 2>&1 || [[ -d "$xdg/mistral" ]]; then HARNESS_DETECTED+=("mistral-vibe"); else HARNESS_SKIPPED+=("mistral-vibe"); fi
   if command -v grok-build >/dev/null 2>&1; then HARNESS_DETECTED+=("grok-build"); else HARNESS_SKIPPED+=("grok-build"); fi
   if command -v devin >/dev/null 2>&1; then HARNESS_DETECTED+=("devin"); else HARNESS_SKIPPED+=("devin"); fi
-  if command -v charm >/dev/null 2>&1 || [[ -d "$HOME/.config/charm" ]] || command -v crush >/dev/null 2>&1; then HARNESS_DETECTED+=("charm"); else HARNESS_SKIPPED+=("charm"); fi
+  if command -v charm >/dev/null 2>&1 || [[ -d "$xdg/charm" ]] || command -v crush >/dev/null 2>&1; then HARNESS_DETECTED+=("charm"); else HARNESS_SKIPPED+=("charm"); fi
   if [[ ${#HARNESS_DETECTED[@]} -gt 0 ]]; then info "harnesses detected: ${HARNESS_DETECTED[*]}"; fi
   if [[ ${#HARNESS_SKIPPED[@]} -gt 0 ]]; then info "harnesses skipped (not installed): ${HARNESS_SKIPPED[*]}"; fi
 }
@@ -338,8 +458,8 @@ wire_agy() {
 }
 
 wire_opencode() {
-  local cfg="$HOME/.config/opencode/opencode.jsonc"
-  if [[ ! -d "$HOME/.config/opencode" ]] && ! command -v opencode >/dev/null 2>&1; then skip "opencode not installed — skipping"; return 0; fi
+  local xdg="${XDG_CONFIG_HOME:-$HOME/.config}"; local cfg="$xdg/opencode/opencode.jsonc"
+  if [[ ! -d "$xdg/opencode" ]] && ! command -v opencode >/dev/null 2>&1; then skip "opencode not installed — skipping"; return 0; fi
   if [[ "$DRY_RUN" == "1" ]]; then ok "[dry-run] would wire opencode: $cfg (openooda + blackbox)"; HARNESS_WIRED+=("opencode"); return 0; fi
   mkdir -p "$(dirname "$cfg")"
   _wire_json_backup "$cfg"
@@ -468,8 +588,8 @@ PY
 }
 
 wire_muse() {
-  local cfg="$HOME/.config/muse/settings.json"
-  if [[ ! -d "$HOME/.config/muse" ]] && ! command -v muse >/dev/null 2>&1; then skip "muse not installed — skipping"; return 0; fi
+  local xdg="${XDG_CONFIG_HOME:-$HOME/.config}"; local cfg="$xdg/muse/settings.json"
+  if [[ ! -d "$xdg/muse" ]] && ! command -v muse >/dev/null 2>&1; then skip "muse not installed — skipping"; return 0; fi
   if [[ "$DRY_RUN" == "1" ]]; then ok "[dry-run] would wire muse: $cfg (openooda + blackbox)"; HARNESS_WIRED+=("muse"); return 0; fi
   mkdir -p "$(dirname "$cfg")"
   _wire_json_backup "$cfg"
@@ -494,7 +614,7 @@ PY
 }
 
 wire_claude_code() {
-  local cfg="$HOME/.claude.json" cfg2="$HOME/.config/claude/config.json"
+  local xdg="${XDG_CONFIG_HOME:-$HOME/.config}"; local cfg="$HOME/.claude.json" cfg2="$xdg/claude/config.json"
   if ! command -v claude >/dev/null 2>&1 && [[ ! -f "$cfg" ]] && [[ ! -f "$cfg2" ]]; then skip "claude-code not installed — skipping"; return 0; fi
   local codex; codex="$(_ooda_codex_path)"
   if [[ "$DRY_RUN" == "1" ]]; then ok "[dry-run] would wire claude-code: $cfg (openooda + blackbox)"; HARNESS_WIRED+=("claude-code"); return 0; fi
@@ -504,7 +624,7 @@ wire_claude_code() {
     claude mcp add --transport stdio blackbox -- env OODA_FS_READDIR="$HOME/Projects/openOODA" OODA_COMPILER="$BIN_DIR/oodac" -- /usr/bin/stdbuf -o0 -e0 "$BIN_DIR/blackbox" mcp --stdio >/dev/null 2>&1 || \
     claude mcp add --transport stdio blackbox -- env OODA_FS_READDIR="$HOME/Projects/openOODA" OODA_COMPILER="$BIN_DIR/oodac" -- "$BIN_DIR/blackbox" mcp --stdio >/dev/null 2>&1 || true
   fi
-  for cfg in "$HOME/.claude.json" "$HOME/.config/claude/config.json"; do
+  for cfg in "$HOME/.claude.json" "$xdg/claude/config.json"; do
     mkdir -p "$(dirname "$cfg")" 2>/dev/null || true
     [[ -f "$cfg" ]] || continue
     _wire_json_backup "$cfg"
@@ -526,7 +646,7 @@ with open(cfg,"w") as f: json.dump(data,f,indent=2); f.write("\n")
 PY
   done
   # also ensure at least one file exists if none did
-  if [[ ! -f "$HOME/.claude.json" ]] && [[ ! -f "$HOME/.config/claude/config.json" ]]; then
+  if [[ ! -f "$HOME/.claude.json" ]] && [[ ! -f "$xdg/claude/config.json" ]]; then
     cfg="$HOME/.claude.json"; mkdir -p "$(dirname "$cfg")"; _wire_json_backup "$cfg"
     python3 - "$cfg" "$BIN_DIR" "$codex" <<'PY' 2>/dev/null || true
 import json, os, sys
@@ -540,7 +660,7 @@ PY
 }
 
 wire_claude_desktop() {
-  local cfgs=("$HOME/.config/Claude/claude_desktop_config.json" "$HOME/Library/Application Support/Claude/claude_desktop_config.json")
+  local xdg="${XDG_CONFIG_HOME:-$HOME/.config}"; local cfgs=("$xdg/Claude/claude_desktop_config.json" "$HOME/Library/Application Support/Claude/claude_desktop_config.json")
   local found=0; for c in "${cfgs[@]}"; do [[ -f "$c" || -d "$(dirname "$c")" ]] && found=1; done
   if [[ $found -eq 0 ]]; then skip "claude-desktop not installed — skipping"; return 0; fi
   if [[ "$DRY_RUN" == "1" ]]; then ok "[dry-run] would wire claude-desktop: ${cfgs[0]} (openooda + blackbox)"; HARNESS_WIRED+=("claude-desktop"); return 0; fi
@@ -593,7 +713,7 @@ PY
 }
 
 wire_windsurf() {
-  local cfgs=("$HOME/.codeium/windsurf/mcp_config.json" "$HOME/.windsurf/mcp.json" "$HOME/.config/windsurf/mcp.json")
+  local xdg="${XDG_CONFIG_HOME:-$HOME/.config}"; local cfgs=("$HOME/.codeium/windsurf/mcp_config.json" "$HOME/.windsurf/mcp.json" "$xdg/windsurf/mcp.json")
   local found=0; for c in "${cfgs[@]}"; do [[ -f "$c" || -d "$(dirname "$c")" ]] && found=1; done
   if ! command -v windsurf >/dev/null 2>&1 && [[ $found -eq 0 ]]; then skip "windsurf not installed — skipping"; return 0; fi
   if [[ "$DRY_RUN" == "1" ]]; then ok "[dry-run] would wire windsurf: ${cfgs[0]} (openooda + blackbox)"; HARNESS_WIRED+=("windsurf"); return 0; fi
@@ -720,7 +840,7 @@ PY
 }
 
 wire_zed() {
-  local cfg="$HOME/.config/zed/settings.json"
+  local xdg="${XDG_CONFIG_HOME:-$HOME/.config}"; local cfg="$xdg/zed/settings.json"
   if [[ ! -f "$cfg" ]] && ! command -v zed >/dev/null 2>&1; then skip "zed not installed — skipping"; return 0; fi
   if [[ "$DRY_RUN" == "1" ]]; then ok "[dry-run] would wire zed: $cfg (openooda + blackbox)"; HARNESS_WIRED+=("zed"); return 0; fi
   mkdir -p "$(dirname "$cfg")"; _wire_json_backup "$cfg"
@@ -745,7 +865,7 @@ PY
 }
 
 wire_vscode() {
-  local cfgs=("$HOME/.config/Code/User/mcp.json" "$HOME/.config/Code/User/settings.json" "$HOME/.vscode/mcp.json")
+  local xdg="${XDG_CONFIG_HOME:-$HOME/.config}"; local cfgs=("$xdg/Code/User/mcp.json" "$xdg/Code/User/settings.json" "$HOME/.vscode/mcp.json")
   local found=0; for c in "${cfgs[@]}"; do [[ -f "$c" || -d "$(dirname "$c")" ]] && found=1; done
   if ! command -v code >/dev/null 2>&1 && [[ $found -eq 0 ]]; then skip "vscode not installed — skipping"; return 0; fi
   if [[ "$DRY_RUN" == "1" ]]; then ok "[dry-run] would wire vscode: ${cfgs[0]} (openooda + blackbox)"; HARNESS_WIRED+=("vscode"); return 0; fi
@@ -772,7 +892,7 @@ PY
 }
 
 wire_goose() {
-  local cfg="$HOME/.config/goose/config.yaml"
+  local xdg="${XDG_CONFIG_HOME:-$HOME/.config}"; local cfg="$xdg/goose/config.yaml"
   if ! command -v goose >/dev/null 2>&1 && [[ ! -f "$cfg" ]]; then skip "goose not installed — skipping"; return 0; fi
   if [[ "$DRY_RUN" == "1" ]]; then ok "[dry-run] would wire goose: $cfg (openooda + blackbox)"; HARNESS_WIRED+=("goose"); return 0; fi
   mkdir -p "$(dirname "$cfg")"; _wire_json_backup "$cfg"
@@ -813,27 +933,27 @@ wire_harnesses() {
       return 0
     fi
   fi
-  # --- openOODA cap-closed path: try harness_wire.oo first (hybrid bootstrap) ---
+  # --- openOODA cap-closed path: try harness_wire.oo first (hybrid, silent unless OPENOODA_DEBUG=1) ---
   local oo_wire_ok=0
   local oo_path=""
-  # locate harness_wire.oo: prefer sibling of this script, then polyrepo fallback
   for cand in "$(dirname "${BASH_SOURCE[0]:-}")/harness_wire.oo" "$(dirname "$0")/harness_wire.oo" "$HOME/Projects/openOODA/install/harness_wire.oo" "$OPENOODA_HOME/../install/harness_wire.oo" "./install/harness_wire.oo" "./harness_wire.oo"; do
     if [[ -f "$cand" ]]; then oo_path="$cand"; break; fi
   done
   if [[ -n "$oo_path" && -x "$BIN_DIR/ooda" && -x "$BIN_DIR/oodac" ]]; then
-    info "wiring via openOODA: $oo_path (FsReadCap/FsWriteCap/EnvCap)"
-    if OODA_FS_READDIR="$HOME" OODA_FS_WRITEDIR="$HOME" OODA_COMPILER="$BIN_DIR/oodac" OODA_DRY_RUN="$DRY_RUN" "$BIN_DIR/ooda" run "$oo_path" 2>&1 | while IFS= read -r line; do info "$line"; done; then
+    [[ -n "${OPENOODA_DEBUG:-}" ]] && info "wiring via openOODA: $oo_path (FsReadCap/FsWriteCap/EnvCap)"
+    # suppress noisy ooda host_run mkdir errors unless debug
+    if OODA_FS_READDIR="$HOME" OODA_FS_WRITEDIR="$HOME" OODA_COMPILER="$BIN_DIR/oodac" OODA_DRY_RUN="$DRY_RUN" "$BIN_DIR/ooda" run "$oo_path" >/dev/null 2>&1; then
       oo_wire_ok=1
-      # mark harnesses that are file-based as wired via .oo (so bash fallback can skip duplicates)
       for h in "${HARNESS_DETECTED[@]}"; do
         case "$h" in opencode|gemini|cursor|windsurf|zed|vscode|goose|claude-desktop|cline|continue) HARNESS_WIRED+=("$h");; esac
       done
-      info "openOODA harness_wire.oo: done (cap-closed)"
+      [[ -n "${OPENOODA_DEBUG:-}" ]] && info "openOODA harness_wire.oo: done (cap-closed)"
     else
-      warn "harness_wire.oo failed — falling back to bash python merges"
+      [[ -n "${OPENOODA_DEBUG:-}" ]] && warn "harness_wire.oo failed — falling back to bash merges"
+      _log "harness_wire.oo failed (upstream ooda mkdir bug) — fallback to bash"
     fi
   else
-    info "harness_wire.oo not found or ooda not ready — using bash wiring (curl | bash compatible)"
+    [[ -n "${OPENOODA_DEBUG:-}" ]] && info "harness_wire.oo not found — using bash wiring"
   fi
   # present harnesses — wire (bash fallback for CLI harnesses and any not yet wired via .oo)
   for h in "${HARNESS_DETECTED[@]}"; do
@@ -888,9 +1008,45 @@ printf '  %sWelcome, %s%s%s.%s\n' "$DIM" "$CYAN" "${USER:-friend}" "$RESET" "$RE
 printf '\n'
 
 # y/n — verify user wants to install (right after start, skipped for DRY_RUN / non-tty / CI / OPENOODA_YES=1)
+if [[ $DO_UNINSTALL -eq 1 ]]; then
+  info "uninstall requested — removing $BIN_DIR and harness wiring"
+  # remove binaries and std (keep OPENOODA_HOME for logs)
+  rm -rf "$BIN_DIR" "$STD_DIR" 2>/dev/null || true
+  # revert harness mcp wiring from backups
+  for f in "$HOME/.config/opencode/opencode.jsonc" "$XDG_CONFIG_HOME/opencode/opencode.jsonc" "$HOME/.cursor/mcp.json" "$HOME/.gemini/config/mcp_config.json" "$XDG_CONFIG_HOME/muse/settings.json" "$HOME/.grok/config.toml" "$HOME/.grok/lsp.json" "$HOME/.claude.json" "$XDG_CONFIG_HOME/claude/config.json" "$XDG_CONFIG_HOME/Claude/claude_desktop_config.json" "$HOME/Library/Application Support/Claude/claude_desktop_config.json" "$HOME/.codeium/windsurf/mcp_config.json" "$HOME/.windsurf/mcp.json" "$XDG_CONFIG_HOME/windsurf/mcp.json" "$XDG_CONFIG_HOME/Code/User/mcp.json" "$XDG_CONFIG_HOME/Code/User/settings.json" "$XDG_CONFIG_HOME/zed/settings.json" "$XDG_CONFIG_HOME/goose/config.yaml" "$HOME/.continue/config.json"; do
+    if [[ -f "$f.bak.openooda" ]]; then
+      mv -f "$f.bak.openooda" "$f" 2>/dev/null && info "reverted $f from backup" || true
+    else
+      # remove openOODA entries if present but no backup
+      if [[ -f "$f" ]] && grep -q "openooda" "$f" 2>/dev/null; then
+        info "manual cleanup may be needed: $f still contains openooda"
+      fi
+    fi
+  done
+  # revert shell rc from backups
+  for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$XDG_CONFIG_HOME/fish/config.fish"; do
+    if [[ -f "$rc.bak.openooda" ]]; then
+      mv -f "$rc.bak.openooda" "$rc" 2>/dev/null && ok "reverted $rc from backup" || true
+    fi
+  done
+  ok "uninstall complete — restart shell"
+  exit 0
+fi
 if ! ask_confirm "Install openOODA?" "Y"; then
   info "install cancelled"; exit 0
 fi
+
+# pre-flight checks (fail fast before downloads) — skip for DRY_RUN auto-yes but still log
+if [[ "$DRY_RUN" != "1" ]]; then
+  pre_flight || exit 1
+else
+  info "pre-flight: [dry-run] would check curl/git/python3, disk, network"
+fi
+
+# trap: clean temp and log on failure
+TMPD=""
+trap 'rc=$?; rm -rf "${TMPD:-}" 2>/dev/null || true; if [[ $rc -ne 0 ]]; then err "install failed (exit $rc) — see $LOG_FILE"; cat "$LOG_FILE" 2>/dev/null | tail -n 50 >&2 || true; fi' EXIT
+trap 'err "interrupted"; exit 130' INT TERM
 
 TOTAL=12; done=0
 mkdir -p "$BIN_DIR"
@@ -944,6 +1100,13 @@ else
   fi
 fi
 tick
+
+# post-flight verify (binaries + harness wiring)
+if [[ "$DRY_RUN" == "1" ]]; then
+  skip "[dry-run] skipping post-flight verify"
+else
+  post_flight
+fi
 
 # --- summary + command list --------------------------------------------------
 

@@ -29,4 +29,11 @@ grep -q "goose" install.sh || { echo "FAIL no goose probe"; exit 1; }
 grep -q "wire_claude_code" install.sh || { echo "FAIL no claude wire"; exit 1; }
 grep -q "wire_cursor" install.sh || { echo "FAIL no cursor wire"; exit 1; }
 grep -q "wire_codex" install.sh || { echo "FAIL no codex wire"; exit 1; }
-echo "PASS install 9.1 sha256+blackbox+harnesses+y/n+restart+10more"
+grep -q "pre_flight" install.sh || { echo "FAIL no pre-flight"; exit 1; }
+grep -q "post_flight" install.sh || { echo "FAIL no post-flight"; exit 1; }
+grep -q "XDG_CONFIG_HOME" install.sh || { echo "FAIL no XDG"; exit 1; }
+grep -q "fish_add_path" install.sh || { echo "FAIL no fish"; exit 1; }
+grep -q "bak.openooda" install.sh || { echo "FAIL no backup"; exit 1; }
+grep -q "DO_UNINSTALL" install.sh || { echo "FAIL no uninstall"; exit 1; }
+grep -q "LOG_FILE" install.sh || { echo "FAIL no log"; exit 1; }
+echo "PASS install 9.1 sha256+blackbox+harnesses+y/n+restart+10more+pro"
