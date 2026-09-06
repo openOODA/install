@@ -174,8 +174,13 @@ setup_shell_rc() {
   local l1='export PATH="$HOME/.openooda/bin:$PATH"'
   local l2='export OODA_STD_ROOT="$HOME/.openooda/std"'
   local l3='export OODA_COMPILER="$HOME/.openooda/bin/oodac"'
+  local old_l3='export OODA_COMPILER="${OODA_COMPILER:-$HOME/.local/bin/oodac}"'
   for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
     [[ -e "$rc" ]] || : >> "$rc" 2>/dev/null || continue
+    if grep -Fq 'OODA_COMPILER.*\.local/bin/oodac' "$rc" 2>/dev/null; then
+      sed -i 's|export OODA_COMPILER.*\.local/bin/oodac.*|'"$l3"'|' "$rc" 2>/dev/null || true
+      ok "$(basename "$rc") fixed OODA_COMPILER -> ~/.openooda/bin/oodac"
+    fi
     if grep -Fqx "$l1" "$rc" 2>/dev/null; then
       info "$(basename "$rc") already has openOODA exports"
     else
@@ -183,6 +188,41 @@ setup_shell_rc() {
       ok "$(basename "$rc") updated"
     fi
   done
+}
+
+refresh_grok_shims() {
+  local shim_dir="$BIN_DIR"
+  local py_lsp="$shim_dir/ooda-lsp-grok"
+  local py_mcp="$shim_dir/ooda-mcp-grok"
+  for shim in "$py_lsp" "$py_mcp"; do
+    if [[ -f "$shim" ]]; then
+      touch "$shim" 2>/dev/null || true
+      info "refreshed $(basename "$shim") shim mtime"
+    fi
+  done
+}
+
+restart_stale_servers() {
+  local pids
+  pids=$(ps aux 2>/dev/null | grep -E 'ooda-mcp --stdio|ooda-lsp --stdio|ooda-lsp-grok|ooda-mcp-grok' | grep -v grep | awk '{print $2}') || true
+  if [[ -n "$pids" ]]; then
+    info "stale servers: $pids (old binaries in memory, new on disk) — kill to pick up new build"
+    # shellcheck disable=SC2086
+    kill $pids 2>/dev/null || true
+    sleep 0.5
+    # reap zombies
+    for pid in $pids; do wait "$pid" 2>/dev/null || true; done
+    ok "stale servers reaped (zombies cleared)"
+  else
+    info "no stale ooda-mcp/lsp servers found"
+  fi
+  # shell is still on old PATH until sourced — warn
+  if ! command -v oodac >/dev/null 2>&1 || [[ "$(command -v oodac 2>/dev/null)" != "$BIN_DIR/oodac" ]]; then
+    warn "run: source ~/.bashrc (or restart shell) to pick up new PATH"
+  fi
+  if [[ "${OODA_COMPILER:-}" != "$BIN_DIR/oodac" && "${OODA_COMPILER:-}" != "" ]]; then
+    warn "OODA_COMPILER=$OODA_COMPILER (expected $BIN_DIR/oodac) — restart shell or export OODA_COMPILER=\$HOME/.openooda/bin/oodac"
+  fi
 }
 
 # --- main --------------------------------------------------------------------
@@ -203,7 +243,7 @@ printf '  %sWelcome, %s%s%s.%s\n' "$DIM" "$CYAN" "${USER:-friend}" "$RESET" "$RE
 [[ "$DRY_RUN" == "1" ]] && printf '  %s[DRY RUN — no downloads, no shell-rc edits]%s\n' "$YELLOW" "$RESET"
 printf '\n'
 
-TOTAL=10; done=0
+TOTAL=11; done=0
 mkdir -p "$BIN_DIR"
 tick() { done=$((done + 1)); overwrite_bar "$done" "$TOTAL"; printf '\n'; }
 
@@ -230,6 +270,10 @@ tick
 
 # step 4: shell
 if [[ "$DRY_RUN" == "1" ]]; then skip "[dry-run] skipping shell rc"; else setup_shell_rc; fi
+tick
+
+# step 5: shims + stale servers (post-install, new binaries are on disk but old PIDs still hold old images)
+if [[ "$DRY_RUN" == "1" ]]; then skip "[dry-run] skipping shim/server refresh"; else refresh_grok_shims; restart_stale_servers; fi
 tick
 
 # --- summary + command list --------------------------------------------------
