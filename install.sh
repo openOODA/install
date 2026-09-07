@@ -605,8 +605,8 @@ if os.path.exists(cfg):
     except: data={}
 ms=data.get("mcpServers") or data.get("mcp_servers") or {}
 if not isinstance(ms, dict): ms={}
-ms["openooda"]={"command":bindir+"/ooda-mcp","args":["--stdio"],"env":{"OODA_CODEX":codex,"OODACODEX":codex,"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_FS_WRITEDIR":home,"OODA_COMPILER":bindir+"/oodac"}}
-ms["blackbox"]={"command":bindir+"/blackbox","args":["mcp","--stdio"],"env":{"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_COMPILER":bindir+"/oodac"}}
+ms["openooda"]={"command":"/usr/bin/stdbuf","args":["-o0","-e0",bindir+"/ooda-mcp","--stdio"],"env":{"OODA_CODEX":codex,"OODACODEX":codex,"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_FS_WRITEDIR":home,"OODA_COMPILER":bindir+"/oodac"}}
+ms["blackbox"]={"command":"/usr/bin/stdbuf","args":["-o0","-e0",bindir+"/blackbox","mcp","--stdio"],"env":{"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_COMPILER":bindir+"/oodac"}}
 data["mcpServers"]=ms
 with open(cfg,"w") as f: json.dump(data,f,indent=2); f.write("\n")
 PY

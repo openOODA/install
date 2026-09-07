@@ -12,7 +12,7 @@ grep -q "muse" install.sh || { echo "FAIL no muse probe"; exit 1; }
 grep -q "mistral-vibe" install.sh || { echo "FAIL no mistral-vibe stub"; exit 1; }
 grep -q "OODA_COMPILER" install.sh || { echo "FAIL no OODA_COMPILER env"; exit 1; }
 grep -q "OODA_FS_READDIR" install.sh || { echo "FAIL no OODA_FS_READDIR"; exit 1; }
-grep -q "TOTAL=12" install.sh || { echo "FAIL TOTAL not 12 (harness step missing)"; exit 1; }
+grep -q "TOTAL=13" install.sh || { echo "FAIL TOTAL not 13 (harness step missing)"; exit 1; }
 grep -q "ask_confirm" install.sh || { echo "FAIL no y/n prompt"; exit 1; }
 grep -q "Welcome to version" install.sh || { echo "FAIL no version welcome"; exit 1; }
 grep -q "Would you like to install openOODA" install.sh || { echo "FAIL no install y/n new"; exit 1; }
