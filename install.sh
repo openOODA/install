@@ -410,7 +410,7 @@ restart_stale_servers() {
 
 post_flight() {
   local fail=0
-  for bin in ooda oodac ooda-lsp ooda-mcp blackbox; do
+  for bin in ooda oodac ooda-lsp ooda-mcp blackbox opm; do
     if [[ "$bin" == "ooda" ]]; then
       # ooda --help fails when stdout is not a tty (see host_run mkdir), just check executable + --help pipes to head
       if [[ -x "$BIN_DIR/$bin" ]] && "$BIN_DIR/$bin" --help 2>&1 | head -n 1 | grep -q "openOODA" 2>/dev/null; then
