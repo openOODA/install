@@ -49,4 +49,4 @@ jobs:
             || true
 
   auto-release:
-    uses: openOODA/openOODA/.github/workflows/auto-release.yml@v1.0.14
+    uses: openOODA/openOODA/.github/workflows/auto-release.yml@main
