@@ -1,7 +1,13 @@
 #!/bin/bash
-# install 9.1 — sha256, blackbox, and harness auto-wire
+# install 9.2 — fail-closed sha256 sidecar, blackbox, harness auto-wire
 set -e
 grep -q "sha256" install.sh || { echo "FAIL no sha256"; exit 1; }
+grep -q "missing SHA-256 sidecar" install.sh || { echo "FAIL no missing-sidecar refuse"; exit 1; }
+grep -q "refuse unsigned install" install.sh || { echo "FAIL no refuse unsigned"; exit 1; }
+if grep -q '\[\[ -n "$expected_hash" &&' install.sh; then
+  echo "FAIL empty expected_hash still skip-opens"; exit 1
+fi
+bash install.sh --selftest-sha
 grep -q "blackbox" install.sh || { echo "FAIL no blackbox"; exit 1; }
 grep -q "BINARIES.*blackbox" install.sh || { echo "FAIL no blackbox binary"; exit 1; }
 grep -q "wire_harnesses" install.sh || { echo "FAIL no harness wire"; exit 1; }
@@ -37,4 +43,4 @@ grep -q "fish_add_path" install.sh || { echo "FAIL no fish"; exit 1; }
 grep -q "bak.openooda" install.sh || { echo "FAIL no backup"; exit 1; }
 grep -q "DO_UNINSTALL" install.sh || { echo "FAIL no uninstall"; exit 1; }
 grep -q "LOG_FILE" install.sh || { echo "FAIL no log"; exit 1; }
-echo "PASS install 9.1 sha256+blackbox+harnesses+y/n+restart+10more+pro"
+echo "PASS install 9.2 fail-closed sha256+blackbox+harnesses+y/n+restart+10more+pro"

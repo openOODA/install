@@ -15,6 +15,8 @@ jobs:
         run: |
           sudo apt-get install -y shellcheck
           shellcheck --severity=warning install.sh
+      - name: fail-closed sha256 contract
+        run: bash tests/test_install.sh
 
   smoke:
     runs-on: ubuntu-latest

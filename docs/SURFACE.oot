@@ -26,5 +26,9 @@ Installs to `~/.openooda/`. Adds `~/.openooda/bin` to PATH.
 Flags: `OPENOODA_DRY_RUN=1`, `NO_COLOR=1`,
 `OPENOODA_HOME=…`.
 
-Binaries: ooda, oodac, liboodar.a, opm, ooda-lsp, ooda-mcp.
-std is a git clone under `~/.openooda/std`.
+Each GitHub release asset `{bin}-{os}-{arch}` must ship a
+sibling `{bin}-{os}-{arch}.sha256`. `install.sh` refuses
+a missing sidecar the same way it refuses a hash mismatch.
+
+Binaries: ooda, oodac, liboodar.a, opm, ooda-lsp, ooda-mcp,
+blackbox. std is a git clone under `~/.openooda/std`.

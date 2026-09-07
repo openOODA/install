@@ -19,6 +19,7 @@ DRY_RUN="${OPENOODA_DRY_RUN:-0}"
 LOG_FILE="$OPENOODA_HOME/install.log"
 NO_MODIFY_SHELL=0
 DO_UNINSTALL=0
+SELFTEST_SHA=0
 XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 
 # --- arg parsing (curl | bash -s -- --help) ---------------------------------
@@ -44,6 +45,7 @@ for arg in "$@"; do
     --yes|-y) OPENOODA_YES=1;;
     --no-modify-shell) NO_MODIFY_SHELL=1;;
     --uninstall) DO_UNINSTALL=1;;
+    --selftest-sha) SELFTEST_SHA=1; OPENOODA_HOME="${TMPDIR:-/tmp}/openooda-selftest-sha.$$"; LOG_FILE="$OPENOODA_HOME/install.log";;
     --) break;;
     --*) err "unknown option $arg (see --help)"; exit 1;;
   esac
@@ -108,6 +110,9 @@ pre_flight() {
       err "pre-flight: $bin not found in PATH (required)"; need_fail=1
     fi
   done
+  if ! command -v sha256sum >/dev/null 2>&1 && ! command -v shasum >/dev/null 2>&1; then
+    err "pre-flight: sha256sum/shasum not found in PATH (required)"; need_fail=1
+  fi
   # disk: need ~100 MB free in OPENOODA_HOME
   local avail_kb
   avail_kb=$(df -k "$HOME" 2>/dev/null | awk 'NR==2{print $4}' || echo 0)
@@ -124,7 +129,7 @@ pre_flight() {
     err "pre-flight failed — see $LOG_FILE"
     return 1
   fi
-  info "pre-flight: curl/git/python3, disk, network OK"
+  info "pre-flight: curl/git/python3/sha256, disk, network OK"
 }
 
 ask_confirm() {
@@ -216,6 +221,56 @@ INSTALLED=()
 SKIPPED=()
 BYTES=0
 
+# dest file, sidecar file, component key. 0 = match; 1 = refuse.
+sha256_check() {
+  local dest="$1" sidecar="$2" key="$3"
+  local expected_hash actual_hash
+  if [[ ! -s "$sidecar" ]]; then
+    err "$key: missing SHA-256 sidecar; refuse unsigned install"
+    return 1
+  fi
+  expected_hash=$(awk '{print $1}' "$sidecar" | tr -d '\r\n ')
+  if command -v sha256sum >/dev/null 2>&1; then
+    actual_hash=$(sha256sum "$dest" | awk '{print $1}')
+  elif command -v shasum >/dev/null 2>&1; then
+    actual_hash=$(shasum -a 256 "$dest" | awk '{print $1}')
+  else
+    err "$key: no sha256sum/shasum; refuse unsigned install"
+    return 1
+  fi
+  if [[ -z "$expected_hash" || "$expected_hash" != "$actual_hash" ]]; then
+    err "$key: SHA-256 checksum mismatch (expected ${expected_hash:-empty}, got $actual_hash)"
+    return 1
+  fi
+  info "$key: SHA-256 verified (${expected_hash:0:16}...)"
+  return 0
+}
+
+selftest_sha() {
+  local td dest
+  td=$(mktemp -d)
+  dest="$td/bin"
+  printf 'openooda-asset' > "$dest"
+  if sha256_check "$dest" "$td/missing.sha256" "selftest-missing" 2>/dev/null; then
+    rm -rf "$td"; err "selftest: missing sidecar must fail"; exit 1
+  fi
+  printf '\n' > "$td/empty.sha256"
+  if sha256_check "$dest" "$td/empty.sha256" "selftest-empty" 2>/dev/null; then
+    rm -rf "$td"; err "selftest: empty sidecar must fail"; exit 1
+  fi
+  echo "0000000000000000000000000000000000000000000000000000000000000000  bin" > "$td/bad.sha256"
+  if sha256_check "$dest" "$td/bad.sha256" "selftest-mismatch" 2>/dev/null; then
+    rm -rf "$td"; err "selftest: mismatch must fail"; exit 1
+  fi
+  (cd "$td" && sha256sum bin > good.sha256)
+  if ! sha256_check "$dest" "$td/good.sha256" "selftest-match"; then
+    rm -rf "$td"; err "selftest: matching sidecar must pass"; exit 1
+  fi
+  rm -rf "$td" "$OPENOODA_HOME"
+  ok "selftest-sha: missing/empty/mismatch refuse, match accepts"
+  exit 0
+}
+
 install_component() {
   local key="$1" dest="$BIN_DIR/${BINARIES[$1]}" url code
   url="$(release_url "$key")"
@@ -223,11 +278,17 @@ install_component() {
 
   if [[ "$DRY_RUN" == "1" ]]; then
     code=$(curl -sSL -o /dev/null -w '%{http_code}' -I "$url" 2>/dev/null || echo 000)
-    if [[ "$code" == "200" ]]; then
-      ok "[dry-run] would install $(basename "$dest")"; INSTALLED+=("$key")
-    else
+    if [[ "$code" != "200" ]]; then
       skip "[dry-run] $key not yet shipped for $OS-$ARCH"; SKIPPED+=("$key")
+      return
     fi
+    local sha_code
+    sha_code=$(curl -sSL -o /dev/null -w '%{http_code}' -I "${url}.sha256" 2>/dev/null || echo 000)
+    if [[ "$sha_code" != "200" ]]; then
+      err "[dry-run] $key: missing SHA-256 sidecar; refuse unsigned install"
+      return 1
+    fi
+    ok "[dry-run] would install $(basename "$dest")"; INSTALLED+=("$key")
     return
   fi
 
@@ -252,28 +313,16 @@ install_component() {
     local sha_tmp="$dest.tmp.sha256"
     local sha_code
     sha_code=$(curl -sSL --connect-timeout 5 --max-time 15 -o "$sha_tmp" -w '%{http_code}' "$sha_url" 2>/dev/null || echo 000)
-    if [[ "$sha_code" == "200" ]] && [[ -s "$sha_tmp" ]]; then
-      local expected_hash actual_hash
-      expected_hash=$(awk '{print $1}' "$sha_tmp" | tr -d '\r\n ')
-      if command -v sha256sum >/dev/null 2>&1; then
-        actual_hash=$(sha256sum "$dest.tmp" | awk '{print $1}')
-      elif command -v shasum >/dev/null 2>&1; then
-        actual_hash=$(shasum -a 256 "$dest.tmp" | awk '{print $1}')
-      else
-        rm -f "$dest.tmp" "$sha_tmp"
-        err "$key: no sha256sum/shasum; refuse unsigned install"
-        return 1
-      fi
-      rm -f "$sha_tmp"
-      if [[ -n "$expected_hash" && "$expected_hash" != "$actual_hash" ]]; then
-        rm -f "$dest.tmp"
-        err "$key: SHA-256 checksum mismatch (expected $expected_hash, got $actual_hash)"
-        return 1
-      fi
-      info "$key: SHA-256 verified (${expected_hash:0:16}...)"
-    else
-      rm -f "$sha_tmp"
+    if [[ "$sha_code" != "200" ]] || [[ ! -s "$sha_tmp" ]]; then
+      rm -f "$dest.tmp" "$sha_tmp"
+      err "$key: missing SHA-256 sidecar; refuse unsigned install"
+      return 1
     fi
+    if ! sha256_check "$dest.tmp" "$sha_tmp" "$key"; then
+      rm -f "$dest.tmp" "$sha_tmp"
+      return 1
+    fi
+    rm -f "$sha_tmp"
 
     mv "$dest.tmp" "$dest"; chmod +x "$dest"
     local size; size=$(wc -c < "$dest" 2>/dev/null || echo 0); BYTES=$((BYTES + size))
@@ -1023,6 +1072,10 @@ wire_harnesses() {
 
 # --- main --------------------------------------------------------------------
 
+if [[ "$SELFTEST_SHA" -eq 1 ]]; then
+  selftest_sha
+fi
+
 START=$(date +%s)
 
 OS="$(uname -s)"; case "$OS" in Linux) OS=linux ;; Darwin) OS=darwin ;;
@@ -1037,9 +1090,9 @@ whatnew
 printf '  %shost: %s/%s%s\n' "$DIM" "$OS" "$ARCH" "$RESET"
 printf '  %sWelcome, %s%s%s.%s\n' "$DIM" "$CYAN" "${USER:-friend}" "$RESET" "$RESET"
 # version line — right after hi, before y/n (works for both file and curl | bash)
-INSTALLER_VERSION="$(cat "$(dirname "${BASH_SOURCE[0]:-$0}")/VERSION" 2>/dev/null || cat "$(dirname "$0")/VERSION" 2>/dev/null || curl -sSL --max-time 3 "https://raw.githubusercontent.com/openOODA/install/main/VERSION" 2>/dev/null || echo "0.1.27")"
+INSTALLER_VERSION="$(cat "$(dirname "${BASH_SOURCE[0]:-$0}")/VERSION" 2>/dev/null || cat "$(dirname "$0")/VERSION" 2>/dev/null || curl -sSL --max-time 3 "https://raw.githubusercontent.com/openOODA/install/main/VERSION" 2>/dev/null || echo "0.1.28")"
 INSTALLER_VERSION="$(printf '%s' "$INSTALLER_VERSION" | tr -d '\r\n ' | head -c 20)"
-[[ -z "$INSTALLER_VERSION" ]] && INSTALLER_VERSION="0.1.27"
+[[ -z "$INSTALLER_VERSION" ]] && INSTALLER_VERSION="0.1.28"
 printf '  %sWelcome to version %s of the openOODA installer.%s\n' "$DIM" "$INSTALLER_VERSION" "$RESET"
 [[ "$DRY_RUN" == "1" ]] && printf '  %s[DRY RUN — no downloads, no shell-rc edits]%s\n' "$YELLOW" "$RESET"
 printf '\n'
@@ -1077,7 +1130,7 @@ fi
 if [[ "$DRY_RUN" != "1" ]]; then
   pre_flight || exit 1
 else
-  info "pre-flight: [dry-run] would check curl/git/python3, disk, network"
+  info "pre-flight: [dry-run] would check curl/git/python3/sha256, disk, network"
 fi
 
 # trap: clean temp and log on failure

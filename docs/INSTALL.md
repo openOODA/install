@@ -31,7 +31,11 @@ After it finishes, either restart your shell or run `source ~/.bashrc` (or
 ```
 
 If a component's binary is not yet published, `install.sh` prints
-`— not yet shipped` and continues. It will not abort the install.
+`— not yet shipped` and continues. A published binary without a
+matching `{bin}-{os}-{arch}.sha256` sidecar is refused: missing
+sidecar, empty hash, hasher absent, and hash mismatch all fail
+closed. The temp download is deleted and that component is not
+installed.
 
 ## The 6 components
 
