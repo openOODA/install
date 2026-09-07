@@ -260,7 +260,9 @@ install_component() {
       elif command -v shasum >/dev/null 2>&1; then
         actual_hash=$(shasum -a 256 "$dest.tmp" | awk '{print $1}')
       else
-        actual_hash="$expected_hash"
+        rm -f "$dest.tmp" "$sha_tmp"
+        err "$key: no sha256sum/shasum; refuse unsigned install"
+        return 1
       fi
       rm -f "$sha_tmp"
       if [[ -n "$expected_hash" && "$expected_hash" != "$actual_hash" ]]; then
@@ -403,14 +405,12 @@ HARNESS_WIRED=()
 HARNESS_SKIPPED=()
 
 _ooda_codex_path() {
-  # NORTHSTAR.oot is the codex; try polyrepo root then OPENOODA_HOME
-  if [[ -f "$HOME/Projects/openOODA/openOODA/NORTHSTAR.oot" ]]; then
-    echo "$HOME/Projects/openOODA/openOODA/NORTHSTAR.oot"
-  elif [[ -f "$OPENOODA_HOME/../openOODA/NORTHSTAR.oot" ]]; then
-    echo "$OPENOODA_HOME/../openOODA/NORTHSTAR.oot"
-  else
-    echo "$HOME/Projects/openOODA/openOODA/NORTHSTAR.oot"
-  fi
+  if [[ -n "${OODACODEX:-}" && -f "$OODACODEX" ]]; then echo "$OODACODEX"; return; fi
+  if [[ -n "${OODA_CODEX:-}" && -f "$OODA_CODEX" ]]; then echo "$OODA_CODEX"; return; fi
+  if [[ -f "$OPENOODA_HOME/NORTHSTAR.oot" ]]; then echo "$OPENOODA_HOME/NORTHSTAR.oot"; return; fi
+  if [[ -f "$OPENOODA_HOME/../openOODA/NORTHSTAR.oot" ]]; then echo "$OPENOODA_HOME/../openOODA/NORTHSTAR.oot"; return; fi
+  if [[ -f "$HOME/Projects/openOODA/openOODA/NORTHSTAR.oot" ]]; then echo "$HOME/Projects/openOODA/openOODA/NORTHSTAR.oot"; return; fi
+  echo ""
 }
 
 detect_harnesses() {
@@ -1037,9 +1037,9 @@ whatnew
 printf '  %shost: %s/%s%s\n' "$DIM" "$OS" "$ARCH" "$RESET"
 printf '  %sWelcome, %s%s%s.%s\n' "$DIM" "$CYAN" "${USER:-friend}" "$RESET" "$RESET"
 # version line — right after hi, before y/n (works for both file and curl | bash)
-INSTALLER_VERSION="$(cat "$(dirname "${BASH_SOURCE[0]:-$0}")/VERSION" 2>/dev/null || cat "$(dirname "$0")/VERSION" 2>/dev/null || curl -sSL --max-time 3 "https://raw.githubusercontent.com/openOODA/install/main/VERSION" 2>/dev/null || echo "0.1.27")"
+INSTALLER_VERSION="$(cat "$(dirname "${BASH_SOURCE[0]:-$0}")/VERSION" 2>/dev/null || cat "$(dirname "$0")/VERSION" 2>/dev/null || curl -sSL --max-time 3 "https://raw.githubusercontent.com/openOODA/install/main/VERSION" 2>/dev/null || echo "0.1.26")"
 INSTALLER_VERSION="$(printf '%s' "$INSTALLER_VERSION" | tr -d '\r\n ' | head -c 20)"
-[[ -z "$INSTALLER_VERSION" ]] && INSTALLER_VERSION="0.1.27"
+[[ -z "$INSTALLER_VERSION" ]] && INSTALLER_VERSION="0.1.26"
 printf '  %sWelcome to version %s of the openOODA installer.%s\n' "$DIM" "$INSTALLER_VERSION" "$RESET"
 [[ "$DRY_RUN" == "1" ]] && printf '  %s[DRY RUN — no downloads, no shell-rc edits]%s\n' "$YELLOW" "$RESET"
 printf '\n'

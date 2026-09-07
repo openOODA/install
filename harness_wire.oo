@@ -18,13 +18,16 @@
 import "std/fs/file/file_reader.oo";
 import "std/fs/file/file_writer.oo";
 
-fn bin_dir(env: &EnvCap) -> String {
+fn home_dir(env: &EnvCap) -> String {
   let r: Result[String, String] = env_get(env, "HOME");
-  if r.is_ok() {
-    let h: String = match r { Ok(s) => s, Err(_) => "/home/jeryd" };
-    return h + "/.openooda/bin";
-  }
-  return "/home/jeryd/.openooda/bin";
+  if r.is_ok() { return match r { Ok(s) => s, Err(_) => "" }; }
+  return "";
+}
+
+fn bin_dir(env: &EnvCap) -> String {
+  let h: String = home_dir(env);
+  if h == "" { return ""; }
+  return h + "/.openooda/bin";
 }
 
 fn codex_path(env: &EnvCap, fs_r: &FsReadCap) -> String {
@@ -34,10 +37,12 @@ fn codex_path(env: &EnvCap, fs_r: &FsReadCap) -> String {
     if chars_len(p) > 0 { return p; }
   }
   let r2: Result[String, String] = env_get(env, "HOME");
-  let h: String = if r2.is_ok() { match r2 { Ok(s) => s, Err(_) => "/home/jeryd" } } else { "/home/jeryd" };
-  let cand: String = h + "/Projects/openOODA/openOODA/NORTHSTAR.oot";
+  let h: String = if r2.is_ok() { match r2 { Ok(s) => s, Err(_) => "" } } else { "" };
+  let cand: String = h + "/.openooda/NORTHSTAR.oot";
   if path_exists(fs_r, cand) { return cand; }
-  return cand;
+  let cand2: String = h + "/Projects/openOODA/openOODA/NORTHSTAR.oot";
+  if path_exists(fs_r, cand2) { return cand2; }
+  return "";
 }
 
 fn is_dry(env: &EnvCap) -> Bool {
@@ -76,14 +81,14 @@ fn wire_json_mcp(fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap, path: String
   let bdir: String = bin_dir(env);
   let cdx: String = codex_path(env, fs_r);
   let r2: Result[String, String] = env_get(env, "HOME");
-  let h: String = if r2.is_ok() { match r2 { Ok(s) => s, Err(_) => "/home/jeryd" } } else { "/home/jeryd" };
+  let h: String = if r2.is_ok() { match r2 { Ok(s) => s, Err(_) => "" } } else { "" };
   if has_openooda(fs_r, path) {
     println("  already wired " + path);
     return true;
   }
   backup_once(fs_r, fs_w, path);
   // minimal mcpServers merge — preserves no existing keys for brevity; real impl would parse json
-  let payload: String = "{\n  \"mcpServers\": {\n    \"openooda\": {\"command\":\"" + bdir + "/ooda-mcp\",\"args\":[\"--stdio\"],\"env\":{\"OODA_CODEX\":\"" + cdx + "\",\"OODACODEX\":\"" + cdx + "\",\"OODA_FS_READDIR\":\"" + h + "/Projects/openOODA\",\"OODA_COMPILER\":\"" + bdir + "/oodac\"}},\n    \"blackbox\": {\"command\":\"/usr/bin/stdbuf\",\"args\":[\"-o0\",\"-e0\",\"" + bdir + "/blackbox\",\"mcp\",\"--stdio\"],\"env\":{\"OODA_FS_READDIR\":\"" + h + "/Projects/openOODA\",\"OODA_COMPILER\":\"" + bdir + "/oodac\"}}\n  }\n}\n";
+  let payload: String = "{\n  \"mcpServers\": {\n    \"openooda\": {\"command\":\"" + bdir + "/ooda-mcp\",\"args\":[\"--stdio\"],\"env\":{\"OODA_CODEX\":\"" + cdx + "\",\"OODACODEX\":\"" + cdx + "\",\"OODA_FS_READDIR\":\"" + h + "\"",\"OODA_COMPILER\":\"" + bdir + "/oodac\"}},\n    \"blackbox\": {\"command\":\"/usr/bin/stdbuf\",\"args\":[\"-o0\",\"-e0\",\"" + bdir + "/blackbox\",\"mcp\",\"--stdio\"],\"env\":{\"OODA_FS_READDIR\":\"" + h + "\"",\"OODA_COMPILER\":\"" + bdir + "/oodac\"}}\n  }\n}\n";
   let r: Result[String, String] = read_file(fs_r, path);
   let existing: String = if r.is_ok() { match r { Ok(s) => s, Err(_) => "" } } else { "" };
   let out: String = if chars_len(existing) == 0 { payload } else if str_contains(existing, "mcpServers") { existing } else { payload };
@@ -97,7 +102,7 @@ fn wire_json_mcp(fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap, path: String
 
 fn wire_opencode_mcp(fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap, dry: Bool) -> Bool {
   let r: Result[String, String] = env_get(env, "HOME");
-  let h: String = if r.is_ok() { match r { Ok(s) => s, Err(_) => "/home/jeryd" } } else { "/home/jeryd" };
+  let h: String = if r.is_ok() { match r { Ok(s) => s, Err(_) => "" } } else { "" };
   let cfg: String = h + "/.config/opencode/opencode.jsonc";
   if !path_exists(fs_r, h + "/.config/opencode") { return false; }
   if dry { println("  would wire " + cfg); return true; }
@@ -105,7 +110,7 @@ fn wire_opencode_mcp(fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap, dry: Boo
   let cdx: String = codex_path(env, fs_r);
   if has_openooda(fs_r, cfg) { println("  already wired " + cfg); return true; }
   backup_once(fs_r, fs_w, cfg);
-  let payload: String = "{\n  \"$schema\": \"https://opencode.ai/config.json\",\n  \"mcp\": {\n    \"openooda\": {\"type\":\"local\",\"command\":[\"" + bdir + "/ooda-mcp\",\"--stdio\"],\"enabled\":true,\"environment\":{\"OODA_CODEX\":\"" + cdx + "\",\"OODACODEX\":\"" + cdx + "\",\"OODA_FS_READDIR\":\"" + h + "/Projects/openOODA\",\"OODA_COMPILER\":\"" + bdir + "/oodac\"}},\n    \"blackbox\": {\"type\":\"local\",\"command\":[\"/usr/bin/stdbuf\",\"-o0\",\"-e0\",\"" + bdir + "/blackbox\",\"mcp\",\"--stdio\"],\"enabled\":true,\"environment\":{\"OODA_FS_READDIR\":\"" + h + "/Projects/openOODA\",\"OODA_COMPILER\":\"" + bdir + "/oodac\"}}\n  }\n}\n";
+  let payload: String = "{\n  \"$schema\": \"https://opencode.ai/config.json\",\n  \"mcp\": {\n    \"openooda\": {\"type\":\"local\",\"command\":[\"" + bdir + "/ooda-mcp\",\"--stdio\"],\"enabled\":true,\"environment\":{\"OODA_CODEX\":\"" + cdx + "\",\"OODACODEX\":\"" + cdx + "\",\"OODA_FS_READDIR\":\"" + h + "\"",\"OODA_COMPILER\":\"" + bdir + "/oodac\"}},\n    \"blackbox\": {\"type\":\"local\",\"command\":[\"/usr/bin/stdbuf\",\"-o0\",\"-e0\",\"" + bdir + "/blackbox\",\"mcp\",\"--stdio\"],\"enabled\":true,\"environment\":{\"OODA_FS_READDIR\":\"" + h + "\"",\"OODA_COMPILER\":\"" + bdir + "/oodac\"}}\n  }\n}\n";
   let w: Result[Void, String] = write_file(fs_w, cfg, payload);
   if w.is_ok() { println("  wired " + cfg); return true; }
   return false;
@@ -113,7 +118,7 @@ fn wire_opencode_mcp(fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap, dry: Boo
 
 fn wire_gemini(fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap, dry: Bool) -> Bool {
   let r: Result[String, String] = env_get(env, "HOME");
-  let h: String = if r.is_ok() { match r { Ok(s) => s, Err(_) => "/home/jeryd" } } else { "/home/jeryd" };
+  let h: String = if r.is_ok() { match r { Ok(s) => s, Err(_) => "" } } else { "" };
   let cfg: String = h + "/.gemini/config/mcp_config.json";
   if !path_exists(fs_r, h + "/.gemini") { return false; }
   return wire_json_mcp(fs_r, fs_w, env, cfg, dry);
@@ -121,7 +126,7 @@ fn wire_gemini(fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap, dry: Bool) -> 
 
 fn wire_cursor(fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap, dry: Bool) -> Bool {
   let r: Result[String, String] = env_get(env, "HOME");
-  let h: String = if r.is_ok() { match r { Ok(s) => s, Err(_) => "/home/jeryd" } } else { "/home/jeryd" };
+  let h: String = if r.is_ok() { match r { Ok(s) => s, Err(_) => "" } } else { "" };
   let cfg: String = h + "/.cursor/mcp.json";
   if !path_exists(fs_r, h + "/.cursor") { return false; }
   return wire_json_mcp(fs_r, fs_w, env, cfg, dry);
@@ -129,7 +134,7 @@ fn wire_cursor(fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap, dry: Bool) -> 
 
 fn wire_zed(fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap, dry: Bool) -> Bool {
   let r: Result[String, String] = env_get(env, "HOME");
-  let h: String = if r.is_ok() { match r { Ok(s) => s, Err(_) => "/home/jeryd" } } else { "/home/jeryd" };
+  let h: String = if r.is_ok() { match r { Ok(s) => s, Err(_) => "" } } else { "" };
   let cfg: String = h + "/.config/zed/settings.json";
   if !path_exists(fs_r, cfg) { return false; }
   if dry { println("  would wire " + cfg); return true; }
@@ -145,28 +150,32 @@ fn wire_zed(fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap, dry: Bool) -> Boo
 
 // ProcessCap CLIs — openOODA owns the wiring, no bash python. Dry prints, real will sys_exec when oda mkdir is fixed.
 fn wire_cli_agy(p: &ProcessCap, env: &EnvCap, fs_r: &FsReadCap, dry: Bool) -> Bool {
-  if !path_exists(fs_r, "/home/jeryd/.local/bin/agy") && !path_exists(fs_r, "/home/jeryd/.gemini/antigravity-cli") { return false; }
+  let h: String = home_dir(env);
+  if !path_exists(fs_r, h + "/.local/bin/agy") && !path_exists(fs_r, h + "/.gemini/antigravity-cli") { return false; }
   if dry { println("  would wire agy (ProcessCap: mcp add)"); return true; }
   let _a: Result[String, String] = sys_exec(p, "agy", "mcp", "list");
   println("  wired agy (ProcessCap stub — bash fallback will mcp add)");
   return true;
 }
 fn wire_cli_vibe(p: &ProcessCap, env: &EnvCap, fs_r: &FsReadCap, dry: Bool) -> Bool {
-  if !path_exists(fs_r, "/home/jeryd/.local/bin/vibe") && !path_exists(fs_r, "/home/jeryd/.vibe") { return false; }
+  let h: String = home_dir(env);
+  if !path_exists(fs_r, h + "/.local/bin/vibe") && !path_exists(fs_r, h + "/.vibe") { return false; }
   if dry { println("  would wire vibe (ProcessCap: mcp add)"); return true; }
   let _a: Result[String, String] = sys_exec(p, "vibe", "--help");
   println("  wired vibe (ProcessCap stub)");
   return true;
 }
 fn wire_cli_codex(p: &ProcessCap, env: &EnvCap, fs_r: &FsReadCap, dry: Bool) -> Bool {
-  if !path_exists(fs_r, "/home/jeryd/.codex") && !path_exists(fs_r, "/home/jeryd/.local/bin/codex") { return false; }
+  let h: String = home_dir(env);
+  if !path_exists(fs_r, h + "/.codex") && !path_exists(fs_r, h + "/.local/bin/codex") { return false; }
   if dry { println("  would wire codex (ProcessCap: mcp add)"); return true; }
   let _a: Result[String, String] = sys_exec(p, "codex", "--help");
   println("  wired codex (ProcessCap stub)");
   return true;
 }
 fn wire_cli_claude(p: &ProcessCap, env: &EnvCap, fs_r: &FsReadCap, dry: Bool) -> Bool {
-  if !path_exists(fs_r, "/home/jeryd/.claude.json") && !path_exists(fs_r, "/home/jeryd/.local/bin/claude") { return false; }
+  let h: String = home_dir(env);
+  if !path_exists(fs_r, h + "/.claude.json") && !path_exists(fs_r, h + "/.local/bin/claude") { return false; }
   if dry { println("  would wire claude (ProcessCap: mcp add)"); return true; }
   let _a: Result[String, String] = sys_exec(p, "claude", "--help");
   println("  wired claude (ProcessCap stub)");
@@ -189,7 +198,7 @@ pub fn main(fs_r: &FsReadCap, fs_w: &FsWriteCap, p: &ProcessCap, env: &EnvCap, a
   if wire_cursor(fs_r, fs_w, env, dry) { wired = wired + 1; }
   if wire_zed(fs_r, fs_w, env, dry) { wired = wired + 1; }
   let r: Result[String, String] = env_get(env, "HOME");
-  let h: String = if r.is_ok() { match r { Ok(s) => s, Err(_) => "/home/jeryd" } } else { "/home/jeryd" };
+  let h: String = if r.is_ok() { match r { Ok(s) => s, Err(_) => "" } } else { "" };
   let mut extra: Int = 0;
   let c1: String = h + "/.config/Claude/claude_desktop_config.json";
   if path_exists(fs_r, c1) { if wire_json_mcp(fs_r, fs_w, env, c1, dry) { extra = extra + 1; } }

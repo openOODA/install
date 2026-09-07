@@ -3,7 +3,7 @@
 // Logline: How the toolchain lands on a machine. Bash bootstrap for curl | bash portability,
 //          plus openOODA harness_wire.oo for cap-closed mcp/lsp/blackbox wiring.
 //
-// Setup: Pure structural file. No VERSION file — version is install.sh + harness_wire.oo.
+// Setup: Pure structural file. VERSION is 0.1.26 and must match the git tag.
 //
 // Beats:
 //   1. install.sh is the thin bash bootstrap (OS/arch, curl, std clone, shell rc) — keeps curl | bash working
