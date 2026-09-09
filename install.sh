@@ -492,6 +492,8 @@ post_flight() {
 }
 
 # --- harness auto-detect + wire mcp/lsp/blackbox ------------------------------
+# INVARIANT: every server env must set BOTH OODA_FS_READDIR and OODA_FS_WRITEDIR;
+# the jail fails closed when either is absent (blackbox/lsp die at startup).
 
 HARNESS_DETECTED=()
 HARNESS_WIRED=()
@@ -580,7 +582,7 @@ if "$schema" not in data: data["$schema"]="https://opencode.ai/config.json"
 mcp=data.get("mcp") or {}
 if not isinstance(mcp, dict): mcp={}
 mcp["openooda"]={"type":"local","command":[bindir+"/ooda-mcp","--stdio"],"enabled":True,"environment":{"OODA_CODEX":codex,"OODACODEX":codex,"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_FS_WRITEDIR":home,"OODA_COMPILER":bindir+"/oodac","OODAC_BIN":bindir+"/oodac"}}
-mcp["blackbox"]={"type":"local","command":["/usr/bin/stdbuf","-o0","-e0",bindir+"/blackbox","mcp","--stdio"],"enabled":True,"environment":{"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_COMPILER":bindir+"/oodac","OODAC_BIN":bindir+"/oodac"}}
+mcp["blackbox"]={"type":"local","command":["/usr/bin/stdbuf","-o0","-e0",bindir+"/blackbox","mcp","--stdio"],"enabled":True,"environment":{"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_FS_WRITEDIR":home,"OODA_COMPILER":bindir+"/oodac","OODAC_BIN":bindir+"/oodac"}}
 data["mcp"]=mcp
 with open(cfg,"w") as f: json.dump(data,f,indent=2); f.write("\n")
 PY
@@ -588,7 +590,7 @@ PY
     ok "wired opencode: $cfg"; HARNESS_WIRED+=("opencode"); return 0
   fi
   warn "opencode wire: python3 merge failed, writing minimal json"
-  printf '{\n  "$schema": "https://opencode.ai/config.json",\n  "mcp": {\n    "openooda": { "type": "local", "command": ["%s/ooda-mcp", "--stdio"], "enabled": true, "environment": { "OODA_CODEX": "%s", "OODACODEX": "%s", "OODA_FS_READDIR": "%s/Projects/openOODA", "OODA_FS_WRITEDIR": "%s", "OODA_COMPILER": "%s/oodac" } },\n    "blackbox": { "type": "local", "command": ["/usr/bin/stdbuf", "-o0", "-e0", "%s/blackbox", "mcp", "--stdio"], "enabled": true, "environment": { "OODA_FS_READDIR": "%s/Projects/openOODA", "OODA_COMPILER": "%s/oodac", "OODAC_BIN": "%s/oodac" } }\n  }\n}\n' "$BIN_DIR" "$codex" "$codex" "$HOME" "$HOME" "$BIN_DIR" "$BIN_DIR" "$HOME" "$BIN_DIR" "$BIN_DIR" > "$cfg"
+  printf '{\n  "$schema": "https://opencode.ai/config.json",\n  "mcp": {\n    "openooda": { "type": "local", "command": ["%s/ooda-mcp", "--stdio"], "enabled": true, "environment": { "OODA_CODEX": "%s", "OODACODEX": "%s", "OODA_FS_READDIR": "%s/Projects/openOODA", "OODA_FS_WRITEDIR": "%s", "OODA_COMPILER": "%s/oodac" } },\n    "blackbox": { "type": "local", "command": ["/usr/bin/stdbuf", "-o0", "-e0", "%s/blackbox", "mcp", "--stdio"], "enabled": true, "environment": { "OODA_FS_READDIR": "%s/Projects/openOODA", "OODA_FS_WRITEDIR": "%s", "OODA_COMPILER": "%s/oodac", "OODAC_BIN": "%s/oodac" } }\n  }\n}\n' "$BIN_DIR" "$codex" "$codex" "$HOME" "$HOME" "$BIN_DIR" "$BIN_DIR" "$HOME" "$HOME" "$BIN_DIR" "$BIN_DIR" > "$cfg"
   ok "wired opencode: $cfg"; HARNESS_WIRED+=("opencode")
 }
 
@@ -612,7 +614,7 @@ if not isinstance(data, dict): data={}
 ms=data.get("mcpServers") or {}
 if not isinstance(ms, dict): ms={}
 ms["openooda"]={"command":bindir+"/ooda-mcp","args":["--stdio"],"env":{"OODA_CODEX":codex,"OODACODEX":codex,"OODA_FS_READDIR":home,"OODA_FS_WRITEDIR":home}}
-ms["blackbox"]={"command":"/usr/bin/stdbuf","args":["-o0","-e0",bindir+"/blackbox","mcp","--stdio"],"env":{"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_COMPILER":bindir+"/oodac","OODAC_BIN":bindir+"/oodac"}}
+ms["blackbox"]={"command":"/usr/bin/stdbuf","args":["-o0","-e0",bindir+"/blackbox","mcp","--stdio"],"env":{"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_FS_WRITEDIR":home,"OODA_COMPILER":bindir+"/oodac","OODAC_BIN":bindir+"/oodac"}}
 data["mcpServers"]=ms
 with open(cfg,"w") as f: json.dump(data,f,indent=2); f.write("\n")
 PY
@@ -638,6 +640,7 @@ startup_timeout_sec = 60
 
 [mcp_servers.blackbox.env]
 OODA_FS_READDIR = "$HOME/Projects/openOODA"
+OODA_FS_WRITEDIR = "$HOME"
 OODA_COMPILER = "$BIN_DIR/oodac"
 OODAC_BIN = "$BIN_DIR/oodac"
 TOML
@@ -654,6 +657,7 @@ startup_timeout_sec = 60
 [mcp_servers.openooda.env]
 OODA_CODEX = "$codex"
 OODA_FS_READDIR = "$HOME/Projects/openOODA"
+OODA_FS_WRITEDIR = "$HOME"
 TOML
     fi
   fi
@@ -667,11 +671,12 @@ try:
     with open(cfg) as f: data=json.load(f)
 except: data={}
 if "ooda" not in data:
-    data["ooda"]={"command":bindir+"/ooda-lsp-grok","args":[],"extensionToLanguage":{".oo":"ooda",".oot":"ooda"},"env":{"OODA_COMPILER":bindir+"/oodac","OODA_FS_READDIR":home+"/Projects/openOODA"},"workspaceFolder":home+"/Projects/openOODA","startupTimeout":60000,"restartOnCrash":True}
+    data["ooda"]={"command":bindir+"/ooda-lsp-grok","args":[],"extensionToLanguage":{".oo":"ooda",".oot":"ooda"},"env":{"OODA_COMPILER":bindir+"/oodac","OODA_FS_READDIR":home+"/Projects/openOODA","OODA_FS_WRITEDIR":home},"workspaceFolder":home+"/Projects/openOODA","startupTimeout":60000,"restartOnCrash":True}
 else:
     env=data["ooda"].get("env") or {}
     env["OODA_COMPILER"]=bindir+"/oodac"
     env["OODA_FS_READDIR"]=home+"/Projects/openOODA"
+    env["OODA_FS_WRITEDIR"]=home
     data["ooda"]["env"]=env
     data["ooda"]["command"]=bindir+"/ooda-lsp-grok"
 with open(cfg,"w") as f: json.dump(data,f,indent=2); f.write("\n")
@@ -699,7 +704,7 @@ if os.path.exists(cfg):
 ms=data.get("mcpServers") or data.get("mcp_servers") or {}
 if not isinstance(ms, dict): ms={}
 ms["openooda"]={"command":"/usr/bin/stdbuf","args":["-o0","-e0",bindir+"/ooda-mcp","--stdio"],"env":{"OODA_CODEX":codex,"OODACODEX":codex,"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_FS_WRITEDIR":home,"OODA_COMPILER":bindir+"/oodac"}}
-ms["blackbox"]={"command":"/usr/bin/stdbuf","args":["-o0","-e0",bindir+"/blackbox","mcp","--stdio"],"env":{"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_COMPILER":bindir+"/oodac"}}
+ms["blackbox"]={"command":"/usr/bin/stdbuf","args":["-o0","-e0",bindir+"/blackbox","mcp","--stdio"],"env":{"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_FS_WRITEDIR":home,"OODA_COMPILER":bindir+"/oodac"}}
 data["mcpServers"]=ms
 with open(cfg,"w") as f: json.dump(data,f,indent=2); f.write("\n")
 PY
@@ -714,8 +719,8 @@ wire_claude_code() {
   # try CLI first (hot, no file guess)
   if command -v claude >/dev/null 2>&1; then
     claude mcp add --transport stdio openooda -- env OODA_CODEX="$codex" OODACODEX="$codex" OODA_FS_READDIR="$HOME/Projects/openOODA" OODA_FS_WRITEDIR="$HOME" OODA_COMPILER="$BIN_DIR/oodac" -- "$BIN_DIR/ooda-mcp" --stdio >/dev/null 2>&1 || true
-    claude mcp add --transport stdio blackbox -- env OODA_FS_READDIR="$HOME/Projects/openOODA" OODA_COMPILER="$BIN_DIR/oodac" -- /usr/bin/stdbuf -o0 -e0 "$BIN_DIR/blackbox" mcp --stdio >/dev/null 2>&1 || \
-    claude mcp add --transport stdio blackbox -- env OODA_FS_READDIR="$HOME/Projects/openOODA" OODA_COMPILER="$BIN_DIR/oodac" -- "$BIN_DIR/blackbox" mcp --stdio >/dev/null 2>&1 || true
+    claude mcp add --transport stdio blackbox -- env OODA_FS_READDIR="$HOME/Projects/openOODA" OODA_FS_WRITEDIR="$HOME" OODA_COMPILER="$BIN_DIR/oodac" -- /usr/bin/stdbuf -o0 -e0 "$BIN_DIR/blackbox" mcp --stdio >/dev/null 2>&1 || \
+    claude mcp add --transport stdio blackbox -- env OODA_FS_READDIR="$HOME/Projects/openOODA" OODA_FS_WRITEDIR="$HOME" OODA_COMPILER="$BIN_DIR/oodac" -- "$BIN_DIR/blackbox" mcp --stdio >/dev/null 2>&1 || true
   fi
   for cfg in "$HOME/.claude.json" "$xdg/claude/config.json"; do
     mkdir -p "$(dirname "$cfg")" 2>/dev/null || true
@@ -733,7 +738,7 @@ if not isinstance(data, dict): data={}
 ms=data.get("mcpServers") or {}
 if not isinstance(ms, dict): ms={}
 ms["openooda"]={"command":bindir+"/ooda-mcp","args":["--stdio"],"env":{"OODA_CODEX":codex,"OODACODEX":codex,"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_FS_WRITEDIR":home,"OODA_COMPILER":bindir+"/oodac","OODAC_BIN":bindir+"/oodac"}}
-ms["blackbox"]={"command":"/usr/bin/stdbuf","args":["-o0","-e0",bindir+"/blackbox","mcp","--stdio"],"env":{"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_COMPILER":bindir+"/oodac","OODAC_BIN":bindir+"/oodac"}}
+ms["blackbox"]={"command":"/usr/bin/stdbuf","args":["-o0","-e0",bindir+"/blackbox","mcp","--stdio"],"env":{"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_FS_WRITEDIR":home,"OODA_COMPILER":bindir+"/oodac","OODAC_BIN":bindir+"/oodac"}}
 data["mcpServers"]=ms
 with open(cfg,"w") as f: json.dump(data,f,indent=2); f.write("\n")
 PY
@@ -745,7 +750,7 @@ PY
 import json, os, sys
 cfg=sys.argv[1]; bindir=sys.argv[2]; codex=sys.argv[3]
 home=os.path.expanduser("~")
-data={"mcpServers":{"openooda":{"command":bindir+"/ooda-mcp","args":["--stdio"],"env":{"OODA_CODEX":codex,"OODACODEX":codex,"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_FS_WRITEDIR":home,"OODA_COMPILER":bindir+"/oodac"}},"blackbox":{"command":"/usr/bin/stdbuf","args":["-o0","-e0",bindir+"/blackbox","mcp","--stdio"],"env":{"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_COMPILER":bindir+"/oodac"}}}}
+data={"mcpServers":{"openooda":{"command":bindir+"/ooda-mcp","args":["--stdio"],"env":{"OODA_CODEX":codex,"OODACODEX":codex,"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_FS_WRITEDIR":home,"OODA_COMPILER":bindir+"/oodac"}},"blackbox":{"command":"/usr/bin/stdbuf","args":["-o0","-e0",bindir+"/blackbox","mcp","--stdio"],"env":{"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_FS_WRITEDIR":home,"OODA_COMPILER":bindir+"/oodac"}}}}
 with open(cfg,"w") as f: json.dump(data,f,indent=2); f.write("\n")
 PY
   fi
@@ -773,7 +778,7 @@ if not isinstance(data, dict): data={}
 ms=data.get("mcpServers") or {}
 if not isinstance(ms, dict): ms={}
 ms["openooda"]={"command":bindir+"/ooda-mcp","args":["--stdio"],"env":{"OODA_CODEX":codex,"OODACODEX":codex,"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_FS_WRITEDIR":home,"OODA_COMPILER":bindir+"/oodac"}}
-ms["blackbox"]={"command":"/usr/bin/stdbuf","args":["-o0","-e0",bindir+"/blackbox","mcp","--stdio"],"env":{"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_COMPILER":bindir+"/oodac"}}
+ms["blackbox"]={"command":"/usr/bin/stdbuf","args":["-o0","-e0",bindir+"/blackbox","mcp","--stdio"],"env":{"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_FS_WRITEDIR":home,"OODA_COMPILER":bindir+"/oodac"}}
 data["mcpServers"]=ms
 with open(cfg,"w") as f: json.dump(data,f,indent=2); f.write("\n")
 PY
@@ -798,7 +803,7 @@ if not isinstance(data, dict): data={}
 ms=data.get("mcpServers") or {}
 if not isinstance(ms, dict): ms={}
 ms["openooda"]={"command":bindir+"/ooda-mcp","args":["--stdio"],"env":{"OODA_CODEX":codex,"OODACODEX":codex,"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_FS_WRITEDIR":home,"OODA_COMPILER":bindir+"/oodac"}}
-ms["blackbox"]={"command":"/usr/bin/stdbuf","args":["-o0","-e0",bindir+"/blackbox","mcp","--stdio"],"env":{"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_COMPILER":bindir+"/oodac"}}
+ms["blackbox"]={"command":"/usr/bin/stdbuf","args":["-o0","-e0",bindir+"/blackbox","mcp","--stdio"],"env":{"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_FS_WRITEDIR":home,"OODA_COMPILER":bindir+"/oodac"}}
 data["mcpServers"]=ms
 with open(cfg,"w") as f: json.dump(data,f,indent=2); f.write("\n")
 PY
@@ -826,7 +831,7 @@ if not isinstance(data, dict): data={}
 ms=data.get("mcpServers") or data.get("servers") or {}
 if not isinstance(ms, dict): ms={}
 ms["openooda"]={"command":bindir+"/ooda-mcp","args":["--stdio"],"env":{"OODA_CODEX":codex,"OODACODEX":codex,"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_FS_WRITEDIR":home,"OODA_COMPILER":bindir+"/oodac"}}
-ms["blackbox"]={"command":"/usr/bin/stdbuf","args":["-o0","-e0",bindir+"/blackbox","mcp","--stdio"],"env":{"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_COMPILER":bindir+"/oodac"}}
+ms["blackbox"]={"command":"/usr/bin/stdbuf","args":["-o0","-e0",bindir+"/blackbox","mcp","--stdio"],"env":{"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_FS_WRITEDIR":home,"OODA_COMPILER":bindir+"/oodac"}}
 data["mcpServers"]=ms
 with open(cfg,"w") as f: json.dump(data,f,indent=2); f.write("\n")
 PY
@@ -842,8 +847,8 @@ wire_codex() {
   if [[ "$DRY_RUN" == "1" ]]; then ok "[dry-run] would wire codex: $cfg (openooda + blackbox)"; HARNESS_WIRED+=("codex"); return 0; fi
   if command -v codex >/dev/null 2>&1; then
     local codex_path; codex_path="$(_ooda_codex_path)"
-    codex mcp add openooda -- env OODA_CODEX="$codex_path" OODACODEX="$codex_path" OODA_FS_READDIR="$HOME/Projects/openOODA" -- "$BIN_DIR/ooda-mcp" --stdio >/dev/null 2>&1 || true
-    codex mcp add blackbox -- env OODA_FS_READDIR="$HOME/Projects/openOODA" OODA_COMPILER="$BIN_DIR/oodac" -- /usr/bin/stdbuf -o0 -e0 "$BIN_DIR/blackbox" mcp --stdio >/dev/null 2>&1 || true
+    codex mcp add openooda -- env OODA_CODEX="$codex_path" OODACODEX="$codex_path" OODA_FS_READDIR="$HOME/Projects/openOODA" OODA_FS_WRITEDIR="$HOME" -- "$BIN_DIR/ooda-mcp" --stdio >/dev/null 2>&1 || true
+    codex mcp add blackbox -- env OODA_FS_READDIR="$HOME/Projects/openOODA" OODA_FS_WRITEDIR="$HOME" OODA_COMPILER="$BIN_DIR/oodac" -- /usr/bin/stdbuf -o0 -e0 "$BIN_DIR/blackbox" mcp --stdio >/dev/null 2>&1 || true
   fi
   mkdir -p "$(dirname "$cfg")"; _wire_json_backup "$cfg"
   local codex_p; codex_p="$(_ooda_codex_path)"
@@ -873,6 +878,7 @@ enabled = true
 
 [mcp_servers.blackbox.env]
 OODA_FS_READDIR = "$HOME/Projects/openOODA"
+OODA_FS_WRITEDIR = "$HOME"
 OODA_COMPILER = "$BIN_DIR/oodac"
 OODAC_BIN = "$BIN_DIR/oodac"
 TOML
@@ -900,7 +906,7 @@ if not isinstance(data, dict): data={}
 ms=data.get("mcpServers") or {}
 if not isinstance(ms, dict): ms={}
 ms["openooda"]={"command":bindir+"/ooda-mcp","args":["--stdio"],"env":{"OODA_CODEX":codex,"OODACODEX":codex,"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_FS_WRITEDIR":home,"OODA_COMPILER":bindir+"/oodac"}}
-ms["blackbox"]={"command":"/usr/bin/stdbuf","args":["-o0","-e0",bindir+"/blackbox","mcp","--stdio"],"env":{"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_COMPILER":bindir+"/oodac"}}
+ms["blackbox"]={"command":"/usr/bin/stdbuf","args":["-o0","-e0",bindir+"/blackbox","mcp","--stdio"],"env":{"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_FS_WRITEDIR":home,"OODA_COMPILER":bindir+"/oodac"}}
 data["mcpServers"]=ms
 with open(cfg,"w") as f: json.dump(data,f,indent=2); f.write("\n")
 PY
@@ -925,7 +931,7 @@ if not isinstance(data, dict): data={}
 ms=data.get("mcpServers") or data.get("mcp") or {}
 if not isinstance(ms, dict): ms={}
 ms["openooda"]={"command":bindir+"/ooda-mcp","args":["--stdio"],"env":{"OODA_CODEX":codex,"OODACODEX":codex,"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_FS_WRITEDIR":home,"OODA_COMPILER":bindir+"/oodac"}}
-ms["blackbox"]={"command":"/usr/bin/stdbuf","args":["-o0","-e0",bindir+"/blackbox","mcp","--stdio"],"env":{"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_COMPILER":bindir+"/oodac"}}
+ms["blackbox"]={"command":"/usr/bin/stdbuf","args":["-o0","-e0",bindir+"/blackbox","mcp","--stdio"],"env":{"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_FS_WRITEDIR":home,"OODA_COMPILER":bindir+"/oodac"}}
 data["mcpServers"]=ms
 with open(cfg,"w") as f: json.dump(data,f,indent=2); f.write("\n")
 PY
@@ -949,7 +955,7 @@ if not isinstance(data, dict): data={}
 cs=data.get("context_servers") or data.get("lsp") or {}
 if not isinstance(cs, dict): cs={}
 cs["openooda"]={"command":bindir+"/ooda-mcp","args":["--stdio"],"env":{"OODA_CODEX":codex,"OODACODEX":codex,"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_FS_WRITEDIR":home,"OODA_COMPILER":bindir+"/oodac"}}
-cs["blackbox"]={"command":"/usr/bin/stdbuf","args":["-o0","-e0",bindir+"/blackbox","mcp","--stdio"],"env":{"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_COMPILER":bindir+"/oodac"}}
+cs["blackbox"]={"command":"/usr/bin/stdbuf","args":["-o0","-e0",bindir+"/blackbox","mcp","--stdio"],"env":{"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_FS_WRITEDIR":home,"OODA_COMPILER":bindir+"/oodac"}}
 data["context_servers"]=cs
 # also expose as lsp for editors that read lsp key
 with open(cfg,"w") as f: json.dump(data,f,indent=2); f.write("\n")
@@ -976,7 +982,7 @@ if not isinstance(data, dict): data={}
 ms=data.get("servers") or data.get("mcpServers") or data.get("mcp") or {}
 if not isinstance(ms, dict): ms={}
 ms["openooda"]={"command":bindir+"/ooda-mcp","args":["--stdio"],"env":{"OODA_CODEX":codex,"OODACODEX":codex,"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_FS_WRITEDIR":home,"OODA_COMPILER":bindir+"/oodac"}}
-ms["blackbox"]={"command":"/usr/bin/stdbuf","args":["-o0","-e0",bindir+"/blackbox","mcp","--stdio"],"env":{"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_COMPILER":bindir+"/oodac"}}
+ms["blackbox"]={"command":"/usr/bin/stdbuf","args":["-o0","-e0",bindir+"/blackbox","mcp","--stdio"],"env":{"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_FS_WRITEDIR":home,"OODA_COMPILER":bindir+"/oodac"}}
 # prefer servers key for vscode
 data["servers"]=ms
 with open(cfg,"w") as f: json.dump(data,f,indent=2); f.write("\n")
@@ -1001,8 +1007,8 @@ if "openooda" not in text:
     with open(cfg,"a") as f:
         f.write("\n# openOODA — added by install.sh\n")
         f.write("extensions:\n")
-        f.write(f"  openooda:\n    command: {bindir}/ooda-mcp\n    args: [\"--stdio\"]\n    env:\n      OODA_CODEX: {home}/Projects/openOODA/openOODA/NORTHSTAR.oot\n      OODA_FS_READDIR: {home}/Projects/openOODA\n      OODA_COMPILER: {bindir}/oodac\n")
-        f.write(f"  blackbox:\n    command: /usr/bin/stdbuf\n    args: [\"-o0\", \"-e0\", \"{bindir}/blackbox\", \"mcp\", \"--stdio\"]\n    env:\n      OODA_FS_READDIR: {home}/Projects/openOODA\n      OODA_COMPILER: {bindir}/oodac\n")
+        f.write(f"  openooda:\n    command: {bindir}/ooda-mcp\n    args: [\"--stdio\"]\n    env:\n      OODA_CODEX: {home}/Projects/openOODA/openOODA/NORTHSTAR.oot\n      OODA_FS_READDIR: {home}/Projects/openOODA\n      OODA_FS_WRITEDIR: {home}\n      OODA_COMPILER: {bindir}/oodac\n")
+        f.write(f"  blackbox:\n    command: /usr/bin/stdbuf\n    args: [\"-o0\", \"-e0\", \"{bindir}/blackbox\", \"mcp\", \"--stdio\"]\n    env:\n      OODA_FS_READDIR: {home}/Projects/openOODA\n      OODA_FS_WRITEDIR: {home}\n      OODA_COMPILER: {bindir}/oodac\n")
 PY
   ok "wired goose: $cfg"; HARNESS_WIRED+=("goose")
 }
@@ -1017,8 +1023,8 @@ wire_mistral_vibe() {
   if [[ "$DRY_RUN" == "1" ]]; then ok "[dry-run] would wire mistral-vibe: $vibe_bin mcp add openooda/blackbox (transport stdio)"; HARNESS_WIRED+=("mistral-vibe"); return 0; fi
   # use vibe mcp add CLI (stdio transport) — idempotent, handles config.toml creation
   "$vibe_bin" mcp add openooda --transport stdio --command "$BIN_DIR/ooda-mcp" --arg=--stdio --env OODA_CODEX="$codex" --env OODACODEX="$codex" --env OODA_FS_READDIR="$HOME/Projects/openOODA" --env OODA_FS_WRITEDIR="$HOME" --env OODA_COMPILER="$BIN_DIR/oodac" --env OODAC_BIN="$BIN_DIR/oodac" >/dev/null 2>&1 || warn "vibe mcp add openooda failed"
-  "$vibe_bin" mcp add blackbox --transport stdio --command /usr/bin/stdbuf --arg=-o0 --arg=-e0 --arg="$BIN_DIR/blackbox" --arg=mcp --arg=--stdio --env OODA_FS_READDIR="$HOME/Projects/openOODA" --env OODA_COMPILER="$BIN_DIR/oodac" --env OODAC_BIN="$BIN_DIR/oodac" >/dev/null 2>&1 || {
-    "$vibe_bin" mcp add blackbox --transport stdio --command "$BIN_DIR/blackbox" --arg=mcp --arg=--stdio --env OODA_FS_READDIR="$HOME/Projects/openOODA" --env OODA_COMPILER="$BIN_DIR/oodac" >/dev/null 2>&1 || warn "vibe mcp add blackbox failed"
+  "$vibe_bin" mcp add blackbox --transport stdio --command /usr/bin/stdbuf --arg=-o0 --arg=-e0 --arg="$BIN_DIR/blackbox" --arg=mcp --arg=--stdio --env OODA_FS_READDIR="$HOME/Projects/openOODA" OODA_FS_WRITEDIR="$HOME" --env OODA_COMPILER="$BIN_DIR/oodac" --env OODAC_BIN="$BIN_DIR/oodac" >/dev/null 2>&1 || {
+    "$vibe_bin" mcp add blackbox --transport stdio --command "$BIN_DIR/blackbox" --arg=mcp --arg=--stdio --env OODA_FS_READDIR="$HOME/Projects/openOODA" OODA_FS_WRITEDIR="$HOME" --env OODA_COMPILER="$BIN_DIR/oodac" >/dev/null 2>&1 || warn "vibe mcp add blackbox failed"
   }
   ok "wired mistral-vibe: $vibe_bin mcp (openooda + blackbox)"; HARNESS_WIRED+=("mistral-vibe")
 }

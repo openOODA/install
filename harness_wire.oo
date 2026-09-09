@@ -88,7 +88,7 @@ fn wire_json_mcp(fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap, path: String
   }
   backup_once(fs_r, fs_w, path);
   // minimal mcpServers merge — preserves no existing keys for brevity; real impl would parse json
-  let payload: String = "{\n  \"mcpServers\": {\n    \"openooda\": {\"command\":\"" + bdir + "/ooda-mcp\",\"args\":[\"--stdio\"],\"env\":{\"OODA_CODEX\":\"" + cdx + "\",\"OODACODEX\":\"" + cdx + "\",\"OODA_FS_READDIR\":\"" + h + "\"",\"OODA_COMPILER\":\"" + bdir + "/oodac\"}},\n    \"blackbox\": {\"command\":\"/usr/bin/stdbuf\",\"args\":[\"-o0\",\"-e0\",\"" + bdir + "/blackbox\",\"mcp\",\"--stdio\"],\"env\":{\"OODA_FS_READDIR\":\"" + h + "\"",\"OODA_COMPILER\":\"" + bdir + "/oodac\"}}\n  }\n}\n";
+  let payload: String = "{\n  \"mcpServers\": {\n    \"openooda\": {\"command\":\"" + bdir + "/ooda-mcp\",\"args\":[\"--stdio\"],\"env\":{\"OODA_CODEX\":\"" + cdx + "\",\"OODACODEX\":\"" + cdx + "\",\"OODA_FS_READDIR\":\"" + h + "\"",\"OODA_FS_WRITEDIR\":\"" + h + "\"",\"OODA_COMPILER\":\"" + bdir + "/oodac\"}},\n    \"blackbox\": {\"command\":\"/usr/bin/stdbuf\",\"args\":[\"-o0\",\"-e0\",\"" + bdir + "/blackbox\",\"mcp\",\"--stdio\"],\"env\":{\"OODA_FS_READDIR\":\"" + h + "\"",\"OODA_FS_WRITEDIR\":\"" + h + "\"",\"OODA_COMPILER\":\"" + bdir + "/oodac\"}}\n  }\n}\n";
   let r: Result[String, String] = read_file(fs_r, path);
   let existing: String = if r.is_ok() { match r { Ok(s) => s, Err(_) => "" } } else { "" };
   let out: String = if chars_len(existing) == 0 { payload } else if str_contains(existing, "mcpServers") { existing } else { payload };
@@ -110,7 +110,7 @@ fn wire_opencode_mcp(fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap, dry: Boo
   let cdx: String = codex_path(env, fs_r);
   if has_openooda(fs_r, cfg) { println("  already wired " + cfg); return true; }
   backup_once(fs_r, fs_w, cfg);
-  let payload: String = "{\n  \"$schema\": \"https://opencode.ai/config.json\",\n  \"mcp\": {\n    \"openooda\": {\"type\":\"local\",\"command\":[\"" + bdir + "/ooda-mcp\",\"--stdio\"],\"enabled\":true,\"environment\":{\"OODA_CODEX\":\"" + cdx + "\",\"OODACODEX\":\"" + cdx + "\",\"OODA_FS_READDIR\":\"" + h + "\"",\"OODA_COMPILER\":\"" + bdir + "/oodac\"}},\n    \"blackbox\": {\"type\":\"local\",\"command\":[\"/usr/bin/stdbuf\",\"-o0\",\"-e0\",\"" + bdir + "/blackbox\",\"mcp\",\"--stdio\"],\"enabled\":true,\"environment\":{\"OODA_FS_READDIR\":\"" + h + "\"",\"OODA_COMPILER\":\"" + bdir + "/oodac\"}}\n  }\n}\n";
+  let payload: String = "{\n  \"$schema\": \"https://opencode.ai/config.json\",\n  \"mcp\": {\n    \"openooda\": {\"type\":\"local\",\"command\":[\"" + bdir + "/ooda-mcp\",\"--stdio\"],\"enabled\":true,\"environment\":{\"OODA_CODEX\":\"" + cdx + "\",\"OODACODEX\":\"" + cdx + "\",\"OODA_FS_READDIR\":\"" + h + "\"",\"OODA_FS_WRITEDIR\":\"" + h + "\"",\"OODA_COMPILER\":\"" + bdir + "/oodac\"}},\n    \"blackbox\": {\"type\":\"local\",\"command\":[\"/usr/bin/stdbuf\",\"-o0\",\"-e0\",\"" + bdir + "/blackbox\",\"mcp\",\"--stdio\"],\"enabled\":true,\"environment\":{\"OODA_FS_READDIR\":\"" + h + "\"",\"OODA_FS_WRITEDIR\":\"" + h + "\"",\"OODA_COMPILER\":\"" + bdir + "/oodac\"}}\n  }\n}\n";
   let w: Result[Void, String] = write_file(fs_w, cfg, payload);
   if w.is_ok() { println("  wired " + cfg); return true; }
   return false;
@@ -142,7 +142,7 @@ fn wire_zed(fs_r: &FsReadCap, fs_w: &FsWriteCap, env: &EnvCap, dry: Bool) -> Boo
   let cdx: String = codex_path(env, fs_r);
   if has_openooda(fs_r, cfg) { println("  already wired " + cfg); return true; }
   backup_once(fs_r, fs_w, cfg);
-  let payload: String = "{\n  \"context_servers\": {\n    \"openooda\": {\"command\":\"" + bdir + "/ooda-mcp\",\"args\":[\"--stdio\"],\"env\":{\"OODA_CODEX\":\"" + cdx + "\"}},\n    \"blackbox\": {\"command\":\"" + bdir + "/blackbox\",\"args\":[\"mcp\",\"--stdio\"]}\n  }\n}\n";
+  let payload: String = "{\n  \"context_servers\": {\n    \"openooda\": {\"command\":\"" + bdir + "/ooda-mcp\",\"args\":[\"--stdio\"],\"env\":{\"OODA_CODEX\":\"" + cdx + "\",\"OODA_FS_READDIR\":\"" + h + "\"",\"OODA_FS_WRITEDIR\":\"" + h + "\""}},\n    \"blackbox\": {\"command\":\"" + bdir + "/blackbox\",\"args\":[\"mcp\",\"--stdio\"],\"env\":{\"OODA_FS_READDIR\":\"" + h + "\"",\"OODA_FS_WRITEDIR\":\"" + h + "\"",\"OODA_COMPILER\":\"" + bdir + \"/oodac\"}}\n  }\n}\n";
   let w: Result[Void, String] = write_file(fs_w, cfg, payload);
   if w.is_ok() { println("  wired " + cfg); return true; }
   return false;
