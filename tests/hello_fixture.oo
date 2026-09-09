@@ -1,0 +1,13 @@
+// # Hello fixture — Task 1 acceptance program
+//
+// Logline: Minimal runnable program for the 60-second hello-world test.
+//
+// Setup: No imports, no caps, builtin println only.
+//
+// Beats:
+//   1. Print the acceptance line and return 0.
+
+pub fn main() -> Int {
+    println("hello, sovereign world")
+    return 0
+}

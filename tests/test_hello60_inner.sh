@@ -29,14 +29,14 @@ command -v oodac >/dev/null 2>&1 || die "oodac not on PATH without rc sourcing (
 
 mkdir -p /tmp/hello && cd /tmp/hello || die "no workdir"
 cat > main.oo <<'OO'
-// # Hello
+// # Hello fixture — Task 1 acceptance program
 //
-// Logline: hello.
+// Logline: Minimal runnable program for the 60-second hello-world test.
 //
-// Setup: none.
+// Setup: No imports, no caps, builtin println only.
 //
 // Beats:
-//   1. Print.
+//   1. Print the acceptance line and return 0.
 
 pub fn main() -> Int {
     println("hello, sovereign world")

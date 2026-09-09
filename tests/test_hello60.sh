@@ -24,6 +24,15 @@ if [[ "${HELLO60_LIVE:-0}" != "1" ]]; then
   grep -q 'command -v ooda' test_hello60_inner.sh || { echo "FAIL inner must assert PATH"; exit 1; }
   grep -q 'BUDGET' test_hello60_inner.sh || { echo "FAIL inner must enforce budget"; exit 1; }
   grep -qE '(^|[;&| ])source( |$)' test_hello60_inner.sh && { echo "FAIL inner must not source rc files"; exit 1; }
+  # Inner heredoc program must match the committed fixture (single source of truth).
+  python3 - > /tmp/hello_body.txt <<'PY'
+import re
+src = open('test_hello60_inner.sh').read()
+m = re.search(r"cat > main\.oo <<'OO'\n(.*?\n)OO\n", src, re.S)
+open('/tmp/hello_body.txt', 'w').write(m.group(1) if m else '')
+PY
+  diff /tmp/hello_body.txt hello_fixture.oo > /dev/null \
+    || { echo "FAIL inner program drifted from hello_fixture.oo"; exit 1; }
   echo "PASS hello60 contract (static). Set HELLO60_LIVE=1 for the container run."
   exit 0
 fi
