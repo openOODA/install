@@ -378,6 +378,8 @@ setup_shell_rc() {
   local l1='export PATH="$HOME/.openooda/bin:$PATH"'
   local l2='export OODA_STD_ROOT="$HOME/.openooda/std"'
   local l3='export OODA_COMPILER="$HOME/.openooda/bin/oodac"'
+  local l4='export OODA_FS_READDIR="$HOME/Projects/openOODA"'
+  local l5='export OODA_FS_WRITEDIR="$HOME"'
   for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
     [[ -e "$rc" ]] || : >> "$rc" 2>/dev/null || continue
     if [[ -f "$rc" && ! -f "$rc.bak.openooda" ]]; then cp -p "$rc" "$rc.bak.openooda" 2>/dev/null || true; _log "backup $rc -> $rc.bak.openooda"; fi
@@ -388,9 +390,13 @@ setup_shell_rc() {
     if grep -Fqx "$l1" "$rc" 2>/dev/null; then
       info "$(basename "$rc") already has openOODA exports"
     else
-      printf '\n# openOODA\n%s\n%s\n%s\n' "$l1" "$l2" "$l3" >> "$rc"
+      printf '\n# openOODA\n%s\n%s\n%s\n%s\n%s\n' "$l1" "$l2" "$l3" "$l4" "$l5" >> "$rc"
       ok "$(basename "$rc") updated"
     fi
+    # jail defaults for installs that predate them (binaries must work with zero manual exports)
+    for _jl in "$l4" "$l5"; do
+      grep -Fqx "$_jl" "$rc" 2>/dev/null || printf '%s\n' "$_jl" >> "$rc"
+    done
   done
   # fish (XDG-aware)
   local fish_cfg="${XDG_CONFIG_HOME}/fish/config.fish"
@@ -398,7 +404,7 @@ setup_shell_rc() {
     mkdir -p "$(dirname "$fish_cfg")" 2>/dev/null || true
     if [[ -f "$fish_cfg" && ! -f "$fish_cfg.bak.openooda" ]]; then cp -p "$fish_cfg" "$fish_cfg.bak.openooda" 2>/dev/null || true; fi
     if ! grep -q 'fish_add_path.*\.openooda/bin' "$fish_cfg" 2>/dev/null; then
-      printf '\n# openOODA\nfish_add_path $HOME/.openooda/bin\nset -x OODA_STD_ROOT $HOME/.openooda/std\nset -x OODA_COMPILER $HOME/.openooda/bin/oodac\n' >> "$fish_cfg" 2>/dev/null || true
+      printf '\n# openOODA\nfish_add_path $HOME/.openooda/bin\nset -x OODA_STD_ROOT $HOME/.openooda/std\nset -x OODA_COMPILER $HOME/.openooda/bin/oodac\nset -x OODA_FS_READDIR $HOME/Projects/openOODA\nset -x OODA_FS_WRITEDIR $HOME\n' >> "$fish_cfg" 2>/dev/null || true
       ok "fish config updated ($fish_cfg)"
     else
       info "fish config already has openOODA exports"
@@ -1061,7 +1067,7 @@ wire_harnesses() {
       [[ -n "${OPENOODA_DEBUG:-}" ]] && info "openOODA harness_wire.oo: done (cap-closed)"
     else
       [[ -n "${OPENOODA_DEBUG:-}" ]] && warn "harness_wire.oo failed — falling back to bash merges"
-      _log "harness_wire.oo failed (upstream ooda mkdir bug) — fallback to bash"
+      _log "harness_wire.oo failed — fallback to bash"
     fi
   else
     [[ -n "${OPENOODA_DEBUG:-}" ]] && info "harness_wire.oo not found — using bash wiring"
@@ -1297,13 +1303,14 @@ info "binaries:    $BIN_DIR"
 info "std:         $STD_DIR"
 info "sources:     $OPENOODA_HOME/oodar (oodar build sources)"
 info "time:        ${ELAPSED}s"
-[[ "$DRY_RUN" != "1" ]] && ok "shell rc:   PATH + OODA_STD_ROOT set in ~/.bashrc and ~/.zshrc"
+[[ "$DRY_RUN" != "1" ]] && ok "shell rc:   PATH + OODA_STD_ROOT + OODA_COMPILER + jail defaults set in ~/.bashrc and ~/.zshrc"
 
 printf '\n%s%s Try these commands %s\n' "$BOLD" "$CYAN" "$RESET"
 printf '  %s$ ooda --help%s              show all 13 subcommands\n' "$GREEN" "$RESET"
-printf '  %s$ ooda init%s                scaffold a new project (creates ANCHOR.oo)\n' "$GREEN" "$RESET"
-printf '  %s$ ooda build main.oo%s       build your first .oo program\n' "$GREEN" "$RESET"
-printf '  %s$ ooda run main.oo%s         compile and execute with caps\n' "$GREEN" "$RESET"
+printf '  %s$ ooda init hello && cd hello%s   scaffold a runnable hello-world project\n' "$GREEN" "$RESET"
+printf '  %s$ ooda build src/main.oo -o hello%s   build it to a native binary\n' "$GREEN" "$RESET"
+printf '  %s$ ./hello%s                   run it and see the welcome line\n' "$GREEN" "$RESET"
+printf '  %s$ ooda run src/main.oo%s      or: compile and execute in one step\n' "$GREEN" "$RESET"
 printf '  %s$ ooda test%s                run tests in the repo\n' "$GREEN" "$RESET"
 printf '  %s$ ooda fmt%s                 format all .oo files\n' "$GREEN" "$RESET"
 printf '  %s$ ooda fix%s                 auto-fix lint issues\n' "$GREEN" "$RESET"
