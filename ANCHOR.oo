@@ -8,7 +8,7 @@
 // Beats:
 //   1. install.sh is the thin bash bootstrap (OS/arch, curl, std clone, shell rc). SHA-256 sidecar required; missing or mismatch refuses. VERSION must match the current git tag (RULES.oot §1.24 exception — install is hand-bumped because curl|bash has no git history at install time).
 //   2. harness_wire.oo is the openOODA cap-closed wire (FsReadCap/FsWriteCap/EnvCap/ProcessCap, ≤256 lines per file)
-//   3. Detects 15 harnesses (antigravity-cli, opencode, muse, grok, gemini, claude-code, claude-desktop, cursor, windsurf, codex, cline, continue, zed, vscode, goose) and merges mcpServers/mcp/context_servers
+//   3. Detects 20 harnesses (antigravity-cli, opencode, muse, grok, gemini, claude-code, claude-desktop, cursor, windsurf, codex, cline, continue, zed, vscode, goose, mistral-vibe, grok-build, mcode, devin, charm) and merges mcpServers/mcp/context_servers
 //   4. Idempotent, DRY_RUN preview, *.bak.openooda backup, y/n gated in install.sh, restart reminder
 //   5. To propose a change, keep every .oo ≤256 lines and fail closed. No python fallback in .oo path.
 

@@ -530,6 +530,7 @@ detect_harnesses() {
   if command -v grok-build >/dev/null 2>&1 || command -v grok >/dev/null 2>&1 || command -v xai-grok-pager >/dev/null 2>&1 || [[ -d "$HOME/.grok" ]] || [[ -f "$HOME/.grok/bin/grok" ]]; then HARNESS_DETECTED+=("grok-build"); else HARNESS_SKIPPED+=("grok-build"); fi
   if command -v devin >/dev/null 2>&1; then HARNESS_DETECTED+=("devin"); else HARNESS_SKIPPED+=("devin"); fi
   if command -v charm >/dev/null 2>&1 || [[ -d "$xdg/charm" ]] || command -v crush >/dev/null 2>&1; then HARNESS_DETECTED+=("charm"); else HARNESS_SKIPPED+=("charm"); fi
+  if command -v mcode >/dev/null 2>&1 || [[ -f "$HOME/.minimax/mcp.json" ]] || [[ -d "$HOME/.minimax-code" ]]; then HARNESS_DETECTED+=("mcode"); else HARNESS_SKIPPED+=("mcode"); fi
   if [[ ${#HARNESS_DETECTED[@]} -gt 0 ]]; then info "harnesses detected: ${HARNESS_DETECTED[*]}"; fi
   if [[ ${#HARNESS_SKIPPED[@]} -gt 0 ]]; then info "harnesses skipped (not installed): ${HARNESS_SKIPPED[*]}"; fi
 }
@@ -613,7 +614,7 @@ if os.path.exists(cfg):
 if not isinstance(data, dict): data={}
 ms=data.get("mcpServers") or {}
 if not isinstance(ms, dict): ms={}
-ms["openooda"]={"command":bindir+"/ooda-mcp","args":["--stdio"],"env":{"OODA_CODEX":codex,"OODACODEX":codex,"OODA_FS_READDIR":home,"OODA_FS_WRITEDIR":home}}
+ms["openooda"]={"command":bindir+"/ooda-mcp","args":["--stdio"],"env":{"OODA_CODEX":codex,"OODACODEX":codex,"OODA_FS_READDIR":home,"OODA_FS_WRITEDIR":home,"OODA_COMPILER":bindir+"/oodac","OODAC_BIN":bindir+"/oodac"}}
 ms["blackbox"]={"command":"/usr/bin/stdbuf","args":["-o0","-e0",bindir+"/blackbox","mcp","--stdio"],"env":{"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_FS_WRITEDIR":home,"OODA_COMPILER":bindir+"/oodac","OODAC_BIN":bindir+"/oodac"}}
 data["mcpServers"]=ms
 with open(cfg,"w") as f: json.dump(data,f,indent=2); f.write("\n")
@@ -629,6 +630,12 @@ wire_grok() {
   # ensure mcp_servers via python toml-ish append if missing
   if [[ -f "$toml" ]]; then
     _wire_json_backup "$toml"
+    # repair: older installs wrote ooda-mcp-grok/ooda-lsp-grok shims that were
+    # never shipped — repoint at the real binaries with full env
+    if grep -q "ooda-mcp-grok\|ooda-lsp-grok" "$toml" 2>/dev/null; then
+      sed -i 's|ooda-mcp-grok|ooda-mcp|g; s|ooda-lsp-grok|ooda-lsp|g' "$toml" 2>/dev/null || true
+      _log "repaired grok -grok shim refs in $toml"
+    fi
     if ! grep -q "mcp_servers.blackbox" "$toml" 2>/dev/null; then
       cat >> "$toml" <<TOML
 
@@ -649,16 +656,41 @@ TOML
       cat >> "$toml" <<TOML
 
 [mcp_servers.openooda]
-command = "$BIN_DIR/ooda-mcp-grok"
-args = []
+command = "$BIN_DIR/ooda-mcp"
+args = ["--stdio"]
 enabled = true
 startup_timeout_sec = 60
 
 [mcp_servers.openooda.env]
 OODA_CODEX = "$codex"
+OODACODEX = "$codex"
 OODA_FS_READDIR = "$HOME/Projects/openOODA"
 OODA_FS_WRITEDIR = "$HOME"
+OODA_COMPILER = "$BIN_DIR/oodac"
+OODAC_BIN = "$BIN_DIR/oodac"
 TOML
+    fi
+    # repair: openooda block from older installs lacks --stdio and env keys
+    if grep -q "mcp_servers.openooda" "$toml" 2>/dev/null; then
+      python3 - "$toml" "$BIN_DIR" "$codex" "$HOME" <<'PY' 2>/dev/null || true
+import re, sys
+toml, bindir, codex, home = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+with open(toml) as f: text = f.read()
+def ensure_env(block, key, val):
+    global text
+    pat = r"(\[mcp_servers\.%s\.env\][^\[]*)" % block
+    m = re.search(pat, text)
+    if m and re.search(r"^%s\s*=" % key, m.group(1), re.M) is None:
+        text = text.replace(m.group(1), m.group(1).rstrip("\n") + "\n%s = \"%s\"\n" % (key, val), 1)
+text = re.sub(r"(\[mcp_servers\.openooda\][^\[]*?args\s*=\s*)\[\]",
+              r'\1["--stdio"]', text, count=1)
+ensure_env("openooda", "OODACODEX", codex)
+ensure_env("openooda", "OODA_FS_WRITEDIR", home)
+ensure_env("openooda", "OODA_COMPILER", bindir + "/oodac")
+ensure_env("openooda", "OODAC_BIN", bindir + "/oodac")
+ensure_env("blackbox", "OODA_FS_WRITEDIR", home)
+with open(toml, "w") as f: f.write(text)
+PY
     fi
   fi
   if [[ -f "$lsp" ]]; then
@@ -670,15 +702,25 @@ home=os.path.expanduser("~")
 try:
     with open(cfg) as f: data=json.load(f)
 except: data={}
-if "ooda" not in data:
-    data["ooda"]={"command":bindir+"/ooda-lsp-grok","args":[],"extensionToLanguage":{".oo":"ooda",".oot":"ooda"},"env":{"OODA_COMPILER":bindir+"/oodac","OODA_FS_READDIR":home+"/Projects/openOODA","OODA_FS_WRITEDIR":home},"workspaceFolder":home+"/Projects/openOODA","startupTimeout":60000,"restartOnCrash":True}
-else:
-    env=data["ooda"].get("env") or {}
-    env["OODA_COMPILER"]=bindir+"/oodac"
-    env["OODA_FS_READDIR"]=home+"/Projects/openOODA"
-    env["OODA_FS_WRITEDIR"]=home
-    data["ooda"]["env"]=env
-    data["ooda"]["command"]=bindir+"/ooda-lsp-grok"
+if not isinstance(data, dict): data={}
+entry=data.get("ooda") or {}
+if not isinstance(entry, dict): entry={}
+# repair: older installs wrote the never-shipped ooda-lsp-grok shim with no
+# --stdio and no WRITEDIR — repoint at the real binary with full env
+entry["command"]=bindir+"/ooda-lsp"
+entry["args"]=["--stdio"]
+entry["extensionToLanguage"]={".oo":"ooda",".oot":"ooda"}
+env=entry.get("env") or {}
+if not isinstance(env, dict): env={}
+env["OODA_COMPILER"]=bindir+"/oodac"
+env["OODAC_BIN"]=bindir+"/oodac"
+env["OODA_FS_READDIR"]=home+"/Projects/openOODA"
+env["OODA_FS_WRITEDIR"]=home
+entry["env"]=env
+entry["workspaceFolder"]=home+"/Projects/openOODA"
+entry["startupTimeout"]=60000
+entry["restartOnCrash"]=True
+data["ooda"]=entry
 with open(cfg,"w") as f: json.dump(data,f,indent=2); f.write("\n")
 PY
   fi
@@ -1023,8 +1065,8 @@ wire_mistral_vibe() {
   if [[ "$DRY_RUN" == "1" ]]; then ok "[dry-run] would wire mistral-vibe: $vibe_bin mcp add openooda/blackbox (transport stdio)"; HARNESS_WIRED+=("mistral-vibe"); return 0; fi
   # use vibe mcp add CLI (stdio transport) — idempotent, handles config.toml creation
   "$vibe_bin" mcp add openooda --transport stdio --command "$BIN_DIR/ooda-mcp" --arg=--stdio --env OODA_CODEX="$codex" --env OODACODEX="$codex" --env OODA_FS_READDIR="$HOME/Projects/openOODA" --env OODA_FS_WRITEDIR="$HOME" --env OODA_COMPILER="$BIN_DIR/oodac" --env OODAC_BIN="$BIN_DIR/oodac" >/dev/null 2>&1 || warn "vibe mcp add openooda failed"
-  "$vibe_bin" mcp add blackbox --transport stdio --command /usr/bin/stdbuf --arg=-o0 --arg=-e0 --arg="$BIN_DIR/blackbox" --arg=mcp --arg=--stdio --env OODA_FS_READDIR="$HOME/Projects/openOODA" OODA_FS_WRITEDIR="$HOME" --env OODA_COMPILER="$BIN_DIR/oodac" --env OODAC_BIN="$BIN_DIR/oodac" >/dev/null 2>&1 || {
-    "$vibe_bin" mcp add blackbox --transport stdio --command "$BIN_DIR/blackbox" --arg=mcp --arg=--stdio --env OODA_FS_READDIR="$HOME/Projects/openOODA" OODA_FS_WRITEDIR="$HOME" --env OODA_COMPILER="$BIN_DIR/oodac" >/dev/null 2>&1 || warn "vibe mcp add blackbox failed"
+  "$vibe_bin" mcp add blackbox --transport stdio --command /usr/bin/stdbuf --arg=-o0 --arg=-e0 --arg="$BIN_DIR/blackbox" --arg=mcp --arg=--stdio --env OODA_FS_READDIR="$HOME/Projects/openOODA" --env OODA_FS_WRITEDIR="$HOME" --env OODA_COMPILER="$BIN_DIR/oodac" --env OODAC_BIN="$BIN_DIR/oodac" >/dev/null 2>&1 || {
+    "$vibe_bin" mcp add blackbox --transport stdio --command "$BIN_DIR/blackbox" --arg=mcp --arg=--stdio --env OODA_FS_READDIR="$HOME/Projects/openOODA" --env OODA_FS_WRITEDIR="$HOME" --env OODA_COMPILER="$BIN_DIR/oodac" >/dev/null 2>&1 || warn "vibe mcp add blackbox failed"
   }
   ok "wired mistral-vibe: $vibe_bin mcp (openooda + blackbox)"; HARNESS_WIRED+=("mistral-vibe")
 }
@@ -1042,6 +1084,32 @@ wire_grok_build() {
   if [[ " ${HARNESS_WIRED[*]} " != *" grok-build "* ]]; then HARNESS_WIRED+=("grok-build"); fi
   # ensure at least one ok line if grok wiring was suppressed
   if [[ " ${HARNESS_WIRED[*]} " == *" grok-build "* ]] && [[ " ${HARNESS_WIRED[*]} " != *" grok "* ]]; then ok "wired grok-build: ~/.grok/config.toml (alias of grok)"; fi
+}
+
+wire_mcode() {
+  # mcode (MiniMax Code) reads MCP servers from ~/.minimax/mcp.json
+  # {"mcpServers": {"<name>": {"command":..., "args":[...], "env":{...}}}}
+  local cfg="$HOME/.minimax/mcp.json"
+  if ! command -v mcode >/dev/null 2>&1 && [[ ! -f "$cfg" ]] && [[ ! -d "$HOME/.minimax-code" ]]; then skip "mcode not installed — skipping"; return 0; fi
+  if [[ "$DRY_RUN" == "1" ]]; then ok "[dry-run] would wire mcode: $cfg (openooda + blackbox)"; HARNESS_WIRED+=("mcode"); return 0; fi
+  mkdir -p "$(dirname "$cfg")"; _wire_json_backup "$cfg"
+  local codex; codex="$(_ooda_codex_path)"
+  python3 - "$cfg" "$BIN_DIR" "$codex" <<'PY' 2>/dev/null || { warn "mcode wire: python merge failed"; return 0; }
+import json, os, sys
+cfg=sys.argv[1]; bindir=sys.argv[2]; codex=sys.argv[3]
+home=os.path.expanduser("~")
+try:
+    with open(cfg) as f: data=json.load(f)
+except: data={}
+if not isinstance(data, dict): data={}
+ms=data.get("mcpServers") or {}
+if not isinstance(ms, dict): ms={}
+ms["openooda"]={"command":bindir+"/ooda-mcp","args":["--stdio"],"env":{"OODA_CODEX":codex,"OODACODEX":codex,"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_FS_WRITEDIR":home,"OODA_COMPILER":bindir+"/oodac","OODAC_BIN":bindir+"/oodac"}}
+ms["blackbox"]={"command":"/usr/bin/stdbuf","args":["-o0","-e0",bindir+"/blackbox","mcp","--stdio"],"env":{"OODA_FS_READDIR":home+"/Projects/openOODA","OODA_FS_WRITEDIR":home,"OODA_COMPILER":bindir+"/oodac","OODAC_BIN":bindir+"/oodac"}}
+data["mcpServers"]=ms
+with open(cfg,"w") as f: json.dump(data,f,indent=2); f.write("\n")
+PY
+  ok "wired mcode: $cfg"; HARNESS_WIRED+=("mcode")
 }
 
 wire_harnesses() {
@@ -1108,6 +1176,7 @@ wire_harnesses() {
       goose)           wire_goose ;;
       mistral-vibe)    wire_mistral_vibe ;;
       grok-build)      wire_grok_build ;;
+      mcode)           wire_mcode ;;
       *) info "harness $h detected — no verified adapter yet (skipped)" ;;
     esac
   done
@@ -1157,7 +1226,7 @@ if [[ $DO_UNINSTALL -eq 1 ]]; then
   # remove binaries, std, and build sources (keep OPENOODA_HOME for logs)
   rm -rf "$BIN_DIR" "$STD_DIR" "$OPENOODA_HOME/oodar" 2>/dev/null || true
   # revert harness mcp wiring from backups
-  for f in "$HOME/.config/opencode/opencode.jsonc" "$XDG_CONFIG_HOME/opencode/opencode.jsonc" "$HOME/.cursor/mcp.json" "$HOME/.gemini/config/mcp_config.json" "$XDG_CONFIG_HOME/muse/settings.json" "$HOME/.grok/config.toml" "$HOME/.grok/lsp.json" "$HOME/.claude.json" "$XDG_CONFIG_HOME/claude/config.json" "$XDG_CONFIG_HOME/Claude/claude_desktop_config.json" "$HOME/Library/Application Support/Claude/claude_desktop_config.json" "$HOME/.codeium/windsurf/mcp_config.json" "$HOME/.windsurf/mcp.json" "$XDG_CONFIG_HOME/windsurf/mcp.json" "$XDG_CONFIG_HOME/Code/User/mcp.json" "$XDG_CONFIG_HOME/Code/User/settings.json" "$XDG_CONFIG_HOME/zed/settings.json" "$XDG_CONFIG_HOME/goose/config.yaml" "$HOME/.continue/config.json"; do
+  for f in "$HOME/.config/opencode/opencode.jsonc" "$XDG_CONFIG_HOME/opencode/opencode.jsonc" "$HOME/.cursor/mcp.json" "$HOME/.gemini/config/mcp_config.json" "$XDG_CONFIG_HOME/muse/settings.json" "$HOME/.grok/config.toml" "$HOME/.grok/lsp.json" "$HOME/.claude.json" "$XDG_CONFIG_HOME/claude/config.json" "$XDG_CONFIG_HOME/Claude/claude_desktop_config.json" "$HOME/Library/Application Support/Claude/claude_desktop_config.json" "$HOME/.codeium/windsurf/mcp_config.json" "$HOME/.windsurf/mcp.json" "$XDG_CONFIG_HOME/windsurf/mcp.json" "$XDG_CONFIG_HOME/Code/User/mcp.json" "$XDG_CONFIG_HOME/Code/User/settings.json" "$XDG_CONFIG_HOME/zed/settings.json" "$XDG_CONFIG_HOME/goose/config.yaml" "$HOME/.continue/config.json" "$HOME/.vibe/config.toml" "$HOME/.minimax/mcp.json"; do
     if [[ -f "$f.bak.openooda" ]]; then
       mv -f "$f.bak.openooda" "$f" 2>/dev/null && info "reverted $f from backup" || true
     else
@@ -1192,7 +1261,7 @@ TMPD=""
 trap 'rc=$?; rm -rf "${TMPD:-}" 2>/dev/null || true; if [[ $rc -ne 0 ]]; then err "install failed (exit $rc) — see $LOG_FILE"; cat "$LOG_FILE" 2>/dev/null | tail -n 50 >&2 || true; fi' EXIT
 trap 'err "interrupted"; exit 130' INT TERM
 
-TOTAL=16; done=0
+TOTAL=17; done=0
 mkdir -p "$BIN_DIR"
 tick() { done=$((done + 1)); overwrite_bar "$done" "$TOTAL"; printf '\n'; }
 
@@ -1247,6 +1316,21 @@ else
 fi
 tick
 
+# step 3c: orientation codex (MCP servers fail closed without OODACODEX).
+# Fresh machines have no governance checkout, so fetch NORTHSTAR.oot into
+# $OPENOODA_HOME — _ooda_codex_path() checks there first.
+if [[ "$DRY_RUN" == "1" ]]; then
+  skip "[dry-run] skipping codex fetch"
+elif [[ -n "$(_ooda_codex_path)" ]]; then
+  ok "codex already at $(_ooda_codex_path)"
+elif curl -sSL --connect-timeout 10 --max-time 60 -o "$OPENOODA_HOME/NORTHSTAR.oot" "https://raw.githubusercontent.com/openOODA/openOODA/main/NORTHSTAR.oot" 2>/dev/null && [[ -s "$OPENOODA_HOME/NORTHSTAR.oot" ]]; then
+  ok "fetched codex to $OPENOODA_HOME/NORTHSTAR.oot"
+else
+  rm -f "$OPENOODA_HOME/NORTHSTAR.oot" 2>/dev/null || true
+  warn "codex fetch failed; MCP wiring gets an empty OODACODEX until network returns (re-run install.sh)"
+fi
+tick
+
 # step 4: shell
 if [[ "$DRY_RUN" == "1" ]]; then skip "[dry-run] skipping shell rc"; else setup_shell_rc; fi
 tick
@@ -1274,11 +1358,11 @@ tick
 wire_harnesses
 # tell users to restart any open harnesses — config is on disk, hosts read it at startup
 if [[ "$DRY_RUN" == "1" ]]; then
-  [[ ${#HARNESS_WIRED[@]} -gt 0 ]] && info "on real install: restart any open harnesses (agy, opencode, grok, muse, gemini, claude, cursor, windsurf, codex, zed, vscode, goose, vibe, grok-build) to pick up new mcp/lsp/blackbox config"
+  [[ ${#HARNESS_WIRED[@]} -gt 0 ]] && info "on real install: restart any open harnesses (agy, opencode, grok, muse, gemini, claude, cursor, windsurf, codex, zed, vscode, goose, vibe, grok-build, mcode) to pick up new mcp/lsp/blackbox config"
 else
   if [[ ${#HARNESS_WIRED[@]} -gt 0 ]]; then
     _running=""
-    for _h in agy opencode grok muse gemini claude cursor windsurf codex zed code goose vibe grok-build; do
+    for _h in agy opencode grok muse gemini claude cursor windsurf codex zed code goose vibe grok-build mcode; do
       if pgrep -x "$_h" >/dev/null 2>&1 || pgrep -f "[/ ]$_h([[:space:]]|\$)" >/dev/null 2>&1 || pgrep -f "$_h" >/dev/null 2>&1; then _running="$_running $_h"; fi
     done
     # dedupe and trim
@@ -1286,7 +1370,7 @@ else
     if [[ -n "$_running" ]]; then
       warn "restart any open harnesses to load new config:$_running (new mcp/lsp/blackbox is on disk, hosts read it at startup)"
     else
-      info "if a harness was open during install (agy, opencode, grok, muse, gemini, claude, cursor, windsurf, codex, zed, vscode, goose, vibe, grok-build), restart it to pick up new mcp/lsp/blackbox config"
+      info "if a harness was open during install (agy, opencode, grok, muse, gemini, claude, cursor, windsurf, codex, zed, vscode, goose, vibe, grok-build, mcode), restart it to pick up new mcp/lsp/blackbox config"
     fi
   fi
 fi

@@ -18,7 +18,7 @@ grep -q "muse" install.sh || { echo "FAIL no muse probe"; exit 1; }
 grep -q "mistral-vibe" install.sh || { echo "FAIL no mistral-vibe stub"; exit 1; }
 grep -q "OODA_COMPILER" install.sh || { echo "FAIL no OODA_COMPILER env"; exit 1; }
 grep -q "OODA_FS_READDIR" install.sh || { echo "FAIL no OODA_FS_READDIR"; exit 1; }
-grep -q "TOTAL=16" install.sh || { echo "FAIL TOTAL not 16 (sysdep/sources/shim steps missing)"; exit 1; }
+grep -q "TOTAL=17" install.sh || { echo "FAIL TOTAL not 17 (sysdep/sources/shim/codex steps missing)"; exit 1; }
 grep -q "ensure_sysdep" install.sh || { echo "FAIL no sysdep ensure"; exit 1; }
 grep -q "OODAR_SRC_DIR" install.sh || { echo "FAIL no oodar sources step"; exit 1; }
 grep -q "/usr/local/bin" install.sh || { echo "FAIL no local-bin shims"; exit 1; }
@@ -70,4 +70,11 @@ for i, ln in enumerate(src.split("\n")):
     raise SystemExit(f"FAIL no WRITEDIR near READDIR line {i + 1}: {ln[:80]}")
 PY
 grep -q "wire_grok_build" install.sh || { echo "FAIL no grok-build wire"; exit 1; }
+grep -q "wire_mcode" install.sh || { echo "FAIL no mcode wire"; exit 1; }
+grep -q "minimax/mcp.json" install.sh || { echo "FAIL no mcode mcp.json path"; exit 1; }
+if grep -q 'BIN_DIR/ooda-mcp-grok\|BIN_DIR/ooda-lsp-grok\|bindir+"/ooda-lsp-grok"' install.sh; then
+  echo "FAIL stale -grok shim command refs (never shipped)"; exit 1
+fi
+grep -q -- '--env OODA_FS_WRITEDIR' install.sh || { echo "FAIL vibe blackbox missing --env WRITEDIR"; exit 1; }
+grep -q "NORTHSTAR.oot" install.sh || { echo "FAIL no codex fetch"; exit 1; }
 echo "PASS install 9.2 fail-closed sha256+blackbox+harnesses+y/n+restart+10more+pro"
