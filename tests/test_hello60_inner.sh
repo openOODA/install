@@ -10,6 +10,7 @@
 # Override INSTALL_CMD to test a local install.sh instead of the URL, e.g.:
 #   INSTALL_CMD="bash /mnt/install.sh" BUDGET=300 ./test_hello60_inner.sh
 set -u
+set -o pipefail
 BUDGET="${BUDGET:-60}"
 INSTALL_CMD="${INSTALL_CMD:-curl -fsSL https://openooda.org/install.sh | bash}"
 START=$(date +%s)
@@ -20,6 +21,7 @@ elapsed() { echo $(( $(date +%s) - START )); }
 say "install start (budget ${BUDGET}s)"
 # shellcheck disable=SC2094
 bash -c "$INSTALL_CMD" 2>&1 | tail -n 4
+[[ "${PIPESTATUS[0]}" -eq 0 ]] || die "installer failed ($(elapsed)s)"
 say "installer done at $(elapsed)s"
 
 # Zero tribal knowledge from here: no sourcing rc files, no env exports,

@@ -363,9 +363,15 @@ install_component() {
   else
     rm -f "$dest.tmp"
     if [[ -x "$dest" ]]; then
-      warn "$key download failed; preserved existing $(basename "$dest")"
-    else
+      warn "$key download failed (http $code); preserved existing $(basename "$dest")"
+    elif [[ "$code" == "404" ]]; then
       skip "$key not yet shipped for $OS-$ARCH"; SKIPPED+=("$key")
+    elif [[ "$key" == "ooda" || "$key" == "oodac" ]]; then
+      err "$key download failed (http $code) with no existing binary; refusing partial install"
+      exit 1
+    else
+      warn "$key download failed (http $code); continuing without $(basename "$dest")"
+      SKIPPED+=("$key")
     fi
   fi
 }
