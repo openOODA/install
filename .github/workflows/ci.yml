@@ -141,4 +141,4 @@ jobs:
 
   auto-release:
     needs: [blackbox-gate]
-    uses: openOODA/openOODA/.github/workflows/auto-release.yml@vgovernance-v1.0.12
+    uses: openOODA/openOODA/.github/workflows/auto-release.yml@v2.10.23
