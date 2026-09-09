@@ -103,11 +103,43 @@ err()  { printf '  %s✗%s %s\n' "$RED"    "$RESET" "$*" >&2; _log "ERR $*"; }
 skip() { printf '  %s⊘%s %s\n' "$YELLOW" "$RESET" "$*"; _log "SKIP $*"; }
 info() { printf '  %s•%s %s\n' "$GRAY"   "$RESET" "$*"; _log "INFO $*"; }
 
+ensure_sysdep() {
+  local cmd="$1" pm_pkg="$2"
+  command -v "$cmd" >/dev/null 2>&1 && { ok "$cmd present"; return 0; }
+  if [[ "$(id -u 2>/dev/null || echo 1)" != "0" ]]; then
+    err "$cmd missing and not root — install it, then re-run (e.g. sudo apt-get install -y $pm_pkg)"
+    return 1
+  fi
+  info "installing $pm_pkg (provides $cmd) ..."
+  if command -v apt-get >/dev/null 2>&1; then
+    apt-get update -qq 2>&1 | tail -n 1
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "$pm_pkg" 2>&1 | tail -n 1
+  elif command -v dnf >/dev/null 2>&1; then
+    dnf install -y -q "$pm_pkg" 2>&1 | tail -n 1
+  elif command -v pacman >/dev/null 2>&1; then
+    pacman -Sy --noconfirm --needed "$pm_pkg" 2>&1 | tail -n 1
+  elif command -v apk >/dev/null 2>&1; then
+    apk add --no-cache "$pm_pkg" 2>&1 | tail -n 1
+  elif command -v brew >/dev/null 2>&1; then
+    brew install "$pm_pkg" 2>&1 | tail -n 1
+  else
+    err "no supported package manager (need $cmd) — install $pm_pkg, then re-run"
+    return 1
+  fi
+  command -v "$cmd" >/dev/null 2>&1 || { err "$cmd still missing after installing $pm_pkg"; return 1; }
+  ok "$cmd installed via $pm_pkg"
+}
+
 pre_flight() {
   local need_fail=0
-  for bin in curl git python3; do
+  for bin in curl; do
     if ! command -v "$bin" >/dev/null 2>&1; then
       err "pre-flight: $bin not found in PATH (required)"; need_fail=1
+    fi
+  done
+  for bin in git python3; do
+    if ! command -v "$bin" >/dev/null 2>&1; then
+      warn "pre-flight: $bin not found (git/gcc are auto-installed when root; python3 only needed for harness wiring)"
     fi
   done
   if ! command -v sha256sum >/dev/null 2>&1 && ! command -v shasum >/dev/null 2>&1; then
@@ -117,7 +149,7 @@ pre_flight() {
   local avail_kb
   avail_kb=$(df -k "$HOME" 2>/dev/null | awk 'NR==2{print $4}' || echo 0)
   if [[ "$avail_kb" -gt 0 && "$avail_kb" -lt 102400 ]]; then
-    err "pre-flight: <100 MB free in $HOME (${avail_kb}KB) — need ~20 MB for 7 bins + std"
+    err "pre-flight: <100 MB free in $HOME (${avail_kb}KB) — need ~60 MB for 7 bins + std + oodar sources"
     need_fail=1
   fi
   # network: quick HEAD to raw.githubusercontent (3s)
@@ -129,7 +161,7 @@ pre_flight() {
     err "pre-flight failed — see $LOG_FILE"
     return 1
   fi
-  info "pre-flight: curl/git/python3/sha256, disk, network OK"
+  info "pre-flight: curl/sha256, disk, network OK"
 }
 
 ask_confirm() {
@@ -1100,8 +1132,12 @@ printf '\n'
 # y/n — verify user wants to install (right after start, skipped for DRY_RUN / non-tty / CI / OPENOODA_YES=1)
 if [[ $DO_UNINSTALL -eq 1 ]]; then
   info "uninstall requested — removing $BIN_DIR and harness wiring"
-  # remove binaries and std (keep OPENOODA_HOME for logs)
-  rm -rf "$BIN_DIR" "$STD_DIR" 2>/dev/null || true
+  # remove /usr/local/bin shims pointing into BIN_DIR first (else they dangle)
+  for s in /usr/local/bin/ooda /usr/local/bin/oodac /usr/local/bin/opm /usr/local/bin/ooda-lsp /usr/local/bin/ooda-mcp /usr/local/bin/blackbox; do
+    if [[ -L "$s" && "$(readlink "$s" 2>/dev/null)" == "$BIN_DIR/"* ]]; then rm -f "$s" 2>/dev/null || true; fi
+  done
+  # remove binaries, std, and build sources (keep OPENOODA_HOME for logs)
+  rm -rf "$BIN_DIR" "$STD_DIR" "$OPENOODA_HOME/oodar" 2>/dev/null || true
   # revert harness mcp wiring from backups
   for f in "$HOME/.config/opencode/opencode.jsonc" "$XDG_CONFIG_HOME/opencode/opencode.jsonc" "$HOME/.cursor/mcp.json" "$HOME/.gemini/config/mcp_config.json" "$XDG_CONFIG_HOME/muse/settings.json" "$HOME/.grok/config.toml" "$HOME/.grok/lsp.json" "$HOME/.claude.json" "$XDG_CONFIG_HOME/claude/config.json" "$XDG_CONFIG_HOME/Claude/claude_desktop_config.json" "$HOME/Library/Application Support/Claude/claude_desktop_config.json" "$HOME/.codeium/windsurf/mcp_config.json" "$HOME/.windsurf/mcp.json" "$XDG_CONFIG_HOME/windsurf/mcp.json" "$XDG_CONFIG_HOME/Code/User/mcp.json" "$XDG_CONFIG_HOME/Code/User/settings.json" "$XDG_CONFIG_HOME/zed/settings.json" "$XDG_CONFIG_HOME/goose/config.yaml" "$HOME/.continue/config.json"; do
     if [[ -f "$f.bak.openooda" ]]; then
@@ -1130,7 +1166,7 @@ fi
 if [[ "$DRY_RUN" != "1" ]]; then
   pre_flight || exit 1
 else
-  info "pre-flight: [dry-run] would check curl/git/python3/sha256, disk, network"
+  info "pre-flight: [dry-run] would check curl/sha256, disk, network"
 fi
 
 # trap: clean temp and log on failure
@@ -1138,33 +1174,78 @@ TMPD=""
 trap 'rc=$?; rm -rf "${TMPD:-}" 2>/dev/null || true; if [[ $rc -ne 0 ]]; then err "install failed (exit $rc) — see $LOG_FILE"; cat "$LOG_FILE" 2>/dev/null | tail -n 50 >&2 || true; fi' EXIT
 trap 'err "interrupted"; exit 130' INT TERM
 
-TOTAL=13; done=0
+TOTAL=16; done=0
 mkdir -p "$BIN_DIR"
 tick() { done=$((done + 1)); overwrite_bar "$done" "$TOTAL"; printf '\n'; }
 
 # step 1: detect
 ok "install dir: $BIN_DIR"; tick
 
+# step 1b: system deps the toolchain shells out to (gcc for builds, git for sources).
+# Auto-installed when root (fresh containers); otherwise a clear error, never tribal.
+if [[ "$DRY_RUN" == "1" ]]; then
+  skip "[dry-run] skipping sysdep ensure (gcc, git)"
+else
+  ensure_sysdep gcc gcc || exit 1
+  ensure_sysdep git git || exit 1
+fi
+tick
+
 # step 2: components
 load_pins
 for key in ooda oodac oodar opm lsp mcp blackbox; do install_component "$key"; tick; done
 
-# step 3: std
+# step 3: std (pinned when versions.toml pins it, else latest)
 if [[ "$DRY_RUN" == "1" ]]; then
   skip "[dry-run] skipping std clone"
 elif [[ -f "$STD_DIR/ANCHOR.oo" ]]; then
   ok "std already at $STD_DIR"
-elif ! command -v git >/dev/null 2>&1; then
-  warn "git not found; install git, then: git clone --depth 1 https://github.com/openOODA/std $STD_DIR"
 else
-  info "cloning openOODA/std ..."
-  (git clone --depth 1 https://github.com/openOODA/std "$STD_DIR" >/dev/null 2>&1) & spinner $!
-  [[ -f "$STD_DIR/ANCHOR.oo" ]] && ok "cloned to $STD_DIR" || warn "clone may have failed; check $STD_DIR"
+  std_branch=()
+  [[ -n "${PINS[std]:-}" ]] && std_branch=(--branch "${PINS[std]}")
+  info "cloning openOODA/std ${PINS[std]:-latest} ..."
+  (git clone --depth 1 "${std_branch[@]}" https://github.com/openOODA/std "$STD_DIR" >/dev/null 2>&1) & spinner $!
+  [[ -f "$STD_DIR/ANCHOR.oo" ]] && ok "cloned to $STD_DIR" || { err "std clone failed; check $STD_DIR"; exit 1; }
+fi
+tick
+
+# step 3b: oodar build sources (oodac compiles oodar.c per build; no sources = no builds)
+OODAR_SRC_DIR="$OPENOODA_HOME/oodar"
+if [[ "$DRY_RUN" == "1" ]]; then
+  skip "[dry-run] skipping oodar sources clone"
+elif [[ -f "$OODAR_SRC_DIR/oodar.c" ]]; then
+  ok "oodar sources already at $OODAR_SRC_DIR"
+else
+  oodar_branch=()
+  [[ -n "${PINS[oodar]:-}" ]] && oodar_branch=(--branch "${PINS[oodar]}")
+  info "cloning openOODA/oodar ${PINS[oodar]:-latest} (build sources) ..."
+  (git clone --depth 1 "${oodar_branch[@]}" https://github.com/openOODA/oodar "$OODAR_SRC_DIR" >/dev/null 2>&1) & spinner $!
+  if [[ -f "$OODAR_SRC_DIR/oodar.c" ]]; then
+    rm -rf "$OODAR_SRC_DIR/.git"
+    ok "cloned to $OODAR_SRC_DIR"
+  else
+    err "oodar sources clone failed; check $OODAR_SRC_DIR"; exit 1
+  fi
 fi
 tick
 
 # step 4: shell
 if [[ "$DRY_RUN" == "1" ]]; then skip "[dry-run] skipping shell rc"; else setup_shell_rc; fi
+tick
+
+# step 4b: /usr/local/bin shims so binaries resolve with zero rc sourcing
+# (fresh non-interactive shells never read ~/.bashrc). Skipped when not writable.
+if [[ "$DRY_RUN" == "1" ]]; then
+  skip "[dry-run] skipping /usr/local/bin shims"
+elif [[ -d /usr/local/bin && -w /usr/local/bin ]]; then
+  for b in "$BIN_DIR"/*; do
+    [[ -x "$b" && -f "$b" ]] || continue
+    ln -sf "$b" "/usr/local/bin/$(basename "$b")" 2>/dev/null || true
+  done
+  ok "shims in /usr/local/bin (no rc sourcing needed)"
+else
+  skip "/usr/local/bin not writable; binaries need rc PATH (restart shell)"
+fi
 tick
 
 # step 5: shims + stale servers (post-install, new binaries are on disk but old PIDs still hold old images)
@@ -1214,6 +1295,7 @@ fi
 [[ $BYTES -gt 0 ]] && info "downloaded:  $(awk -v b="$BYTES" 'BEGIN{printf "%.1f MB", b/1048576}')"
 info "binaries:    $BIN_DIR"
 info "std:         $STD_DIR"
+info "sources:     $OPENOODA_HOME/oodar (oodar build sources)"
 info "time:        ${ELAPSED}s"
 [[ "$DRY_RUN" != "1" ]] && ok "shell rc:   PATH + OODA_STD_ROOT set in ~/.bashrc and ~/.zshrc"
 
