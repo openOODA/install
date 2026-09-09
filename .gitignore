@@ -18,3 +18,6 @@ Thumbs.db
 .env
 .env.*
 .ooda-cache/
+
+# Local audit history (not shipped)
+.agents/
