@@ -3,10 +3,10 @@
 // Logline: How the toolchain lands on a machine. Bash bootstrap for curl | bash portability,
 //          plus openOODA harness_wire.oo for cap-closed mcp/lsp/blackbox wiring.
 //
-// Setup: Pure structural file. VERSION is 0.1.28 and must match the git tag.
+// Setup: Pure structural file. VERSION must match the current git tag (RULES.oot §1.24 exception).
 //
 // Beats:
-//   1. install.sh is the thin bash bootstrap (OS/arch, curl, std clone, shell rc). SHA-256 sidecar required; missing or mismatch refuses.
+//   1. install.sh is the thin bash bootstrap (OS/arch, curl, std clone, shell rc). SHA-256 sidecar required; missing or mismatch refuses. VERSION must match the current git tag (RULES.oot §1.24 exception — install is hand-bumped because curl|bash has no git history at install time).
 //   2. harness_wire.oo is the openOODA cap-closed wire (FsReadCap/FsWriteCap/EnvCap/ProcessCap, ≤256 lines per file)
 //   3. Detects 15 harnesses (antigravity-cli, opencode, muse, grok, gemini, claude-code, claude-desktop, cursor, windsurf, codex, cline, continue, zed, vscode, goose) and merges mcpServers/mcp/context_servers
 //   4. Idempotent, DRY_RUN preview, *.bak.openooda backup, y/n gated in install.sh, restart reminder
