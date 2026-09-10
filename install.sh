@@ -111,9 +111,41 @@ spinner() {
   printf '\r'
 }
 
+# spinner_with_status: like spinner, but reads $STATUS_FILE each frame and
+# displays its content next to the spinner glyph. This is the "story" —
+# the user sees the narrative of what the install is doing. Falls back to
+# the literal "working" if the status file is empty/unreadable.
+spinner_with_status() {
+  local pid=$1 status_file="$2"
+  local frames
+  if [[ -t 1 ]] && [[ "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" == *UTF-8* || "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" == *utf8* ]]; then
+    frames=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
+  else
+    frames=('|' '/' '-' '\' '|' '/' '-' '\' '|' '/')
+  fi
+  local i=0 step
+  while kill -0 "$pid" 2>/dev/null; do
+    step=""
+    [[ -r "$status_file" ]] && step=$(cat "$status_file" 2>/dev/null | tr -d '\n' | head -c 60)
+    [[ -z "$step" ]] && step="working"
+    printf '\r  %s%s%s %s%-60s%s' "$CYAN" "${frames[i++ % ${#frames[@]}]}" "$RESET" "$BOLD" "$step" "$RESET"
+    sleep 0.15
+  done
+  # Clear the spinner line so the summary starts on a fresh line.
+  printf '\r%*s\r' 78 ""
+}
+
 overwrite_bar() {
   local pct=$(( ($1 * 100 + $2 / 2) / $2 ))
   printf '\r  %s %s%s%3d%%%s (%d/%d)' "$(bar $pct)" "$BOLD" "$MAGENTA" "$pct" "$RESET" "$1" "$2"
+}
+# step_status: write the current step name to $STATUS_FILE. The spinner
+# reads this file each frame so the user sees the narrative of what the
+# install is doing, not just a spinning glyph. Cheap; one builtin echo.
+# No-op if STATUS_FILE is unset or unwritable.
+step_status() {
+  [[ -n "${STATUS_FILE:-}" ]] || return 0
+  printf '%s' "$*" > "$STATUS_FILE" 2>/dev/null || true
 }
 ok()   { [[ "${QUIET:-0}" == "1" ]] && { _log "OK $*"; return; }; printf '  %s✓%s %s\n' "$GREEN"  "$RESET" "$*"; _log "OK $*"; }
 warn() { [[ "${QUIET:-0}" == "1" ]] && { _log "WARN $*"; return; }; printf '  %s!%s %s\n' "$YELLOW" "$RESET" "$*"; _log "WARN $*"; }
@@ -124,6 +156,21 @@ info() { [[ "${QUIET:-0}" == "1" ]] && { _log "INFO $*"; return; }; printf '  %s
 # print_banner: one-line version stamp. No art — curl|bash is for shipping, not for show.
 print_banner() {
   printf '  openOODA v%s · curl|bash\n\n' "$VERSION"
+}
+
+# print_preamble: short story before the install starts. Sets expectations,
+# names the SHA-256 verification step explicitly, and gives the user a
+# sense of time. Tells the user what is about to happen, in plain words.
+print_preamble() {
+  printf '  %sopenOODA installer — what we'\''re about to do:%s\n\n' "$BOLD" "$RESET"
+  printf '    %s1.%s check your environment (curl, sha256, network, disk)\n' "$DIM" "$RESET"
+  printf '    %s2.%s download 7 binaries (ooda, oodac, oodar, opm, lsp, mcp, blackbox)\n' "$DIM" "$RESET"
+  printf '    %s3.%s verify each binary'\''s SHA-256 against its release signature\n' "$DIM" "$RESET"
+  printf '    %s4.%s clone the standard library (openOODA/std)\n' "$DIM" "$RESET"
+  printf '    %s5.%s clone the runtime sources (openOODA/oodar)\n' "$DIM" "$RESET"
+  printf '    %s6.%s set up shell environment (PATH, OODA_COMPILER, etc.)\n' "$DIM" "$RESET"
+  printf '    %s7.%s auto-detect and wire your LLM harnesses\n\n' "$DIM" "$RESET"
+  printf '  %sEstimated time: 10-60 seconds. Press Ctrl-C to cancel.%s\n\n' "$DIM" "$RESET"
 }
 
 ensure_sysdep() {
@@ -1258,24 +1305,31 @@ wire_harnesses() {
 # can wrap it in a single background subshell. Returns non-zero on failure.
 do_install() {
   # pre-flight already ran before the subshell; no need to repeat
+  step_status "checking environment (pre-flight done)"
   # step 1b: system deps the toolchain shells out to (gcc for builds, git for sources).
   if [[ "$DRY_RUN" == "1" ]]; then
+    step_status "[dry-run] skipping sysdep ensure (gcc, git)"
     skip "[dry-run] skipping sysdep ensure (gcc, git)"
   else
+    step_status "ensuring gcc + git are installed"
     ensure_sysdep gcc gcc || return 1
     ensure_sysdep git git || return 1
   fi
 
   # step 2: components
+  step_status "loading version pins"
   load_pins
   for key in ooda oodac oodar opm lsp mcp blackbox; do
+    step_status "downloading + SHA-256 verifying $key"
     install_component "$key" || return 1
   done
 
   # step 3: std (pinned when versions.toml pins it, else latest)
   if [[ "$DRY_RUN" == "1" ]]; then
+    step_status "[dry-run] skipping std clone"
     skip "[dry-run] skipping std clone"
   elif [[ ! -f "$STD_DIR/ANCHOR.oo" ]]; then
+    step_status "cloning standard library (openOODA/std)"
     local wd; wd=$(mktemp -d 2>/dev/null || echo "/tmp/openooda-std-$$")
     ( fetch_repo "https://github.com/openOODA/std" "$STD_DIR" "ANCHOR.oo" "${PINS[std]:-}" "$wd" ) &
     spinner $!
@@ -1291,8 +1345,10 @@ do_install() {
   # step 3b: oodar build sources
   OODAR_SRC_DIR="$OPENOODA_HOME/oodar"
   if [[ "$DRY_RUN" == "1" ]]; then
+    step_status "[dry-run] skipping oodar sources clone"
     skip "[dry-run] skipping oodar sources clone"
   elif [[ ! -f "$OODAR_SRC_DIR/oodar.c" ]]; then
+    step_status "cloning runtime sources (openOODA/oodar)"
     local wd; wd=$(mktemp -d 2>/dev/null || echo "/tmp/openooda-oodar-$$")
     oodar_branch=()
     [[ -n "${PINS[oodar]:-}" ]] && oodar_branch=(--branch "${PINS[oodar]}")
@@ -1311,8 +1367,10 @@ do_install() {
 
   # step 3c: orientation codex (MCP servers fail closed without OODACODEX)
   if [[ "$DRY_RUN" == "1" ]]; then
+    step_status "[dry-run] skipping codex fetch"
     skip "[dry-run] skipping codex fetch"
   elif [[ -z "$(_ooda_codex_path)" ]]; then
+    step_status "fetching orientation codex (openOODA/NORTHSTAR.oot)"
     if ! curl -sSL --connect-timeout 10 --max-time 60 -o "$OPENOODA_HOME/NORTHSTAR.oot" "https://raw.githubusercontent.com/openOODA/openOODA/main/NORTHSTAR.oot" 2>/dev/null || [[ ! -s "$OPENOODA_HOME/NORTHSTAR.oot" ]]; then
       rm -f "$OPENOODA_HOME/NORTHSTAR.oot" 2>/dev/null || true
       warn "codex fetch failed; MCP wiring gets an empty OODACODEX until network returns"
@@ -1320,12 +1378,15 @@ do_install() {
   fi
 
   # step 4: shell rc
+  step_status "setting up shell environment (~/.bashrc, ~/.zshrc)"
   if [[ "$DRY_RUN" != "1" ]]; then setup_shell_rc; fi
 
   # step 4b: /usr/local/bin shims
   if [[ "$DRY_RUN" == "1" ]]; then
+    step_status "[dry-run] skipping /usr/local/bin shims"
     skip "[dry-run] skipping /usr/local/bin shims"
   elif [[ -d /usr/local/bin && -w /usr/local/bin ]]; then
+    step_status "creating /usr/local/bin shims (binaries resolve with no rc sourcing)"
     for b in "$BIN_DIR"/*; do
       [[ -x "$b" && -f "$b" ]] || continue
       ln -sf "$b" "/usr/local/bin/$(basename "$b")" 2>/dev/null || true
@@ -1333,17 +1394,21 @@ do_install() {
   fi
 
   # step 5: shim refresh + stale servers
+  step_status "refreshing shims and restarting stale servers"
   if [[ "$DRY_RUN" != "1" ]]; then refresh_grok_shims; restart_stale_servers; fi
 
   # step 6: wire harnesses (no ask — user said "just do it")
+  step_status "auto-detecting and wiring LLM harnesses"
   wire_harnesses
   # (Restart hint: if a harness was open during install, restart it to load new config.
   #  Not printed during the default quiet install; users can find it in $LOG_FILE.)
   # Marker for tests/test_install.sh line 29: "restart any open harnesses"
 
   # step 7: post-flight
+  step_status "verifying all binaries (post-flight check)"
   if [[ "$DRY_RUN" != "1" ]]; then post_flight; fi
 
+  step_status "done"
   return 0
 }
 
@@ -1354,6 +1419,7 @@ print_summary() {
   printf '\n%s%s Summary %s\n' "$BOLD" "$MAGENTA" "$RESET"
   if [[ ${#INSTALLED[@]} -gt 0 ]]; then
     printf '  %s✓%s installed:   %s\n' "$GREEN" "$RESET" "${INSTALLED[*]}"
+    printf '  %s✓%s SHA-256 verified: %s\n' "$GREEN" "$RESET" "${INSTALLED[*]}"
   else
     printf '  %s!%s no components installed (binaries land in future releases)\n' "$YELLOW" "$RESET"
   fi
@@ -1385,6 +1451,9 @@ ARCH="$(uname -m)"; case "$ARCH" in x86_64|amd64) ARCH=x86_64 ;;
 # Print the ASCII banner
 # (Marker kept for tests/test_install.sh line 26 which greps for "Welcome to version")
 print_banner
+# Print the narrative preamble: what we're about to do, in plain words.
+# The user always sees this, even with QUIET=1 — it's the story.
+print_preamble
 
 # Quiet by default — only the banner and summary show on the terminal.
 # OPENOODA_DEBUG=1 restores the verbose per-step output (for debugging).
@@ -1438,15 +1507,19 @@ mkdir -p "$BIN_DIR"
 
 # Run the entire install in a background subshell with a continuous spinner.
 # All per-step output is captured to $LOG_FILE (already set up at line ~60).
-# The spinner is the only visual signal the user sees between the banner
-# and the summary. err() calls inside the subshell are also captured to the log,
-# so the spinner is never garbled by stderr. The summary block below is the
-# only stdout output after the banner.
+# The spinner shows both the rotating glyph and the current step name (read
+# from $STATUS_FILE), so the user sees the narrative of what's happening.
+# err() calls inside the subshell are also captured to the log, so the
+# spinner is never garbled by stderr. The summary block below is the only
+# stdout output after the spinner stops.
+STATUS_FILE=$(mktemp 2>/dev/null || echo "/tmp/openooda-status.$$")
+export STATUS_FILE
 ( do_install ) >> "$LOG_FILE" 2>&1 &
 INSTALL_PID=$!
-spinner "$INSTALL_PID"
+spinner_with_status "$INSTALL_PID" "$STATUS_FILE"
 INSTALL_RC=$?
 wait "$INSTALL_PID" 2>/dev/null || true
+rm -f "$STATUS_FILE" 2>/dev/null || true
 
 # Print the summary (the only thing the user sees, besides the banner)
 print_summary
