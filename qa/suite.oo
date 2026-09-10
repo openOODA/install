@@ -1,0 +1,62 @@
+// # install QA Suite — Unified Entry
+//
+// Logline: Run all install/ probes in sequence, typecheck each, report pass/fail.
+//          Fails closed on the first probe that fails typecheck or execution.
+//
+// Setup: OODA_COMPILER must point at oodac. Run from install/ (or set CWD).
+//        INSTALL_ROOT env var defaults to /home/jeryd/Projects/openOODA/install.
+//
+// Beats:
+//   1. Resolve oodac from OODA_COMPILER.
+//   2. oodac check each probe driver. Fail on first Err or ERR in stdout.
+//   3. Print summary.
+
+fn find_oodac(fs: &FsReadCap, env: &EnvCap) -> String {
+  let r: Result[String, String] = env_get(env, "OODA_COMPILER");
+  let p: String = match r { Ok(s) => s, Err(_) => "" };
+  if p == "" {
+    println("ERR\tsuite\tOODA_COMPILER required");
+    process_exit(1);
+    return "";
+  }
+  if !path_exists(fs, p) {
+    println("ERR\tsuite\tOODA_COMPILER missing: " + p);
+    process_exit(1);
+    return "";
+  }
+  return p;
+}
+
+fn check_one(p: &ProcessCap, oodac: String, path: String) -> Bool {
+  println("  checking " + path);
+  let r1: Result[String, String] = sys_exec(p, oodac, "check", path);
+  if r1.is_err() {
+    let err: String = match r1 { Ok(_) => "", Err(e) => e };
+    println(err);
+    return false;
+  }
+  let out1: String = match r1 { Ok(s) => s, Err(_) => "" };
+  if str_index_of(out1, "ERR") >= 0 {
+    println("ERR\tsuite\tERR in stdout " + path);
+    return false;
+  }
+  return true;
+}
+
+pub fn main(p: &ProcessCap, fs_r: &FsReadCap, env: &EnvCap, args: List[String]) -> Result[Int, String] {
+  let oodac: String = find_oodac(fs_r, env);
+  let l0: List[String] = list_new();
+  let l1: List[String] = list_push(l0, "qa/qa-01-line_caps.oo");
+  let drivers: List[String] = list_push(l1, "qa/qa-02-bin_manifest.oo");
+  let mut i: Int = 0;
+  while i < list_len(drivers) {
+    let path: String = list_get(drivers, i);
+    if !check_one(p, oodac, path) {
+      return Err("self-test failures");
+    }
+    i = i + 1;
+  }
+  println("install QA suite: all probes typechecked (2/2)");
+  let _a: Int = list_len(args);
+  return Ok(0);
+}

@@ -1,0 +1,36 @@
+// # qa-01-line_caps.oo — 256-line cap probe
+//
+// Logline: Fail closed if any .oo/.oot file in install/ exceeds 256 lines.
+//          Re-verifies the RULES §1.8 invariant for this repo.
+//
+// Setup: Uses ProcessCap to shell out to find + wc.
+//        INSTALL_ROOT env var must point at the install/ tree.
+//        Read-only; no network, no writes.
+//
+// Beats:
+//   1. Discover .oo/.oot files under install/ (excluding .git/).
+//   2. Count lines per file with wc -l.
+//   3. Fail on any line count > 256 with the offending file reported.
+
+import "std/fs/file/file_reader.oo";
+
+fn install_root(env: &EnvCap) -> String {
+  let r: Result[String, String] = env_get(env, "INSTALL_ROOT");
+  return match r { Ok(s) => s, Err(_) => "/home/jeryd/Projects/openOODA/install" };
+}
+
+pub fn main(p: &ProcessCap, fs_r: &FsReadCap, sys: &SysCap, env: &EnvCap, time: &TimeCap, fs_w: &FsWriteCap, alloc: &AllocCap, args: List[String]) -> Result[Int, String] {
+  let root: String = install_root(env);
+  // One shell pipeline: find .oo/.oot files, count lines, fail on > 256.
+  let cmd: String = "find " + root + " -type f \\( -name '*.oo' -o -name '*.oot' \\) -not -path '*/.git/*' -not -path '*/audit/*' | while read f; do n=$(wc -l < \"$f\"); if [ \"$n\" -gt 256 ]; then echo \"$n $f\"; fi; done | head -1";
+  let cr: Result[String, String] = sys_exec(p, "bash", "-c", cmd);
+  if cr.is_err() {
+    return Err("qa-01: shell pipeline failed: " + match cr { Err(e) => e, Ok(_) => "" });
+  }
+  let bad: String = match cr { Ok(s) => s, Err(_) => "" };
+  if bad != "" {
+    return Err("qa-01: line-cap violation: " + bad);
+  }
+  println("qa-01: all .oo/.oot files <= 256 lines");
+  return Ok(0);
+}

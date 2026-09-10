@@ -1,0 +1,54 @@
+// # qa-02-bin_manifest.oo — binary manifest probe
+//
+// Logline: Fail closed if install.sh BINARIES map and docs/SURFACE.oot disagree
+//          on the 7 release binaries. Re-verifies the install/ ↔ docs surface
+//          consistency invariant.
+//
+// Setup: Uses ProcessCap to extract + compare the two sources.
+//        INSTALL_ROOT env var must point at the install/ tree.
+//        Read-only; no network, no writes.
+//
+// Beats:
+//   1. Extract binary list from install.sh BINARIES map (sorted, comma-joined).
+//   2. Extract binary list from docs/SURFACE.oot (sorted, comma-joined).
+//   3. Compare — fail with both lists on any mismatch.
+
+import "std/fs/file/file_reader.oo";
+
+fn install_root(env: &EnvCap) -> String {
+  let r: Result[String, String] = env_get(env, "INSTALL_ROOT");
+  return match r { Ok(s) => s, Err(_) => "/home/jeryd/Projects/openOODA/install" };
+}
+
+fn extract_from_sh(p: &ProcessCap, root: String) -> String {
+  // BINARIES=([ooda]=ooda [oodac]=oodac [oodar]=liboodar.a [opm]=opm [lsp]=ooda-lsp [mcp]=ooda-mcp [blackbox]=blackbox)
+  // Strip "[key]=" prefix; sort; comma-join.
+  let cmd: String = "grep -oE '\\[[^]]+\\]=[^ ]+' " + root + "/install.sh | sed 's/\\[[^]]*\\]=//' | sort -u | tr '\\n' ',' | sed 's/,$//'";
+  let r: Result[String, String] = sys_exec(p, "bash", "-c", cmd);
+  return match r { Ok(s) => s, Err(_) => "" };
+}
+
+fn extract_from_oot(p: &ProcessCap, root: String) -> String {
+  // SURFACE.oot: "Binaries: ooda, oodac, liboodar.a, opm, ooda-lsp, ooda-mcp, blackbox."
+  // Stop at the period (don't include the std follow-on sentence).
+  let cmd: String = "grep -oE 'Binaries: [^.]+\\.' " + root + "/docs/SURFACE.oot | sed 's/^Binaries: //;s/\\.$//' | tr ',' '\\n' | sed 's/^ *//;s/ *$//' | grep -v '^$' | sort -u | tr '\\n' ',' | sed 's/,$//'";
+  let r: Result[String, String] = sys_exec(p, "bash", "-c", cmd);
+  return match r { Ok(s) => s, Err(_) => "" };
+}
+
+pub fn main(p: &ProcessCap, fs_r: &FsReadCap, sys: &SysCap, env: &EnvCap, time: &TimeCap, fs_w: &FsWriteCap, alloc: &AllocCap, args: List[String]) -> Result[Int, String] {
+  let root: String = install_root(env);
+  let from_sh: String = extract_from_sh(p, root);
+  let from_oot: String = extract_from_oot(p, root);
+  if from_sh == "" {
+    return Err("qa-02: install.sh BINARIES extraction returned empty (root=" + root + ")");
+  }
+  if from_oot == "" {
+    return Err("qa-02: docs/SURFACE.oot Binaries extraction returned empty (root=" + root + ")");
+  }
+  if from_sh != from_oot {
+    return Err("qa-02: manifest mismatch: install.sh=[" + from_sh + "] SURFACE.oot=[" + from_oot + "]");
+  }
+  println("qa-02: install.sh BINARIES == SURFACE.oot (" + from_sh + ")");
+  return Ok(0);
+}

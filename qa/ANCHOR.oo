@@ -1,0 +1,19 @@
+// # install QA Subsystem Front Door
+//
+// Logline: Re-exports install/ governance probes (line cap, binary manifest).
+//          Fails closed on file law violations, byte-count drift, or manifest mismatch.
+//
+// Setup: For tooling that imports the qa/ namespace. Run probes individually via
+//        `ooda run install/qa/qa-01-line_caps.oo` etc., or invoke the suite
+//        orchestrator via `ooda run install/qa/suite.oo`.
+//        INSTALL_ROOT env var must point at the install/ tree (default
+//        /home/jeryd/Projects/openOODA/install for local dev).
+//
+// Beats:
+//   1. Re-export line-cap probe (qa-01-line_caps.oo).
+//   2. Re-export binary manifest probe (qa-02-bin_manifest.oo).
+//   3. Re-export suite orchestrator (suite.oo).
+
+import "qa-01-line_caps.oo";
+import "qa-02-bin_manifest.oo";
+import "suite.oo";
