@@ -21,6 +21,13 @@ NO_MODIFY_SHELL=0
 DO_UNINSTALL=0
 SELFTEST_SHA=0
 XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+# VERSION: read from the VERSION file next to this script, with a fallback
+# for curl|bash invocations where the script is on stdin (no file).
+# Curl fallback fetches from GitHub (3s timeout) so curl|bash always shows
+# a real version; static fallback "0.1.30" if both fail.
+VERSION="$(cat "$(dirname "${BASH_SOURCE[0]:-$0}")/VERSION" 2>/dev/null || curl -sSL --max-time 3 "https://raw.githubusercontent.com/openOODA/install/main/VERSION" 2>/dev/null || echo "0.1.30")"
+VERSION="$(printf '%s' "$VERSION" | tr -d '\r\n ' | head -c 20)"
+[[ -z "$VERSION" ]] && VERSION="0.1.30"
 
 # --- arg parsing (curl | bash -s -- --help) ---------------------------------
 usage() {
@@ -57,7 +64,11 @@ touch "$LOG_FILE" 2>/dev/null || true
 if [[ -f "$LOG_FILE" ]] && [[ $(wc -c < "$LOG_FILE" 2>/dev/null || echo 0) -gt 1048576 ]]; then
   mv "$LOG_FILE" "$LOG_FILE.old" 2>/dev/null || true
 fi
-exec 3>>"$LOG_FILE" 2>/dev/null || exec 3>/dev/null
+# No `2>/dev/null` on the exec — bash 5.3.9 has a quirk where
+# `exec 3>>file 2>/dev/null` silently kills the script. The fallback
+# `|| exec 3>/dev/null` still catches the failure; the error message
+# (if the log file can't be opened) goes to stderr, which is informative.
+exec 3>>"$LOG_FILE" || exec 3>/dev/null
 _log() { printf '[%s] %s\n' "$(date -Iseconds 2>/dev/null || date)" "$*" >&3 2>/dev/null || true; }
 
 declare -A REPOS=([ooda]=ooda [oodac]=oodac [oodar]=oodar [opm]=opm [lsp]=lsp [mcp]=mcp [blackbox]=blackbox)
@@ -1243,96 +1254,6 @@ wire_harnesses() {
   if [[ ${#HARNESS_WIRED[@]} -gt 0 ]]; then ok "harnesses wired: ${HARNESS_WIRED[*]}"; fi
 }
 
-# --- main --------------------------------------------------------------------
-
-if [[ "$SELFTEST_SHA" -eq 1 ]]; then
-  selftest_sha
-fi
-
-START=$(date +%s)
-
-OS="$(uname -s)"; case "$OS" in Linux) OS=linux ;; Darwin) OS=darwin ;;
-  *) err "unsupported OS: $OS (need linux or darwin)"; exit 1 ;; esac
-ARCH="$(uname -m)"; case "$ARCH" in x86_64|amd64) ARCH=x86_64 ;;
-  aarch64|arm64) ARCH=arm64 ;;
-  *) err "unsupported arch: $ARCH (need x86_64 or arm64)"; exit 1 ;; esac
-
-# Print the ASCII banner
-# (Marker kept for tests/test_install.sh line 26 which greps for "Welcome to version")
-print_banner
-
-# Quiet by default — only the banner and summary show on the terminal.
-# OPENOODA_DEBUG=1 restores the verbose per-step output (for debugging).
-QUIET=1
-export QUIET
-
-# y/n — verify user wants to install (skipped for DRY_RUN / non-tty / CI / OPENOODA_YES=1)
-if [[ $DO_UNINSTALL -eq 1 ]]; then
-  QUIET=0
-  info "uninstall requested — removing $BIN_DIR and harness wiring"
-  # remove /usr/local/bin shims pointing into BIN_DIR first (else they dangle)
-  for s in /usr/local/bin/ooda /usr/local/bin/oodac /usr/local/bin/opm /usr/local/bin/ooda-lsp /usr/local/bin/ooda-mcp /usr/local/bin/blackbox; do
-    if [[ -L "$s" && "$(readlink "$s" 2>/dev/null)" == "$BIN_DIR/"* ]]; then rm -f "$s" 2>/dev/null || true; fi
-  done
-  # remove binaries, std, and build sources (keep OPENOODA_HOME for logs)
-  rm -rf "$BIN_DIR" "$STD_DIR" "$OPENOODA_HOME/oodar" 2>/dev/null || true
-  # revert harness mcp wiring from backups
-  for f in "$HOME/.config/opencode/opencode.jsonc" "$XDG_CONFIG_HOME/opencode/opencode.jsonc" "$HOME/.cursor/mcp.json" "$HOME/.gemini/config/mcp_config.json" "$XDG_CONFIG_HOME/muse/settings.json" "$HOME/.grok/config.toml" "$HOME/.grok/lsp.json" "$HOME/.claude.json" "$XDG_CONFIG_HOME/claude/config.json" "$XDG_CONFIG_HOME/Claude/claude_desktop_config.json" "$HOME/Library/Application Support/Claude/claude_desktop_config.json" "$HOME/.codeium/windsurf/mcp_config.json" "$HOME/.windsurf/mcp.json" "$XDG_CONFIG_HOME/windsurf/mcp.json" "$XDG_CONFIG_HOME/Code/User/mcp.json" "$XDG_CONFIG_HOME/Code/User/settings.json" "$XDG_CONFIG_HOME/zed/settings.json" "$XDG_CONFIG_HOME/goose/config.yaml" "$HOME/.continue/config.json" "$HOME/.vibe/config.toml" "$HOME/.minimax/mcp.json"; do
-    if [[ -f "$f.bak.openooda" ]]; then
-      mv -f "$f.bak.openooda" "$f" 2>/dev/null && info "reverted $f from backup" || true
-    fi
-  done
-  # revert shell rc from backups
-  for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$XDG_CONFIG_HOME/fish/config.fish"; do
-    if [[ -f "$rc.bak.openooda" ]]; then
-      mv -f "$rc.bak.openooda" "$rc" 2>/dev/null && ok "reverted $rc from backup" || true
-    fi
-  done
-  ok "uninstall complete"
-  exit 0
-fi
-# (no install-confirm ask — curl|bash is a deliberate act; pre-flight + SHA + dry-run + --uninstall
-#  are the safety nets. To preview without installing, run with OPENOODA_DRY_RUN=1.)
-# Marker for tests/test_install.sh line 27: "Would you like to install openOODA"
-# (No 2s grace period — the y/n it was guarding against was removed in 61dd1fe.
-#  pre_flight runs immediately after the banner and prints unconditionally, so
-#  there's no silent gap between the banner and the spinner.)
-
-if [[ "$DRY_RUN" != "1" ]]; then
-  pre_flight || exit 1
-else
-  QUIET=0; info "pre-flight: [dry-run] would check curl/sha256, disk, network"
-fi
-
-# trap: clean temp on failure
-TMPD=""
-trap 'rc=$?; rm -rf "${TMPD:-}" 2>/dev/null || true' EXIT
-trap 'err "interrupted"; exit 130' INT TERM
-
-mkdir -p "$BIN_DIR"
-
-# Run the entire install in a background subshell with a continuous spinner.
-# All per-step output is captured to $LOG_FILE (already set up at line ~60).
-# The spinner is the only visual signal the user sees between the banner
-# and the summary. err() calls inside the subshell are also captured to the log,
-# so the spinner is never garbled by stderr. The summary block below is the
-# only stdout output after the banner.
-( do_install ) >> "$LOG_FILE" 2>&1 &
-INSTALL_PID=$!
-spinner "$INSTALL_PID"
-INSTALL_RC=$?
-wait "$INSTALL_PID" 2>/dev/null || true
-
-# Print the summary (the only thing the user sees, besides the banner)
-print_summary
-
-# If install failed, surface the last few log lines
-if [[ $INSTALL_RC -ne 0 ]]; then
-  err "install failed (exit $INSTALL_RC) — last 20 lines of $LOG_FILE:"
-  tail -n 20 "$LOG_FILE" >&2 || true
-  exit 1
-fi
-
 # do_install: the main install flow. Extracted into a function so the spinner
 # can wrap it in a single background subshell. Returns non-zero on failure.
 do_install() {
@@ -1446,6 +1367,96 @@ print_summary() {
   [[ "$DRY_RUN" != "1" ]] && printf '  %s✓%s shell rc:    bash + zsh updated (.bak.openooda backups)\n' "$GREEN" "$RESET"
   printf '\n  %sWelcome to openOODA. https://openooda.org%s\n\n' "$BOLD$MAGENTA" "$RESET"
 }
+
+# --- main --------------------------------------------------------------------
+
+if [[ "$SELFTEST_SHA" -eq 1 ]]; then
+  selftest_sha
+fi
+
+START=$(date +%s)
+
+OS="$(uname -s)"; case "$OS" in Linux) OS=linux ;; Darwin) OS=darwin ;;
+  *) err "unsupported OS: $OS (need linux or darwin)"; exit 1 ;; esac
+ARCH="$(uname -m)"; case "$ARCH" in x86_64|amd64) ARCH=x86_64 ;;
+  aarch64|arm64) ARCH=arm64 ;;
+  *) err "unsupported arch: $ARCH (need x86_64 or arm64)"; exit 1 ;; esac
+
+# Print the ASCII banner
+# (Marker kept for tests/test_install.sh line 26 which greps for "Welcome to version")
+print_banner
+
+# Quiet by default — only the banner and summary show on the terminal.
+# OPENOODA_DEBUG=1 restores the verbose per-step output (for debugging).
+QUIET=1
+export QUIET
+
+# y/n — verify user wants to install (skipped for DRY_RUN / non-tty / CI / OPENOODA_YES=1)
+if [[ $DO_UNINSTALL -eq 1 ]]; then
+  QUIET=0
+  info "uninstall requested — removing $BIN_DIR and harness wiring"
+  # remove /usr/local/bin shims pointing into BIN_DIR first (else they dangle)
+  for s in /usr/local/bin/ooda /usr/local/bin/oodac /usr/local/bin/opm /usr/local/bin/ooda-lsp /usr/local/bin/ooda-mcp /usr/local/bin/blackbox; do
+    if [[ -L "$s" && "$(readlink "$s" 2>/dev/null)" == "$BIN_DIR/"* ]]; then rm -f "$s" 2>/dev/null || true; fi
+  done
+  # remove binaries, std, and build sources (keep OPENOODA_HOME for logs)
+  rm -rf "$BIN_DIR" "$STD_DIR" "$OPENOODA_HOME/oodar" 2>/dev/null || true
+  # revert harness mcp wiring from backups
+  for f in "$HOME/.config/opencode/opencode.jsonc" "$XDG_CONFIG_HOME/opencode/opencode.jsonc" "$HOME/.cursor/mcp.json" "$HOME/.gemini/config/mcp_config.json" "$XDG_CONFIG_HOME/muse/settings.json" "$HOME/.grok/config.toml" "$HOME/.grok/lsp.json" "$HOME/.claude.json" "$XDG_CONFIG_HOME/claude/config.json" "$XDG_CONFIG_HOME/Claude/claude_desktop_config.json" "$HOME/Library/Application Support/Claude/claude_desktop_config.json" "$HOME/.codeium/windsurf/mcp_config.json" "$HOME/.windsurf/mcp.json" "$XDG_CONFIG_HOME/windsurf/mcp.json" "$XDG_CONFIG_HOME/Code/User/mcp.json" "$XDG_CONFIG_HOME/Code/User/settings.json" "$XDG_CONFIG_HOME/zed/settings.json" "$XDG_CONFIG_HOME/goose/config.yaml" "$HOME/.continue/config.json" "$HOME/.vibe/config.toml" "$HOME/.minimax/mcp.json"; do
+    if [[ -f "$f.bak.openooda" ]]; then
+      mv -f "$f.bak.openooda" "$f" 2>/dev/null && info "reverted $f from backup" || true
+    fi
+  done
+  # revert shell rc from backups
+  for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$XDG_CONFIG_HOME/fish/config.fish"; do
+    if [[ -f "$rc.bak.openooda" ]]; then
+      mv -f "$rc.bak.openooda" "$rc" 2>/dev/null && ok "reverted $rc from backup" || true
+    fi
+  done
+  ok "uninstall complete"
+  exit 0
+fi
+# (no install-confirm ask — curl|bash is a deliberate act; pre-flight + SHA + dry-run + --uninstall
+#  are the safety nets. To preview without installing, run with OPENOODA_DRY_RUN=1.)
+# Marker for tests/test_install.sh line 27: "Would you like to install openOODA"
+# (No 2s grace period — the y/n it was guarding against was removed in 61dd1fe.
+#  pre_flight runs immediately after the banner and prints unconditionally, so
+#  there's no silent gap between the banner and the spinner.)
+
+if [[ "$DRY_RUN" != "1" ]]; then
+  pre_flight || exit 1
+else
+  QUIET=0; info "pre-flight: [dry-run] would check curl/sha256, disk, network"
+fi
+
+# trap: clean temp on failure
+TMPD=""
+trap 'rc=$?; rm -rf "${TMPD:-}" 2>/dev/null || true' EXIT
+trap 'err "interrupted"; exit 130' INT TERM
+
+mkdir -p "$BIN_DIR"
+
+# Run the entire install in a background subshell with a continuous spinner.
+# All per-step output is captured to $LOG_FILE (already set up at line ~60).
+# The spinner is the only visual signal the user sees between the banner
+# and the summary. err() calls inside the subshell are also captured to the log,
+# so the spinner is never garbled by stderr. The summary block below is the
+# only stdout output after the banner.
+( do_install ) >> "$LOG_FILE" 2>&1 &
+INSTALL_PID=$!
+spinner "$INSTALL_PID"
+INSTALL_RC=$?
+wait "$INSTALL_PID" 2>/dev/null || true
+
+# Print the summary (the only thing the user sees, besides the banner)
+print_summary
+
+# If install failed, surface the last few log lines
+if [[ $INSTALL_RC -ne 0 ]]; then
+  err "install failed (exit $INSTALL_RC) — last 20 lines of $LOG_FILE:"
+  tail -n 20 "$LOG_FILE" >&2 || true
+  exit 1
+fi
 
 # Marker kept for tests/test_install.sh line 21 which greps for this literal.
 TOTAL=17
