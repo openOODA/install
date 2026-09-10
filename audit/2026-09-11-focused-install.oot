@@ -1,0 +1,116 @@
+// # 2026-09-11 Focused Audit — install/
+//
+// Logline: Focused audit of the installer repo on 2026-09-11.
+//          install.sh is the curl|bash front door — audited for
+//          fail-closed verification behavior. The Binary Parity Law
+//          (RULES §1.10 uncommitted amendment) is tested against the
+//          real host state and found violated via PATH shadowing.
+//
+// Setup:  Authored 2026-09-11 by Devin. Parent sweep:
+//         openOODA/docs/audit-history/2026-09-11-polyrepo-sweep.oot.
+//         Prior reports: audit/2026-09-10-focused-install.oot,
+//         audit/2026-09-10-mcp-lsp-blackbox-usability.oot.
+//
+// Beats:
+//   1. Per-pass verdict.
+//   2. install.sh verification-path analysis (the trust boundary).
+//   3. Host binary-parity measurement.
+//   4. Findings by severity.
+
+// ## 1. Per-pass verdict
+
+// | Pass | Verdict | Note |
+// |------|---------|------|
+// | 0 Pre-flight | WIP | 1 dirty (this audit dir). Last commit 020693a 2026-09-11 — removed LLM-harness scanning/wiring. |
+// | 1 File law | PASS | All 7 .sh match §1.14 carve-outs (install.sh, */profile.d.sh, tests/test_*.sh, tests/*_inner.sh). harness_wire.oo loose but headed. 3 ANCHOR.oo ALLCAPS. |
+// | 2 Verification logic | PASS | Fail-closed on every checked path (below). |
+// | 3 Host parity | **FAIL** | PATH shadow: stale ~/.local/bin toolchain outranks ~/.openooda/bin. |
+
+// ## 2. install.sh verification paths (read, then traced)
+
+// fetch_and_verify (install.sh:399-427) runs in a background subshell
+// and records status files (dl/sha/vrc/vhash/size); it always
+// `return 0` — verdict lives in the files, not the exit code.
+// install_component (:468-540) branches on them:
+
+// | Condition | Behavior | Verdict |
+// |-----------|----------|---------|
+// | vrc==0 && -x dest | install, "SHA-256 verified" | PASS |
+// | dl != 200, existing dest | preserves prior binary, warns | acceptable |
+// | dl == 404 | "not yet shipped" skip | acceptable |
+// | dl != 200, no binary, core key | exit 1 — refuses partial install | fail-closed |
+// | sha missing / != 200 | "missing SHA-256 sidecar; refuse unsigned install", return 1 | fail-closed |
+// | expected != actual | "checksum mismatch", return 1 | fail-closed |
+// | no sha256sum/shasum | pre-flight need_fail=1 (:257-258) | fail-closed |
+
+// Residual: sidecar travels the same HTTPS release channel as the
+// binary (hash-of-the-same-origin, not an independent trust root).
+// catalog/ already has index.minisig + registry.pub — a minisign
+// sidecar would harden this; NOTE, not a violation of current law.
+
+// ## 3. Host binary-parity measurement — two runs (installer re-ran)
+
+//   Run A (~05:40):
+//     dist/ooda            sha 9a922dd5…
+//     ~/.openooda/bin/ooda sha 41f2d583… (release download + sidecar)
+//     ~/.local/bin/ooda    sha 23e5c3f0… 596,856 B, 2026-09-09
+//
+//   Run B (~05:50, after user re-ran the installer):
+//     dist/ooda            sha bce47457… == ~/.openooda/bin/ooda
+//                          — dist-vs-installed parity now HOLDS.
+//     ~/.local/bin/ooda    sha 23e5c3f0… UNCHANGED — still shadowing.
+//     ooda.tmp.sha256      still records 41f2d583… — the installed
+//                          file is now a local build, so the sidecar
+//                          no longer describes it (provenance drift).
+
+// PATH: ~/.local/bin (pos 1) precedes ~/.openooda/bin (pos 3);
+// `which -a ooda` still resolves ~/.local/bin/ooda FIRST. Same stale
+// set for oodac, ooda-lsp, ooda-mcp, blackbox, opm + oodac.bak (all
+// 2026-09-09). Re-install refreshed ~/.openooda/bin but never touched
+// the shadow set — the migration gap is confirmed reproducible:
+// install.sh:551-553 repairs OODA_COMPILER rc references; nothing
+// removes the old binaries.
+
+// Live-mutation note: ~/.openooda/bin/ooda was rewritten twice during
+// the audit window (04:59→05:37→05:44) — concurrent install/build
+// activity while auditing (§1.6 coordination).
+
+// ## 4. Findings by severity
+
+// CRITICAL (1):
+//   C1. Binary Parity Law violated on-host (RULES §1.10 as amended,
+//       §1.21): post-reinstall, dist==installed holds for ooda, but
+//       the stale 2026-09-09 ~/.local/bin toolchain (6 tools + bak)
+//       still shadows the certified set on PATH. The law's intent —
+//       "the bit-identical binary installed for the user" is the one
+//       executed — fails while the shadow exists. Supply-chain
+//       property: the certified build is not the one PATH serves.
+
+// MINOR (2):
+//   m1. install.sh has no stale-shadow migration: it repairs
+//       OODA_COMPILER rc lines (:551-553) but never removes the old
+//       ~/.local/bin/ooda* binaries it once installed there.
+//   m2. Provenance drift: after a local-build overwrite of
+//       ~/.openooda/bin/ooda (05:44), ooda.tmp.sha256 still records
+//       the release hash — the record and the file diverge silently.
+
+// RESOLVED (post-review fix, this session):
+//   m3 → FIXED. harness_wire.oo deleted (dead code from the removed
+//       harness-wiring feature, commit 020693a; latent defects noted:
+//       whole-file JSON "overwrite" merge + vacuous ProcessCap stubs).
+//       ANCHOR.oo and README.md synced to toolchain-only reality.
+//       Remainder for mcode (active install.sh lane): the stale
+//       "python3 only needed for harness wiring" comment at
+//       install.sh:254 — python3 is actually still used at :186 for
+//       release-tag JSON parse.
+
+// ## 5. Recommended repairs (install lane)
+
+// 1. Add a shadow-detection step to install.sh: enumerate every
+//    `which -a <tool>` and warn/fail when a non-$BIN_DIR copy
+//    outranks the installed one (C1/m1).
+// 2. Decide the single bin dir; either symlink the other location
+//    or delete stale copies with user consent (C1).
+// 3. Consider a minisign sidecar channel (registry.pub exists in
+//    catalog/) so verification has a root independent of the
+//    release origin (residual hardening).

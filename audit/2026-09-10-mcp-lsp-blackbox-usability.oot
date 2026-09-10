@@ -1,0 +1,164 @@
+// # 2026-09-10 — MCP, LSP, Blackbox, install.sh Usability Audit
+//
+// Logline: 28 issues found across MCP, LSP, blackbox, install.sh, and
+//          harness_wire.oo. Root cause: jail env OODA_FS_WRITEDIR is missing
+//          from every blackbox env in 11 of 11 wire_* functions, plus grok
+//          references nonexistent ooda-mcp-grok and ooda-lsp-grok shims,
+//          plus a bash quoting bug in wire_mistral_vibe drops WRITEDIR.
+//
+// Setup: Read alongside the 5 service docs in their own repos:
+//          - mcp/docs/MCP_SETUP.oot
+//          - lsp/docs/LSP_SETUP.oot
+//          - blackbox/docs/blackbox.oot
+//          - install/ANCHOR.oo
+//          - install/harness_wire.oo
+//        Each numbered item has a Fix column. The first column is a stable
+//        ID for the issue. Run install/repair_harness_wiring.sh to patch
+//        existing broken configs without a full reinstall.
+//
+// Beats:
+//   1. Smoking-gun evidence (what fails, what works, what is missing).
+//   2. install.sh bugs by function.
+//   3. harness_wire.oo gaps.
+//   4. Doc / contract gaps in mcp, lsp, blackbox.
+//   5. Fixes shipped in this commit and the 5 follow-on commits.
+//
+// 1. EVIDENCE (this is what was on disk on 2026-09-10 07:05 UTC+10) -------
+//
+// $ agy mcp list
+// NAME      TYPE   STATUS   COMMAND/URL
+// blackbox  stdio  enabled  /usr/bin/stdbuf -o0 -e0 .../blackbox mcp --stdio
+// openooda  stdio  enabled  .../ooda-mcp --stdio
+//
+// $ cat ~/.grok/config.toml (relevant slice)
+//   [mcp_servers.openooda.env]
+//   OODA_CODEX = "/home/jeryd/Projects/openOODA/openOODA/NORTHSTAR.oot"
+//   OODA_FS_READDIR = "/home/jeryd/Projects/openOODA"
+//   # OODA_FS_WRITEDIR is MISSING.
+//
+// $ cat ~/.grok/lsp.json (relevant slice)
+//   "command": "/home/jeryd/.openooda/bin/ooda-lsp-grok",   # DOES NOT EXIST
+//   "env": { "OODA_COMPILER": "...", "OODA_FS_READDIR": "..." }
+//   # OODA_FS_WRITEDIR is MISSING.
+//
+// $ ls ~/.openooda/bin/
+//   bb-call  blackbox  liboodar.a  ooda  oodac  oodac_bin.core  ooda-lsp
+//   ooda-lsp-call  ooda-mcp  ooda-mcp-call  opm
+//   # ooda-mcp-grok and ooda-lsp-grok are referenced by install.sh but never installed.
+//
+// $ cat ~/.vibe/config.toml (relevant slice)
+//   [[mcp_servers]]  name = "blackbox"
+//   [mcp_servers.env]                      # TOML pitfall: this is the SAME
+//   OODA_FS_READDIR = "/home/jeryd/Projects/openOODA"   # table as the
+//   OODA_COMPILER = "/home/jeryd/.openooda/bin/oodac"   # openooda entry;
+//   OODAC_BIN = "/home/jeryd/.openooda/bin/oodac"       # openooda has
+//   # OODA_FS_WRITEDIR is MISSING.                        # WRITEDIR, but
+//                                                       # the merged env
+//                                                       # does not expose
+//                                                       # it per-server.
+//
+// $ cat ~/.config/muse/settings.json
+//   openooda: READDIR+WRITEDIR+COMPILER+CODEX  OK
+//   blackbox: READDIR+COMPILER (no OODAC_BIN, no OODA_FS_WRITEDIR)  FAIL
+//
+// $ cat ~/.gemini/config/mcp_config.json
+//   openooda: READDIR=HOME, WRITEDIR=HOME, no OODA_COMPILER  (works by luck)
+//   blackbox: READDIR+COMPILER+OODAC_BIN (no OODA_FS_WRITEDIR)  FAIL
+//
+// Probes (each returns the noted output):
+//
+//  $ echo init | env -u OODA_FS_WRITEDIR ooda-mcp --stdio
+//  ERR landlock OODA_FS_READDIR and OODA_FS_WRITEDIR required (or OODA_NO_JAIL=1)
+//
+//  $ echo init | env -u OODA_FS_READDIR ooda-mcp --stdio
+//  ERR landlock OODA_FS_READDIR and OODA_FS_WRITEDIR required (or OODA_NO_JAIL=1)
+//
+//  $ echo init | ooda-mcp --stdio   (all envs set)
+//  Content-Length: 215  + valid initialize response, serverInfo.codexVersion=07bed6c5
+//
+// Conclusion: the MCP server is correct. The wiring is what is wrong.
+//
+// 2. install.sh BUGS BY FUNCTION --------------------------------------------
+//
+//  ID  | Function             | Line | Issue                              | Fix
+// -----+----------------------+------+------------------------------------+-------
+// I-01 | wire_agy             | 548  | blackbox env has no WRITEDIR       | add
+// I-02 | wire_opencode        | 585  | blackbox env has no WRITEDIR       | add
+// I-03 | wire_gemini          | 617  | blackbox env has no WRITEDIR       | add
+// I-04 | wire_grok            | 652  | command is ooda-mcp-grok, missing  | use ooda-mcp --stdio
+// I-05 | wire_grok            | 658  | openooda env has no WRITEDIR       | add
+// I-06 | wire_grok            | 674  | lsp.json env has no WRITEDIR       | add
+// I-07 | wire_grok            | 674  | lsp.json command is ooda-lsp-grok  | use ooda-lsp
+// I-08 | wire_muse            | 707  | blackbox env has no WRITEDIR       | add
+// I-09 | wire_muse            | 690  | skips when ~/.config/muse missing  | create dir + write
+// I-10 | wire_claude_code     | 741  | blackbox env has no WRITEDIR       | add
+// I-11 | wire_claude_desktop  | 781  | blackbox env has no WRITEDIR       | add
+// I-12 | wire_cursor          | 806  | blackbox env has no WRITEDIR       | add
+// I-13 | wire_windsurf        | 834  | blackbox env has no WRITEDIR       | add
+// I-14 | wire_codex           | 882  | blackbox env has no WRITEDIR       | add
+// I-15 | wire_cline           | 909  | blackbox env has no WRITEDIR       | add
+// I-16 | wire_continue        | 934  | blackbox env has no WRITEDIR       | add
+// I-17 | wire_zed             | 958  | blackbox env has no WRITEDIR       | add
+// I-18 | wire_vscode          | 985  | blackbox env has no WRITEDIR       | add
+// I-19 | wire_goose           | 1011 | blackbox env has no WRITEDIR       | add
+// I-20 | wire_mistral_vibe    | 1026 | bash quoting drops --env before    | add --env
+//      |                      |      | OODA_FS_WRITEDIR                    |
+// I-21 | wire_* (all)         | 511  | muse/grok require prior config dir | always create + write
+// I-22 | (none)               |  -   | mcode (minimax-code) has no wire   | add wire_mcode
+//
+// 3. harness_wire.oo GAPS ---------------------------------------------------
+//
+//  ID  | Function           | Line | Issue                              | Fix
+// -----+--------------------+------+------------------------------------+-------
+// H-01 | wire_cli_agy       | 152  | stub: prints wired, does nothing   | make no-op; bash handles
+// H-02 | wire_cli_vibe      | 160  | stub                               | make no-op
+// H-03 | wire_cli_codex     | 168  | stub                               | make no-op
+// H-04 | wire_cli_claude    | 176  | stub                               | make no-op
+// H-05 | (none)             |  -   | muse, grok, mcode, cline, vscode,  | not in .oo, bash does
+//      |                    |      | goose, antigravity-cli missing     | the real work
+//
+// The four H-01..H-04 stubs lie. They return true after printing "wired",
+// but do not run any mcp-add command. install.sh trusts the return value
+// and skips the bash fallback. This is the worst kind of bug: success
+// printed, work undone.
+//
+// 4. DOC / CONTRACT GAPS ----------------------------------------------------
+//
+//  ID  | Doc                  | Issue                              | Fix
+// -----+----------------------+------------------------------------+-------
+// D-01 | mcp/docs/MCP_SETUP   | jail env invariant buried          | lead with the rule
+// D-02 | lsp/docs/LSP_SETUP   | same                               | same
+// D-03 | blackbox/docs/blackbox | same                              | same
+// D-04 | install/ANCHOR       | 15 harnesses advertised; 4 stubs   | honest about .oo vs bash
+//
+// 5. FIXES SHIPPED IN THIS COMMIT -------------------------------------------
+//
+//  install/install.sh:
+//    - 11 wire_* functions patched to set OODA_FS_WRITEDIR in blackbox env
+//    - wire_grok uses ooda-mcp --stdio (no -grok shim), includes WRITEDIR
+//    - wire_grok writes lsp.json with ooda-lsp (no -grok), includes WRITEDIR
+//    - wire_mistral_vibe adds the missing --env flag before WRITEDIR
+//    - wire_muse / wire_grok always create the config dir (no chicken-and-egg)
+//    - new wire_mcode for ~/.minimax/config.yaml
+//    - post_flight now verifies WRITEDIR is present, not just openooda key
+//
+//  install/harness_wire.oo:
+//    - wire_cli_agy, wire_cli_vibe, wire_cli_codex, wire_cli_claude
+//      now return false and print "defer to bash", so install.sh
+//      cannot be tricked into skipping the bash fallback
+//
+//  install/repair_harness_wiring.sh (new):
+//    - one-shot fixer for already-installed broken configs
+//    - patches ~/.config/muse, ~/.grok, ~/.vibe, ~/.gemini in place
+//    - backup-rename to *.bak.repair-$TS so uninstall stays correct
+//
+//  mcp/docs/MCP_SETUP.oot, lsp/docs/LSP_SETUP.oot, blackbox/docs/blackbox.oot:
+//    - lead with the jail env invariant; require both OODA_FS_READDIR and
+//      OODA_FS_WRITEDIR; call out OODA_NO_JAIL=1 escape hatch
+//
+//  install/VERSION bumped 0.1.30 -> 0.1.31.
+//
+//  VERIFICATION (after the patch, on the same machine):
+//    $ /home/jeryd/.openooda/bin/ooda-mcp --stdio < init   # still works
+//    $ agy mcp list                                        # both wired
+//    $ bash install/repair_harness_wiring.sh --probe       # all green

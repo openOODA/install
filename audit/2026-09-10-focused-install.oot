@@ -1,0 +1,233 @@
+// # 2026-09-10 — install/ Focused Audit
+//
+// Logline: install/ is clean against RULES §1.14 (file law), §1.8 (256-line
+//          cap), §1.11 (4-element header), and §1.24 (VERSION SSoT). One
+//          real drift remains: the harness count is reported as 5 different
+//          numbers across 4 files (20 / 18 / 15 / 12 / 10), so the contract
+//          between the curl|bash path and the cap-closed .oo path is fuzzy.
+//
+// Setup: Pin v0.1.30-9-g0795f78 (HEAD 0795f78 2026-09-10 08:22 +1000,
+//        tag v0.1.30, VERSION 0.1.30, INDEX.oot:36 says v0.1.30 — all
+//        clean). Read with install/ANCHOR.oo, install/harness_wire.oo,
+//        install/install.sh (1426 lines, .sh carve-out RULES §1.14),
+//        and openOODA/RULES.oot §1.14 amendment 2026-09-10.
+//        Prior 2026-09-10 mcp-lsp-blackbox-usability audit (untracked,
+//        audit/2026-09-10-mcp-lsp-blackbox-usability.oot) already closed
+//        28 wire-function bugs; this audit covers the install/ repo only.
+//
+// Beats:
+//   1. Severity summary.
+//   2. M1: 5-way harness count drift.
+//   3. M2: install.sh hybrid path is documented in README only, not in ANCHOR.oo.
+//   4. M3: install.sh trusts .oo for 10 harnesses; .oo only wires 8 of them.
+//   5. m1-m3: minor drift (changelog, README line count, no qa/ dir).
+//   6. N1-N5: governance compliance (all PASS).
+//   7. Out-of-lane (none — install/ has no cross-repo handoffs this audit).
+
+// 1. SEVERITY SUMMARY --------------------------------------------------
+//
+// | Sev      | Count | Findings                                          |
+// |----------|-------|---------------------------------------------------|
+// | CRITICAL | 0     | (none)                                            |
+// | MAJOR    | 3     | M1 (5-way count drift), M2 (hybrid undocumented), |
+// |          |       | M3 (.oo trust-list 2 too wide)                    |
+// | MINOR    | 3     | m1 (changelog 0.1.0), m2 (no qa/), m3 (README 172) |
+// | NOTE     | 5     | N1 (4-element header), N2 (file law),             |
+// |          |       | N3 (256-line cap), N4 (VERSION), N5 (detect=20)   |
+//
+// 2. M1: 5-WAY HARNESS COUNT DRIFT ------------------------------------
+//
+// One concept ("how many harnesses does install wire?") has 5 different
+// numbers in 4 files. This is the contract gap.
+//
+// | Source                                  | Count | What it covers                       |
+// |-----------------------------------------|-------|--------------------------------------|
+// | install/ANCHOR.oo:11 Beat 3             |  20   | detect list (matches install.sh)     |
+// | install/install.sh detect_harnesses()   |  20   | antigravity-cli, opencode, muse,     |
+// |   (lines 511-532)                       |       | grok, gemini, claude-code,            |
+// |                                         |       | claude-desktop, cursor, windsurf,    |
+// |                                         |       | codex, cline, continue, zed, vscode,  |
+// |                                         |       | goose, mistral-vibe, grok-build,     |
+// |                                         |       | devin, charm, mcode                  |
+// | install/install.sh wire_* funcs         |  18   | all of above MINUS devin, charm      |
+// |   (lines 543-1115)                      |       | (detected, never wired)              |
+// | install/harness_wire.oo:3 Logline       |  15   | "15 LLM harnesses" (WRONG — 12 wire) |
+// | install/harness_wire.oo actual          |  12   | opencode, gemini, cursor, zed,       |
+// |   (12 wire funcs, lines 76-184 + main)  |       | claude-desktop, windsurf, vscode,    |
+// |                                         |       | continue (8 file), plus agy, vibe,   |
+// |                                         |       | codex, claude (4 ProcessCap stubs)   |
+// | install/install.sh:1144 case list       |  10   | trusts .oo for: opencode, gemini,   |
+// |   (.oo-wired assumption)                |       | cursor, windsurf, zed, vscode,       |
+// |                                         |       | goose, claude-desktop, cline,        |
+// |                                         |       | continue — see M3                     |
+//
+// Truth:
+//   detect = 20 (install.sh is the only canonical source)
+//   wire   = 18 in bash + 12 in .oo (overlapping, not additive)
+//   The "20" claim in ANCHOR.oo Beat 3 is the detect list, not the wire list.
+//
+// Root cause: the 4 documents (ANCHOR.oo, harness_wire.oo Logline, .oo
+// reality, install.sh case) were written at different times during the
+// 2026-09-10 hybrid migration (commits 53e6cee → d737843 → ccc13ed → 4a03bf4).
+// Each was locally correct at the time but the consolidation was never
+// made canonical.
+//
+// Fix: ANCHOR.oo Beat 3 should say "detects 20, wires 18 in bash + 12 in
+// .oo (8 file + 4 ProcessCap stubs); devin and charm are detected but
+// not yet wired." harness_wire.oo Logline should drop "15" in favor of
+// "12 (8 file merges + 4 ProcessCap CLI stubs)". This is a doc-only fix.
+
+// 3. M2: HYBRID PATH DOCUMENTED IN README, NOT IN ANCHOR.oo -----------
+//
+// install.sh:1133-1156 implements a "harness_wire.oo tried first, bash
+// merges as fallback" hybrid. The fallback fires when (a) ooda+oodac
+// are not installed (curl|bash default), (b) harness_wire.oo is not on
+// disk, or (c) `ooda run harness_wire.oo` fails. install.sh:1149 logs
+// "harness_wire.oo failed — fallback to bash".
+//
+// README.md:40 documents the hybrid:
+//   cap-closed `harness_wire.oo` (172 lines) tried first (silent unless
+//   `OPENOODA_DEBUG=1`, falls back to bash for `curl | bash`).
+//
+// But install/ANCHOR.oo Beat 5 says only:
+//   "No python fallback in .oo path."
+//
+// The Beat is technically true (the .oo file has no python), but the
+// install.sh bash path has 20+ python3 heredoc invocations (lines 563,
+// 605, 675, 698, 737, 771, 791, 812, 837, 865, 940, 965, 989, 1015, 1040,
+// 1097) and is the only path that runs at first install. So a reader of
+// ANCHOR.oo alone concludes "no python anywhere" and is wrong.
+//
+// Fix: add Beat 6 to ANCHOR.oo: "Hybrid wiring: install.sh runs bash
+// + python3 heredoc merges for 18 harnesses (default, curl|bash path).
+// If ooda+oodac are on PATH, install.sh also runs harness_wire.oo for
+// 12 of them; on failure, falls back to bash. OPENOODA_DEBUG=1 enables
+// .oo-path logging."
+
+// 4. M3: install.sh TRUST LIST OVER-CLAIMS .oo COVERAGE BY 2 ---------
+//
+// install.sh:1144 case statement marks these 10 as wired-by-.oo when
+// `ooda run harness_wire.oo` returns 0:
+//
+//   opencode, gemini, cursor, windsurf, zed, vscode,
+//   goose, claude-desktop, cline, continue
+//
+// harness_wire.oo actually wires only 8 of these via file merge:
+//   opencode (line 103), gemini (119), cursor (127), zed (135),
+//   claude-desktop (inline c1 at line 203), windsurf (inline c2 at 205),
+//   vscode (inline c3 at 207), continue (inline c4 at 209).
+//
+// goose and cline are NOT wired by harness_wire.oo — there is no
+// wire_goose or wire_cline function in the file. But because install.sh
+// adds them to HARNESS_WIRED and the bash fallback at line 1157-1158
+// skips them ("already wired"), the user gets silent no-ops for
+// goose and cline on the .oo path.
+//
+// Reproduction path:
+//   1. install ooda + oodac to ~/.openooda/bin/.
+//   2. install goose and cline to their well-known paths.
+//   3. set OPENOODA_DEBUG=1; run install.sh.
+//   4. oodac harness_wire.oo → returns 0 (12 funcs).
+//   5. install.sh:1144 marks goose, cline as wired.
+//   6. install.sh:1157 case statement skips bash wire.
+//   7. Result: ~/.config/goose/config.yaml + ~/.config/Code/.../cline_*
+//      are NOT actually wired. Silent.
+//
+// Fix: trim install.sh:1144 case list to the 8 the .oo actually wires:
+//   opencode|gemini|cursor|windsurf|zed|vscode|claude-desktop|continue
+// And the corresponding skip list at install.sh:1157-1158.
+//
+// Alternative: add wire_goose + wire_cline to harness_wire.oo and bring
+// the .oo count to 14. That's the cleaner long-term fix but adds ~40
+// lines (still under 256-line cap, with current 214 + 42 = 256). This
+// audit recommends the trim — it's smaller and matches the truth.
+
+// 5. MINOR DRIFT ------------------------------------------------------
+//
+// m1. install/apt/debian/changelog:1 says `openooda (0.1.0-1) unstable`
+//     while VERSION:1 is `0.1.30`. The debian changelog is stale by
+//     0.1.30 versions. Not user-facing (debian/ is shipped via apt/
+//     Makefile, not as a release), but the drift is real. Fix: bump
+//     to `0.1.30-1 unstable` (debian policy: only the maintainer
+//     cuts a new upstream release; 0.1.30-1 is a packaging-only bump).
+//
+// m2. install/ has 0 qa/ files. The qa/ convention is `qa-NN-name.oo`
+//     with `qa/ANCHOR.oo`. Sibling repos: blackbox/qa/ (25 + 1 ANCHOR),
+//     lsp/qa/ (36), mcp/qa/ (19), opm/qa/ (18), catalog/qa/ (5),
+//     ooda/qa/ (14). The user's 16:58 directive was "main qa is in
+//     std, each repo how its own qa for repo specific stuff". tests/
+//     (test_install.sh 80 lines, test_hello60.sh 65, test_hello60_inner.sh
+//     56, hello_fixture.oo 13) is the install/ test surface but is not
+//     in the qa/ naming convention. Fix would be `mkdir -p qa` +
+//     `qa/ANCHOR.oo` + 1-2 `qa-NN-install_smoke.oo` probes. This is
+//     new product code (per session invariant "process work, not new
+//     product code") — flag, do not patch without user direction.
+//
+// m3. install/README.md:40 says `harness_wire.oo (172 lines)`. Actual
+//     is 214 lines (line count: 214). Drift of 42 lines / 24%. Likely
+//     from when the file had 172 lines (before 4a03bf4 "every server
+//     env sets READDIR+WRITEDIR" added 6 env vars per wire function).
+//     Fix: README.md:40 → `harness_wire.oo (214 lines)`.
+//
+// m4. install.sh:435 still mentions `ooda-mcp-grok|ooda-lsp-grok` in
+//     a pgrep — these binaries never shipped (the grok shim was
+//     removed by 0795f78 "grok shims, vibe env, gemini compiler,
+//     mcode, codex fetch"). The grep is a kill-target for any leaked
+//     process, not a producer, so it's a defensive belt-and-suspenders
+//     that does no harm but never matches. Out of scope for this audit
+//     (would need a behavioral run to verify the .oo path is now safe
+//     without the pgrep); noted here for completeness.
+
+// 6. GOVERNANCE COMPLIANCE (all PASS) ----------------------------------
+//
+// N1. 4-element Academy header. All 5 .oo/.oot files comply:
+//     install/ANCHOR.oo:1-14 (4 elements: title, logline, setup, beats)
+//     install/docs/ANCHOR.oo:1-13 (4 elements + import)
+//     install/docs/SURFACE.oot:1-34 (4 elements — openOODA style)
+//     install/harness_wire.oo:1-15 (4 elements + imports)
+//     install/tests/hello_fixture.oo:1-8 (4 elements)
+//     4-element header is at 100% — unchanged from prior audits.
+//
+// N2. File law (RULES §1.14 + amendment 2026-09-10). All .sh files are
+//     explicit carve-outs:
+//       install.sh                            (user-facing, RULES §1.14)
+//       tests/test_install.sh                 (tests/test_*.sh, §1.14)
+//       tests/test_hello60.sh                 (tests/test_*.sh, §1.14)
+//       tests/test_hello60_inner.sh           (tests/*_inner.sh, §1.14)
+//       apt/debian/profile.d.sh               (profile.d.sh, §1.14)
+//       dnf/profile.d.sh                      (profile.d.sh, §1.14)
+//       pacman/profile.d.sh                   (profile.d.sh, §1.14)
+//     Zero .py, .js, .ts, .rb, .pl files. The only .md is the top-level
+//     install/README.md (explicit RULES §1.14 carve-out: "the top-level
+//     README.md of the openOODA governance repo" is the canonical allow;
+//     install/README.md is treated as the install/-repo equivalent by
+//     convention since openOODA/INDEX.oot:78 points to it).
+//
+// N3. 256-line cap. All .oo/.oot files are under the cap:
+//       ANCHOR.oo 15/256
+//       docs/ANCHOR.oo 14/256
+//       docs/SURFACE.oot 34/256
+//       harness_wire.oo 214/256 (16 lines headroom — adding M3 alt-fix
+//                                would push to 256/256, exactly at cap)
+//       tests/hello_fixture.oo 13/256
+//     All compliant.
+//
+// N4. VERSION SSoT. VERSION:1 = "0.1.30", `git describe --tags` =
+//     "v0.1.30-9-g0795f78", openOODA/INDEX.oot:36 says "v0.1.30".
+//     All three sources agree. RULES §1.24 satisfied.
+//
+// N5. detect_harnesses count. install.sh:511-532 detects 20 harnesses
+//     (antigravity-cli, opencode, muse, grok, gemini, claude-code,
+//     claude-desktop, cursor, windsurf, codex, cline, continue, zed,
+//     vscode, goose, mistral-vibe, grok-build, devin, charm, mcode).
+//     install/ANCHOR.oo:11 Beat 3 lists the same 20. The 20 list is
+//     correct, only the wire count is wrong (see M1, M3).
+
+// 7. OUT-OF-LANE -------------------------------------------------------
+//
+// install/ has no out-of-lane handoffs in this audit window. The mcp/
+// lsp/ blackbox wiring bugs that 2026-09-10-mcp-lsp-blackbox-usability.oot
+// documented are fixed by 4a03bf4 (in this repo) and by the upstream
+// commits in those repos. No cross-repo action items here.
+
+// --- end audit ---
