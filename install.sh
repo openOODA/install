@@ -278,6 +278,20 @@ sha256_check() {
   return 0
 }
 
+# verifying_sha: run sha256_check in background with spinner, return its exit code.
+# Mirrors the download pattern at install.sh:327-339 and the std clone at :1290.
+verifying_sha() {
+  local dest="$1" sidecar="$2" key="$3"
+  local codefile; codefile=$(mktemp 2>/dev/null || echo "/tmp/openooda-verify.$$")
+  ( sha256_check "$dest" "$sidecar" "$key" >/dev/null 2>&1; echo $? > "$codefile" ) &
+  local pid=$!
+  spinner "$pid"
+  wait "$pid" 2>/dev/null || true
+  local rc; rc=$(cat "$codefile" 2>/dev/null || echo 1)
+  rm -f "$codefile"
+  return "$rc"
+}
+
 selftest_sha() {
   local td dest
   td=$(mktemp -d)
@@ -350,10 +364,14 @@ install_component() {
       err "$key: missing SHA-256 sidecar; refuse unsigned install"
       return 1
     fi
-    if ! sha256_check "$dest.tmp" "$sha_tmp" "$key"; then
+    if ! verifying_sha "$dest.tmp" "$sha_tmp" "$key"; then
       rm -f "$dest.tmp" "$sha_tmp"
+      # re-run silently to surface the actual error to the user
+      sha256_check "$dest.tmp" "$sha_tmp" "$key" >/dev/null 2>&1 || true
+      err "$key: SHA-256 verification failed"
       return 1
     fi
+    info "$key: SHA-256 verified (sidecar)"
     rm -f "$sha_tmp"
 
     mv "$dest.tmp" "$dest"; chmod +x "$dest"
