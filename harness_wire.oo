@@ -1,7 +1,9 @@
 // # Harness Wire — openOODA capability-closed wiring for mcp/lsp/blackbox
 //
-// Logline: Idempotent JSON/TOML/YAML merge for 15 LLM harnesses under FsReadCap/FsWriteCap/EnvCap.
-//          Replaces bash python3 ad-hoc merges with capability-closed file ops.
+// Logline: Idempotent JSON/TOML/YAML merge for 8 file-merge harnesses (opencode, gemini, cursor, zed,
+//          claude-desktop, windsurf, vscode, continue) plus 4 ProcessCap CLI stubs (agy, vibe, codex, claude).
+//          12 total — bash install.sh path is the canonical wire for the remaining 6 of the 18 bash-wired
+//          harnesses (muse, grok, claude-code, cline, goose, mistral-vibe, grok-build, mcode — see M1).
 //
 // Setup: Requires OODA_COMPILER, OODA_FS_READDIR, OODA_FS_WRITEDIR via EnvCap.
 //        FsReadCap reads existing configs; FsWriteCap writes merged configs.

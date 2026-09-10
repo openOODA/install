@@ -1142,7 +1142,7 @@ wire_harnesses() {
     if OODA_FS_READDIR="$HOME" OODA_FS_WRITEDIR="$HOME" OODA_COMPILER="$BIN_DIR/oodac" OODA_DRY_RUN="$DRY_RUN" "$BIN_DIR/ooda" run "$oo_path" >/dev/null 2>&1; then
       oo_wire_ok=1
       for h in "${HARNESS_DETECTED[@]}"; do
-        case "$h" in opencode|gemini|cursor|windsurf|zed|vscode|goose|claude-desktop|cline|continue) HARNESS_WIRED+=("$h");; esac
+        case "$h" in opencode|gemini|cursor|windsurf|zed|vscode|claude-desktop|continue) HARNESS_WIRED+=("$h");; esac
       done
       [[ -n "${OPENOODA_DEBUG:-}" ]] && info "openOODA harness_wire.oo: done (cap-closed)"
     else
@@ -1156,7 +1156,7 @@ wire_harnesses() {
   for h in "${HARNESS_DETECTED[@]}"; do
     # skip file harnesses already wired via .oo
     if [[ $oo_wire_ok -eq 1 ]]; then
-      case "$h" in opencode|gemini|cursor|windsurf|zed|vscode|goose|claude-desktop|cline|continue) continue;; esac
+      case "$h" in opencode|gemini|cursor|windsurf|zed|vscode|claude-desktop|continue) continue;; esac
     fi
     case "$h" in
       antigravity-cli) wire_agy ;;
