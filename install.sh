@@ -160,8 +160,9 @@ step_status() {
 # shell snippet sourced back in the parent; %q makes every element safe
 # to re-evaluate even with spaces or quotes in the value.
 dump_results() {
-  [[ -n "${RESULTS_FILE:-}" ]] || return 0
-  {
+  [[ -n "${RESULTS_FILE:-}" ]] || { err "dump_results: RESULTS_FILE unset"; return 1; }
+  local tmp="${RESULTS_FILE}.tmp.$$"
+  if ! {
     printf 'INSTALLED=(\n'
     if [[ ${#INSTALLED[@]} -gt 0 ]]; then
       for x in "${INSTALLED[@]}"; do printf '  %q\n' "$x"; done
@@ -171,7 +172,17 @@ dump_results() {
       for x in "${SKIPPED[@]}"; do printf '  %q\n' "$x"; done
     fi
     printf ')\nBYTES=%s\n' "${BYTES:-0}"
-  } > "$RESULTS_FILE" 2>/dev/null || true
+  } > "$tmp" 2>/dev/null; then
+    err "dump_results: failed to write state to $tmp"
+    rm -f "$tmp" 2>/dev/null || true
+    return 1
+  fi
+  if ! mv -f "$tmp" "$RESULTS_FILE" 2>/dev/null; then
+    err "dump_results: failed to rename $tmp to $RESULTS_FILE"
+    rm -f "$tmp" 2>/dev/null || true
+    return 1
+  fi
+  return 0
 }
 ok()   { [[ "${QUIET:-0}" == "1" ]] && { _log "OK $*"; return; }; printf '  %s✓%s %s\n' "$GREEN"  "$RESET" "$*"; _log "OK $*"; }
 warn() { [[ "${QUIET:-0}" == "1" ]] && { _log "WARN $*"; return; }; printf '  %s!%s %s\n' "$YELLOW" "$RESET" "$*"; _log "WARN $*"; }
@@ -858,8 +869,11 @@ do_install() {
   # Serialise the cross-subshell state to RESULTS_FILE so the parent
   # print_summary can read what really happened. Without this, the
   # parent sees empty INSTALLED[] and prints "no components installed"
-  # even when all 7 binaries were downloaded and SHA-verified.
-  dump_results
+  # even when all 7 binaries were downloaded and SHA-verified. The
+  # state write is atomic (.tmp + mv) and fail-closed (returns 1 on
+  # failure), so the install reports failure rather than printing a
+  # misleading summary.
+  dump_results || { err "do_install: state serialization failed; install cannot be reported accurately"; return 1; }
   step_status "done"
   return 0
 }
@@ -873,7 +887,11 @@ print_summary() {
     printf '  %s✓%s installed:   %s\n' "$GREEN" "$RESET" "${INSTALLED[*]}"
     printf '  %s✓%s SHA-256 verified: %s\n' "$GREEN" "$RESET" "${INSTALLED[*]}"
   else
-    printf '  %s!%s no components installed (binaries land in future releases)\n' "$YELLOW" "$RESET"
+    # Reached only when the install subshell failed (e.g. release asset 404).
+    # The previous copy promised future releases; replaced with the
+    # honest "no components installed". When the subshell SUCCEEDS but
+    # the state is lost, the guards above exit 1 before we reach this line.
+    printf '  %s!%s no components installed\n' "$YELLOW" "$RESET"
   fi
   [[ ${#SKIPPED[@]} -gt 0 ]] && printf '  %s✓%s skipped:     %s\n' "$GREEN" "$RESET" "${SKIPPED[*]}"
   [[ $BYTES -gt 0 ]] && printf '  %s✓%s downloaded:  %s\n' "$GREEN" "$RESET" "$(awk -v b="$BYTES" 'BEGIN{printf "%.1f MB", b/1048576}')"
@@ -970,11 +988,29 @@ rm -f "$STATUS_FILE" 2>/dev/null || true
 # Pull the cross-subshell state back into the parent. do_install dumped
 # INSTALLED / SKIPPED / BYTES to RESULTS_FILE before returning; sourcing
 # it restores those vars so print_summary can show the truth (e.g. all 7
-# binaries were installed and SHA-verified).
+# binaries were installed and SHA-verified). Three guards catch every
+# failure mode: file missing, file has bad syntax, file sourced but
+# array is still empty. All three fail-closed with a clear error so
+# the user never again sees the silent "no components installed" lie.
 INSTALLED=()
 SKIPPED=()
 BYTES=0
-[[ -r "$RESULTS_FILE" ]] && . "$RESULTS_FILE" 2>/dev/null || true
+if [[ ! -r "$RESULTS_FILE" ]]; then
+  err "install state file is missing or unreadable: $RESULTS_FILE"
+  err "this is an internal error; please report it with the install log attached"
+  exit 1
+fi
+if ! . "$RESULTS_FILE" 2>/dev/null; then
+  err "install state file has bad syntax: $RESULTS_FILE"
+  err "this is an internal error; please report it with the install log attached"
+  exit 1
+fi
+if [[ ${INSTALL_RC} -eq 0 && ${#INSTALLED[@]} -eq 0 ]]; then
+  err "install state was lost: install subshell reported success but INSTALLED[] is empty"
+  err "the binaries may be on disk but the summary cannot reflect that"
+  err "this is an internal error; please report it with the install log attached"
+  exit 1
+fi
 
 # Post-install invariant: every installed binary must resolve via
 # `command -v` to $BIN_DIR. If a stale shadow wins on PATH, fail closed.

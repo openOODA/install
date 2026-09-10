@@ -1,5 +1,5 @@
 #!/bin/bash
-# install 9.5 — fail-closed sha256 sidecar, blackbox, toolchain-only, bash rc, no shadow
+# install 9.6 — fail-closed sha256 sidecar, blackbox, toolchain-only, bash rc, no shadow, no state-loss
 set -e
 grep -q "sha256" install.sh || { echo "FAIL no sha256"; exit 1; }
 grep -q "missing SHA-256 sidecar" install.sh || { echo "FAIL no missing-sidecar refuse"; exit 1; }
@@ -30,6 +30,17 @@ grep -q -- "--keep-stale" install.sh || { echo "FAIL no --keep-stale flag"; exit
 grep -q "bak.openooda" install.sh || { echo "FAIL no backup"; exit 1; }
 grep -q "DO_UNINSTALL" install.sh || { echo "FAIL no uninstall"; exit 1; }
 grep -q "LOG_FILE" install.sh || { echo "FAIL no log"; exit 1; }
+# New: cross-subshell state transfer must be fail-closed (Plan v26).
+# dump_results writes atomically (tmp + mv) and propagates errors;
+# the main flow has 3 guards (missing file, bad syntax, empty array).
+grep -q "install state was lost" install.sh || { echo "FAIL no state-loss guard in source"; exit 1; }
+grep -q "install state file is missing or unreadable" install.sh || { echo "FAIL no missing-file guard"; exit 1; }
+grep -q "install state file has bad syntax" install.sh || { echo "FAIL no bad-syntax guard"; exit 1; }
+grep -q 'mv -f "\$tmp" "\$RESULTS_FILE"' install.sh || { echo "FAIL no atomic rename in dump_results"; exit 1; }
+# The misleading "binaries land in future releases" copy must be gone.
+if grep -q "binaries land in future releases" install.sh; then
+  echo "FAIL misleading 'binaries land in future releases' copy is back"; exit 1
+fi
 python3 - <<'PY' || { echo "FAIL server env missing OODA_FS_WRITEDIR"; exit 1; }
 import re
 src = open("install.sh").read()
@@ -57,4 +68,4 @@ if grep -q 'BIN_DIR/ooda-mcp-grok\|BIN_DIR/ooda-lsp-grok\|bindir+"/ooda-lsp-grok
   echo "FAIL stale -grok shim command refs (never shipped)"; exit 1
 fi
 grep -q "NORTHSTAR.oot" install.sh || { echo "FAIL no codex fetch"; exit 1; }
-echo "PASS install 9.5 fail-closed sha256+blackbox+toolchain+bash-rc+no-shadow"
+echo "PASS install 9.6 fail-closed sha256+blackbox+toolchain+bash-rc+no-shadow+no-state-loss"
