@@ -114,3 +114,28 @@
 // 3. Consider a minisign sidecar channel (registry.pub exists in
 //    catalog/) so verification has a root independent of the
 //    release origin (residual hardening).
+
+// ## 6. Resolution addendum (same-day, post-mcode shadow fix)
+
+// mcode commit d550cd4 landed the shadow-gap repair: stale
+// ~/.local/bin toolchain removed (oodac/opm/lsp/mcp/blackbox gone;
+// the 32KB silent `ooda` stub was swept by the 06:41 install),
+// .tmp.sha256 sidecars are now deleted post-verify on ALL paths
+// (success + dl/sha/mismatch failures) — provenance drift root cause
+// closed. Post-install assert_path_resolution now fails closed.
+// Verified: which -a resolves all 6 tools to ~/.openooda/bin only,
+// installed hashes match the release sidecars from install.log.
+
+// NEW FINDINGS fixed in this pass:
+//   i1. install.sh:810 called _ooda_codex_path — undefined function.
+//       $() → empty → always-true: every install refetched the codex,
+//       and on fetch failure it rm -f'd an EXISTING NORTHSTAR.oot
+//       (offline reinstall would delete the codex MCP needs). Fixed
+//       to tmp-download + atomic mv (same pattern as fetch_and_verify):
+//       refresh on success, keep existing on failure.
+//   i2. post_flight verified binaries by -x + `--help` exit 0 — a
+//       silent stub exiting 0 would PASS (the exact failure shape of
+//       the .local/bin shadow), while opm's real --help exits 1 and
+//       warned falsely. Now verifies executable + non-empty banner
+//       containing openooda|usage. All 6 verified; silent-stub probe
+//       refused.

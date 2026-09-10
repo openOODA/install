@@ -717,20 +717,19 @@ restart_stale_servers() {
 post_flight() {
   local fail=0
   for bin in ooda oodac ooda-lsp ooda-mcp blackbox opm; do
-    if [[ "$bin" == "ooda" ]]; then
-      # ooda --help fails when stdout is not a tty (see host_run mkdir), just check executable + --help pipes to head
-      if [[ -x "$BIN_DIR/$bin" ]] && "$BIN_DIR/$bin" --help 2>&1 | head -n 1 | grep -q "openOODA" 2>/dev/null; then
-        ok "verified: $bin --help"
-      elif [[ -x "$BIN_DIR/$bin" ]]; then
-        ok "verified: $bin exists"
-      else
-        warn "verify: $bin not executable"
-        fail=1
-      fi
-    elif [[ -x "$BIN_DIR/$bin" ]] && "$BIN_DIR/$bin" --help >/dev/null 2>&1; then
+    # Verify by output, not exit code: some tools exit nonzero on --help
+    # (opm) or under non-tty stdout (ooda), and a silent stub that exits 0
+    # must NOT count as verified. Every real banner carries the product
+    # name or a usage line.
+    local helpline
+    helpline=$("$BIN_DIR/$bin" --help 2>&1 | head -n 1)
+    if [[ -x "$BIN_DIR/$bin" ]] && printf '%s' "$helpline" | grep -qiE 'openooda|usage' 2>/dev/null; then
       ok "verified: $bin --help"
+    elif [[ -x "$BIN_DIR/$bin" && -n "$helpline" ]]; then
+      warn "verify: $bin ran but --help banner unrecognized: ${helpline:0:60}"
+      fail=1
     else
-      warn "verify: $bin not executable or --help failed"
+      warn "verify: $bin not executable or produced no --help output"
       fail=1
     fi
   done
@@ -807,11 +806,20 @@ do_install() {
   if [[ "$DRY_RUN" == "1" ]]; then
     step_status "[dry-run] skipping codex fetch"
     skip "[dry-run] skipping codex fetch"
-  elif [[ -z "$(_ooda_codex_path)" ]]; then
+  else
+    # Download to .tmp then rename on success (same atomic pattern as
+    # fetch_and_verify): a failed refresh must never clobber a codex we
+    # already hold — MCP servers fail closed without OODACODEX.
     step_status "fetching orientation codex (openOODA/NORTHSTAR.oot)"
-    if ! curl -sSL --connect-timeout 10 --max-time 60 -o "$OPENOODA_HOME/NORTHSTAR.oot" "https://raw.githubusercontent.com/openOODA/openOODA/main/NORTHSTAR.oot" 2>/dev/null || [[ ! -s "$OPENOODA_HOME/NORTHSTAR.oot" ]]; then
-      rm -f "$OPENOODA_HOME/NORTHSTAR.oot" 2>/dev/null || true
-      warn "codex fetch failed; MCP wiring gets an empty OODACODEX until network returns"
+    if curl -sSL --connect-timeout 10 --max-time 60 -o "$OPENOODA_HOME/NORTHSTAR.oot.tmp" "https://raw.githubusercontent.com/openOODA/openOODA/main/NORTHSTAR.oot" 2>/dev/null && [[ -s "$OPENOODA_HOME/NORTHSTAR.oot.tmp" ]]; then
+      mv -f "$OPENOODA_HOME/NORTHSTAR.oot.tmp" "$OPENOODA_HOME/NORTHSTAR.oot" 2>/dev/null || warn "codex rename failed; keeping previous NORTHSTAR.oot"
+    else
+      rm -f "$OPENOODA_HOME/NORTHSTAR.oot.tmp" 2>/dev/null || true
+      if [[ -s "$OPENOODA_HOME/NORTHSTAR.oot" ]]; then
+        warn "codex refresh failed; keeping existing NORTHSTAR.oot"
+      else
+        warn "codex fetch failed; MCP wiring gets an empty OODACODEX until network returns"
+      fi
     fi
   fi
 
