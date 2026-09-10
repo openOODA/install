@@ -733,7 +733,15 @@ post_flight() {
     # must NOT count as verified. Every real banner carries the product
     # name or a usage line.
     local helpline
-    helpline=$("$BIN_DIR/$bin" --help 2>&1 | head -n 1)
+    # The pipeline capture must not propagate the binary's exit code: the
+    # subshell runs under `set -euo pipefail`, and `opm --help` exits 1
+    # even though it prints a valid banner. Without `|| true`, the
+    # assignment would fail and `errexit` would kill the subshell before
+    # dump_results runs — leaving the parent with an empty RESULTS_FILE
+    # and tripping the state-loss guard. The downstream `grep` decision
+    # still keys off the captured banner, so a silent stub or a binary
+    # with no banner still fails verification.
+    helpline=$("$BIN_DIR/$bin" --help 2>&1 | head -n 1 || true)
     if [[ -x "$BIN_DIR/$bin" ]] && printf '%s' "$helpline" | grep -qiE 'openooda|usage' 2>/dev/null; then
       ok "verified: $bin --help"
     elif [[ -x "$BIN_DIR/$bin" && -n "$helpline" ]]; then

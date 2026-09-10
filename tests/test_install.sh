@@ -1,5 +1,5 @@
 #!/bin/bash
-# install 9.6 — fail-closed sha256 sidecar, blackbox, toolchain-only, bash rc, no shadow, no state-loss
+# install 9.7 — fail-closed sha256 sidecar, blackbox, toolchain-only, bash rc, no shadow, no state-loss, opm-nonzero
 set -e
 grep -q "sha256" install.sh || { echo "FAIL no sha256"; exit 1; }
 grep -q "missing SHA-256 sidecar" install.sh || { echo "FAIL no missing-sidecar refuse"; exit 1; }
@@ -41,6 +41,12 @@ grep -q 'mv -f "\$tmp" "\$RESULTS_FILE"' install.sh || { echo "FAIL no atomic re
 if grep -q "binaries land in future releases" install.sh; then
   echo "FAIL misleading 'binaries land in future releases' copy is back"; exit 1
 fi
+# Plan v27: post_flight must tolerate opm --help exiting 1. The pipeline
+# capture in post_flight must end with `|| true` so the assignment does
+# not propagate opm's non-zero exit and kill the subshell under
+# set -e + pipefail before dump_results runs.
+grep -E 'helpline=.*head -n 1 \|\| true' install.sh \
+  || { echo "FAIL post_flight helpline capture does not swallow opm's non-zero exit"; exit 1; }
 python3 - <<'PY' || { echo "FAIL server env missing OODA_FS_WRITEDIR"; exit 1; }
 import re
 src = open("install.sh").read()
@@ -68,4 +74,4 @@ if grep -q 'BIN_DIR/ooda-mcp-grok\|BIN_DIR/ooda-lsp-grok\|bindir+"/ooda-lsp-grok
   echo "FAIL stale -grok shim command refs (never shipped)"; exit 1
 fi
 grep -q "NORTHSTAR.oot" install.sh || { echo "FAIL no codex fetch"; exit 1; }
-echo "PASS install 9.6 fail-closed sha256+blackbox+toolchain+bash-rc+no-shadow+no-state-loss"
+echo "PASS install 9.7 fail-closed sha256+blackbox+toolchain+bash-rc+no-shadow+no-state-loss+opm-nonzero"
