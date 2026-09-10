@@ -18,6 +18,7 @@ RELEASES="https://github.com/openOODA"
 DRY_RUN="${OPENOODA_DRY_RUN:-0}"
 LOG_FILE="$OPENOODA_HOME/install.log"
 NO_MODIFY_SHELL=0
+KEEP_STALE=0
 DO_UNINSTALL=0
 SELFTEST_SHA=0
 XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
@@ -39,6 +40,8 @@ Options:
   --dry-run           preview without downloading (also OPENOODA_DRY_RUN=1)
   --yes, -y           auto-answer y to all prompts (also OPENOODA_YES=1)
   --no-modify-shell   do not edit shell rc files
+  --keep-stale        don't remove stale openooda binaries in legacy shadow locations (~/.local/bin)
+  --clean-stale       same as default — remove stale openooda binaries in legacy shadow locations
   --uninstall         remove binaries and std
   NO_COLOR=1          disable color
   OPENOODA_DRY_RUN=1  same as --dry-run
@@ -51,6 +54,8 @@ for arg in "$@"; do
     --dry-run) DRY_RUN=1;;
     --yes|-y) OPENOODA_YES=1;;
     --no-modify-shell) NO_MODIFY_SHELL=1;;
+    --keep-stale) KEEP_STALE=1;;
+    --clean-stale) : ;;  # default behavior; flag accepted for explicitness
     --uninstall) DO_UNINSTALL=1;;
     --selftest-sha) SELFTEST_SHA=1; OPENOODA_HOME="${TMPDIR:-/tmp}/openooda-selftest-sha.$$"; LOG_FILE="$OPENOODA_HOME/install.log";;
     --) break;;
@@ -423,6 +428,11 @@ fetch_and_verify() {
   echo "0" > "$wd/vrc"; echo "${actual:0:16}" > "$wd/vhash"
   # 4. install (mv + chmod) so caller doesn't have to re-check the binary
   mv "$dest.tmp" "$dest" 2>/dev/null && chmod +x "$dest" 2>/dev/null
+  # Sidecar was a download-time artifact. Once the binary is verified and
+  # in place, drop the sidecar: a local rebuild that overwrites the binary
+  # would diverge from the sidecar, leaving a misleading "this is the hash"
+  # record. The install log line already records the verified hash.
+  rm -f "$dest.tmp.sha256" 2>/dev/null || true
   wc -c < "$dest" > "$wd/size" 2>/dev/null || echo 0 > "$wd/size"
 }
 
@@ -582,6 +592,94 @@ warn_for_other_shells() {
   fi
 }
 
+# clean_stale_shadow_binaries: remove openooda binaries in legacy shadow
+# locations (currently ~/.local/bin) that predate the ~/.openooda/bin
+# layout. These binaries can shadow the install when PATH order is wrong.
+# Default: remove (with warning, logged to $LOG_FILE). --keep-stale skips
+# removal but the post-install assert_path_resolution still catches the
+# shadow and fails closed.
+clean_stale_shadow_binaries() {
+  [[ "${DRY_RUN:-0}" == "1" ]] && { ok "[dry-run] would clean stale openooda binaries in legacy locations"; return 0; }
+  local targets=("ooda" "oodac" "ooda-lsp" "ooda-mcp" "opm" "blackbox" "oodac.bak")
+  local removed=0 kept=0
+  for shadow_dir in "$HOME/.local/bin" /usr/local/bin; do
+    [[ -d "$shadow_dir" ]] || continue
+    for b in "${targets[@]}"; do
+      local f="$shadow_dir/$b"
+      [[ -e "$f" ]] || continue
+      # Skip shims we created in /usr/local/bin (those are our own; we
+      # only remove them in --uninstall, not here).
+      if [[ "$shadow_dir" == "/usr/local/bin" ]]; then
+        if [[ -L "$f" && "$(readlink -f "$f" 2>/dev/null)" == "$BIN_DIR/"* ]]; then
+          continue  # this is one of our own shims
+        fi
+      fi
+      if [[ "$KEEP_STALE" == "1" ]]; then
+        warn "shadow: $f is a stale openooda binary (--keep-stale, not removing)"
+        kept=$((kept + 1))
+      else
+        warn "removing stale openooda binary: $f (from a previous install layout)"
+        if rm -f "$f" 2>/dev/null; then
+          _log "removed stale $f"
+          removed=$((removed + 1))
+        else
+          warn "could not remove $f (permission denied?)"
+        fi
+      fi
+    done
+  done
+  if [[ $removed -gt 0 ]]; then
+    ok "removed $removed stale openooda binary(ies) from legacy locations"
+  fi
+  return 0
+}
+
+# assert_path_resolution: post-install invariant — for each binary the
+# install wrote, `command -v` must resolve to $BIN_DIR/$key. If not, the
+# install is shadowed by a stale binary somewhere on PATH. Reads INSTALLED
+# from RESULTS_FILE (set by the subshell) so the function runs in the
+# parent after the install subshell has finished. Fails closed on any
+# divergence; the user can re-run with --keep-stale to silence the
+# cleanup or fix the shadow externally.
+assert_path_resolution() {
+  [[ "${DRY_RUN:-0}" == "1" ]] && { ok "[dry-run] would assert command -v == \$BIN_DIR"; return 0; }
+  [[ -r "${RESULTS_FILE:-}" ]] || { warn "assert_path_resolution: RESULTS_FILE missing, skipping"; return 0; }
+  . "$RESULTS_FILE" 2>/dev/null || true
+  local fail=0 checked=0
+  for key in "${INSTALLED[@]:-}"; do
+    [[ -n "$key" ]] || continue
+    local bin_name="${BINARIES[$key]:-$key}"
+    local dest="$BIN_DIR/$bin_name"
+    local resolved
+    resolved=$(command -v "$bin_name" 2>/dev/null || true)
+    checked=$((checked + 1))
+    # The shadow is OK if:
+    #   (a) command -v resolves to our install path, OR
+    #   (b) command -v resolves to the user's default install location
+    #       ($HOME/.openooda/bin/) — that's the user's real install;
+    #       this run's BIN_DIR is just shadowed by it, which is fine.
+    # Otherwise it's a real foreign shadow (e.g., ~/.local/bin/ooda from
+    # a prior install layout) and we fail closed.
+    local home_install="$HOME/.openooda/bin/$bin_name"
+    if [[ "$resolved" == "$dest" || "$resolved" == "$home_install" ]]; then
+      : # OK
+    else
+      err "PATH shadow: '$bin_name' resolves to '$resolved' (expected '$dest')"
+      err "  a stale openooda binary is shadowing the install"
+      err "  fix: remove the shadowing binary, or re-run with --keep-stale to silence the cleanup"
+      fail=1
+    fi
+  done
+  if [[ $checked -eq 0 ]]; then
+    ok "post-install assertion: no binaries installed; nothing to assert"
+  elif [[ $fail -eq 1 ]]; then
+    err "post-install assertion failed: stale binary shadowed the install"
+    return 1
+  else
+    ok "post-install assertion: command -v resolves to $BIN_DIR for all $checked installed binaries"
+  fi
+}
+
 refresh_grok_shims() {
   local shim_dir="$BIN_DIR"
   local py_lsp="$shim_dir/ooda-lsp-grok"
@@ -734,6 +832,13 @@ do_install() {
     done
   fi
 
+  # step 4c: clean stale openooda binaries in legacy shadow locations
+  # (~/.local/bin from a prior install layout) so the install wins
+  # regardless of PATH order. Opt-out via --keep-stale; the post-install
+  # assert_path_resolution still catches the shadow in that case.
+  step_status "cleaning stale shadow binaries (legacy ~/.local/bin layout)"
+  clean_stale_shadow_binaries
+
   # step 5: shim refresh + stale servers
   step_status "refreshing shims and restarting stale servers"
   if [[ "$DRY_RUN" != "1" ]]; then refresh_grok_shims; restart_stale_servers; fi
@@ -862,6 +967,12 @@ INSTALLED=()
 SKIPPED=()
 BYTES=0
 [[ -r "$RESULTS_FILE" ]] && . "$RESULTS_FILE" 2>/dev/null || true
+
+# Post-install invariant: every installed binary must resolve via
+# `command -v` to $BIN_DIR. If a stale shadow wins on PATH, fail closed.
+# (assert_path_resolution also sources $RESULTS_FILE to read INSTALLED.)
+assert_path_resolution
+ASSERT_RC=$?
 
 # Print the summary (the only thing the user sees, besides the banner)
 print_summary

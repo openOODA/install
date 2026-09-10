@@ -1,5 +1,5 @@
 #!/bin/bash
-# install 9.4 — fail-closed sha256 sidecar, blackbox, toolchain-only, bash rc
+# install 9.5 — fail-closed sha256 sidecar, blackbox, toolchain-only, bash rc, no shadow
 set -e
 grep -q "sha256" install.sh || { echo "FAIL no sha256"; exit 1; }
 grep -q "missing SHA-256 sidecar" install.sh || { echo "FAIL no missing-sidecar refuse"; exit 1; }
@@ -24,6 +24,9 @@ grep -q "post_flight" install.sh || { echo "FAIL no post-flight"; exit 1; }
 grep -q "XDG_CONFIG_HOME" install.sh || { echo "FAIL no XDG"; exit 1; }
 grep -q 'for rc in "\$HOME/.bashrc";' install.sh || { echo "FAIL shell rc loop not bash-only"; exit 1; }
 grep -q "warn_for_other_shells" install.sh || { echo "FAIL no warn_for_other_shells"; exit 1; }
+grep -q "clean_stale_shadow_binaries" install.sh || { echo "FAIL no clean_stale_shadow_binaries"; exit 1; }
+grep -q "assert_path_resolution" install.sh || { echo "FAIL no assert_path_resolution"; exit 1; }
+grep -q -- "--keep-stale" install.sh || { echo "FAIL no --keep-stale flag"; exit 1; }
 grep -q "bak.openooda" install.sh || { echo "FAIL no backup"; exit 1; }
 grep -q "DO_UNINSTALL" install.sh || { echo "FAIL no uninstall"; exit 1; }
 grep -q "LOG_FILE" install.sh || { echo "FAIL no log"; exit 1; }
@@ -54,4 +57,4 @@ if grep -q 'BIN_DIR/ooda-mcp-grok\|BIN_DIR/ooda-lsp-grok\|bindir+"/ooda-lsp-grok
   echo "FAIL stale -grok shim command refs (never shipped)"; exit 1
 fi
 grep -q "NORTHSTAR.oot" install.sh || { echo "FAIL no codex fetch"; exit 1; }
-echo "PASS install 9.4 fail-closed sha256+blackbox+toolchain+bash-rc"
+echo "PASS install 9.5 fail-closed sha256+blackbox+toolchain+bash-rc+no-shadow"
