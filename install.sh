@@ -110,20 +110,9 @@ err()  { printf '  %s✗%s %s\n' "$RED"    "$RESET" "$*" >&2; _log "ERR $*"; }
 skip() { [[ "${QUIET:-0}" == "1" ]] && { _log "SKIP $*"; return; }; printf '  %s⊘%s %s\n' "$YELLOW" "$RESET" "$*"; _log "SKIP $*"; }
 info() { [[ "${QUIET:-0}" == "1" ]] && { _log "INFO $*"; return; }; printf '  %s•%s %s\n' "$GRAY"   "$RESET" "$*"; _log "INFO $*"; }
 
-# print_banner: 5-row-tall block letters spelling "openOODA", version stamp.
-# One-time at install start. Read top-to-bottom: the columns spell o p e n O O D A.
+# print_banner: one-line version stamp. No art — curl|bash is for shipping, not for show.
 print_banner() {
-  printf '\n'
-  printf '%s' "$BOLD$CYAN"
-  cat <<'EOF'
-  oooo  pppp  eeee  n   n    OOOO   OOOO  DDDD       A
-  o   o p   p e     n   n   O    O O    O D   D    A   A
-  o   o p   p eeee  n   n   O    O O    O D   D   AAAAAA
-  o   o p   p e     n   n   O    O O    O D   D   A     A
-  oooo  pppp  eeee  n   n    OOOO   OOOO  DDDD   A       A
-EOF
-  printf '%s\n' "$RESET"
-  printf '  v%s · curl|bash · sovereign systems language\n\n' "$VERSION"
+  printf '  openOODA v%s · curl|bash\n\n' "$VERSION"
 }
 
 ensure_sysdep() {
