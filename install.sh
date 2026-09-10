@@ -278,18 +278,37 @@ sha256_check() {
   return 0
 }
 
-# verifying_sha: run sha256_check in background with spinner, return its exit code.
-# Mirrors the download pattern at install.sh:327-339 and the std clone at :1290.
-verifying_sha() {
-  local dest="$1" sidecar="$2" key="$3"
-  local codefile; codefile=$(mktemp 2>/dev/null || echo "/tmp/openooda-verify.$$")
-  ( sha256_check "$dest" "$sidecar" "$key" >/dev/null 2>&1; echo $? > "$codefile" ) &
-  local pid=$!
-  spinner "$pid"
-  wait "$pid" 2>/dev/null || true
-  local rc; rc=$(cat "$codefile" 2>/dev/null || echo 1)
-  rm -f "$codefile"
-  return "$rc"
+# fetch_and_verify: download binary + sidecar + verify SHA-256 + install.
+# Runs entirely in a background subshell called by install_component.
+# Writes result files into $wd; caller reads them after `wait`.
+fetch_and_verify() {
+  local url="$1" dest="$2" wd="$3"
+  # 1. download binary
+  local dl; dl=$(curl -sSL --connect-timeout 10 --max-time 120 -o "$dest.tmp" \
+    -w '%{http_code}' "$url" 2>/dev/null || echo 000)
+  echo "$dl" > "$wd/dl"
+  [[ "$dl" == "200" && -s "$dest.tmp" ]] || return 0
+  # 2. sidecar
+  local sha; sha=$(curl -sSL --connect-timeout 5 --max-time 15 \
+    -o "$dest.tmp.sha256" -w '%{http_code}' "${url}.sha256" 2>/dev/null || echo 000)
+  echo "$sha" > "$wd/sha"
+  [[ "$sha" == "200" && -s "$dest.tmp.sha256" ]] || return 0
+  # 3. SHA check (inline; captures actual_hash for success line)
+  local actual expected
+  if command -v sha256sum >/dev/null 2>&1; then
+    actual=$(sha256sum "$dest.tmp" | awk '{print $1}')
+  else
+    actual=$(shasum -a 256 "$dest.tmp" | awk '{print $1}')
+  fi
+  expected=$(awk '{print $1}' "$dest.tmp.sha256" | tr -d '\r\n ')
+  if [[ -z "$expected" || "$expected" != "$actual" ]]; then
+    echo "mismatch" > "$wd/vrc"; echo "$expected" > "$wd/expected"; echo "$actual" > "$wd/actual"
+    return 0
+  fi
+  echo "0" > "$wd/vrc"; echo "${actual:0:16}" > "$wd/vhash"
+  # 4. install (mv + chmod) so caller doesn't have to re-check the binary
+  mv "$dest.tmp" "$dest" 2>/dev/null && chmod +x "$dest" 2>/dev/null
+  wc -c < "$dest" > "$wd/size" 2>/dev/null || echo 0 > "$wd/size"
 }
 
 selftest_sha() {
@@ -318,11 +337,12 @@ selftest_sha() {
 }
 
 install_component() {
-  local key="$1" dest="$BIN_DIR/${BINARIES[$1]}" url code
+  local key="$1" dest="$BIN_DIR/${BINARIES[$1]}" url
   url="$(release_url "$key")"
   printf '  %s%s%s\n' "$BOLD" "$key" "$RESET"
 
   if [[ "$DRY_RUN" == "1" ]]; then
+    local code
     code=$(curl -sSL -o /dev/null -w '%{http_code}' -I "$url" 2>/dev/null || echo 000)
     if [[ "$code" != "200" ]]; then
       skip "[dry-run] $key not yet shipped for $OS-$ARCH"; SKIPPED+=("$key")
@@ -338,59 +358,51 @@ install_component() {
     return
   fi
 
-  local codefile
-  codefile=$(mktemp 2>/dev/null || echo "/tmp/openooda-curl.$$.$key")
-  ( code=$(curl -sSL --connect-timeout 10 --max-time 120 -o "$dest.tmp" -w '%{http_code}' "$url" 2>/dev/null || echo 000)
-    echo "$code" > "$codefile" ) &
+  # ONE subshell + ONE spinner for the whole per-component install
+  local wd; wd=$(mktemp -d 2>/dev/null || echo "/tmp/openooda-$$-$key")
+  ( fetch_and_verify "$url" "$dest" "$wd" ) &
   local pid=$!
-  ( sleep 8; kill -0 "$pid" 2>/dev/null \
-    && printf '\n  %s(taking a moment; press Ctrl-C to cancel)%s\n' "$DIM" "$RESET" >&2 ) &
-  local slow_pid=$!
-
   spinner "$pid"
   wait "$pid" 2>/dev/null || true
-  kill "$slow_pid" 2>/dev/null || true
-  wait "$slow_pid" 2>/dev/null || true
 
-  code=$(cat "$codefile" 2>/dev/null || echo 000)
-  rm -f "$codefile"
-  if [[ "$code" == "200" ]] && [[ -s "$dest.tmp" ]]; then
-    local sha_url="${url}.sha256"
-    local sha_tmp="$dest.tmp.sha256"
-    local sha_code
-    sha_code=$(curl -sSL --connect-timeout 5 --max-time 15 -o "$sha_tmp" -w '%{http_code}' "$sha_url" 2>/dev/null || echo 000)
-    if [[ "$sha_code" != "200" ]] || [[ ! -s "$sha_tmp" ]]; then
-      rm -f "$dest.tmp" "$sha_tmp"
-      err "$key: missing SHA-256 sidecar; refuse unsigned install"
-      return 1
-    fi
-    if ! verifying_sha "$dest.tmp" "$sha_tmp" "$key"; then
-      rm -f "$dest.tmp" "$sha_tmp"
-      # re-run silently to surface the actual error to the user
-      sha256_check "$dest.tmp" "$sha_tmp" "$key" >/dev/null 2>&1 || true
-      err "$key: SHA-256 verification failed"
-      return 1
-    fi
-    info "$key: SHA-256 verified (sidecar)"
-    rm -f "$sha_tmp"
+  # Read all results
+  local dl sha vrc vhash size expected actual
+  dl=$(cat "$wd/dl" 2>/dev/null || echo 000)
+  sha=$(cat "$wd/sha" 2>/dev/null || echo "")
+  vrc=$(cat "$wd/vrc" 2>/dev/null || echo "missing")
+  vhash=$(cat "$wd/vhash" 2>/dev/null || echo "")
+  size=$(cat "$wd/size" 2>/dev/null || echo 0)
+  expected=$(cat "$wd/expected" 2>/dev/null || echo "")
+  actual=$(cat "$wd/actual" 2>/dev/null || echo "")
+  rm -rf "$wd"
 
-    mv "$dest.tmp" "$dest"; chmod +x "$dest"
-    local size; size=$(wc -c < "$dest" 2>/dev/null || echo 0); BYTES=$((BYTES + size))
+  # Branch on results
+  if [[ "$vrc" == "0" && -x "$dest" ]]; then
     local mb; mb=$(awk -v s="$size" 'BEGIN{printf "%.1f", s/1048576}')
+    info "$key: SHA-256 verified ($vhash...)"
     ok "installed $(basename "$dest") (${mb} MB)"; INSTALLED+=("$key")
-  else
-    rm -f "$dest.tmp"
+    BYTES=$((BYTES + size))
+  elif [[ "$dl" != "200" ]]; then
+    rm -f "$dest.tmp" "$dest.tmp.sha256"
     if [[ -x "$dest" ]]; then
-      warn "$key download failed (http $code); preserved existing $(basename "$dest")"
-    elif [[ "$code" == "404" ]]; then
+      warn "$key download failed (http $dl); preserved existing $(basename "$dest")"
+    elif [[ "$dl" == "404" ]]; then
       skip "$key not yet shipped for $OS-$ARCH"; SKIPPED+=("$key")
     elif [[ "$key" == "ooda" || "$key" == "oodac" ]]; then
-      err "$key download failed (http $code) with no existing binary; refusing partial install"
+      err "$key download failed (http $dl) with no existing binary; refusing partial install"
       exit 1
     else
-      warn "$key download failed (http $code); continuing without $(basename "$dest")"
+      warn "$key download failed (http $dl); continuing without $(basename "$dest")"
       SKIPPED+=("$key")
     fi
+  elif [[ -z "$sha" || "$sha" != "200" ]]; then
+    rm -f "$dest.tmp" "$dest.tmp.sha256"
+    err "$key: missing SHA-256 sidecar; refuse unsigned install"
+    return 1
+  else
+    rm -f "$dest.tmp" "$dest.tmp.sha256"
+    err "$key: SHA-256 checksum mismatch (expected ${expected:-empty}, got $actual)"
+    return 1
   fi
 }
 
