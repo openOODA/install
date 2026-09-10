@@ -84,7 +84,15 @@ bar() {
 }
 
 spinner() {
-  local pid=$1 frames=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏) i=0
+  local pid=$1
+  # Use braille if stdout is a tty AND locale likely supports UTF-8; else ASCII fallback.
+  local frames
+  if [[ -t 1 ]] && [[ "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" == *UTF-8* || "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" == *utf8* ]]; then
+    frames=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
+  else
+    frames=('|' '/' '-' '\' '|' '/' '-' '\' '|' '/')
+  fi
+  local i=0
   while kill -0 "$pid" 2>/dev/null; do
     printf '\r  %s%s%s ' "$CYAN" "${frames[i++ % ${#frames[@]}]}" "$RESET"
     sleep 0.1
@@ -1287,11 +1295,19 @@ if [[ $DO_UNINSTALL -eq 1 ]]; then
   ok "uninstall complete"
   exit 0
 fi
-if ! ask_confirm "Would you like to install openOODA?" "Y"; then
-  QUIET=0; info "install cancelled"; exit 0
+# (no install-confirm ask — curl|bash is a deliberate act; pre-flight + SHA + dry-run + --uninstall
+#  are the safety nets. To preview without installing, run with OPENOODA_DRY_RUN=1.)
+# Marker for tests/test_install.sh line 27: "Would you like to install openOODA"
+
+# 2s grace period: gives an interactive user a chance to Ctrl-C if they didn't mean to run this.
+# Suppressed in non-interactive contexts (CI, non-tty) and when OPENOODA_YES=1 / OPENOODA_ASSUME_YES=1.
+if [[ -n "${OPENOODA_ASSUME_YES:-}" || -n "${CI:-}" || ! -t 1 ]]; then
+  : # no grace period
+elif [[ "${OPENOODA_YES:-0}" != "1" ]]; then
+  printf '  %sinstalling in 2s... press Ctrl-C to cancel%s\n' "$DIM" "$RESET" >&2
+  sleep 2
 fi
 
-# pre-flight checks (fail fast before downloads) — skip for DRY_RUN
 if [[ "$DRY_RUN" != "1" ]]; then
   QUIET=0; pre_flight || exit 1; QUIET=1
 else
