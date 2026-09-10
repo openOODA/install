@@ -110,16 +110,20 @@ err()  { printf '  %s✗%s %s\n' "$RED"    "$RESET" "$*" >&2; _log "ERR $*"; }
 skip() { [[ "${QUIET:-0}" == "1" ]] && { _log "SKIP $*"; return; }; printf '  %s⊘%s %s\n' "$YELLOW" "$RESET" "$*"; _log "SKIP $*"; }
 info() { [[ "${QUIET:-0}" == "1" ]] && { _log "INFO $*"; return; }; printf '  %s•%s %s\n' "$GRAY"   "$RESET" "$*"; _log "INFO $*"; }
 
-# print_banner: ASCII "openOODA" art, version stamp. One-time at install start.
+# print_banner: 5-row-tall block letters spelling "openOODA", version stamp.
+# One-time at install start. Read top-to-bottom: the columns spell o p e n O O D A.
 print_banner() {
   printf '\n'
-  printf '  %s   ___                  _   ___  ___  ___%s\n' "$BOLD$CYAN" "$RESET"
-  printf '  %s  / _ \\ _ __ __ _  ___ | | / _ \\/ _ \\/ _ \\%s\n' "$BOLD$CYAN" "$RESET"
-  printf '  %s | | | |'\''__/ _` |/ _ \\| || | | | | | | | |%s\n' "$BOLD$CYAN" "$RESET"
-  printf '  %s | |_| | | | (_| | (_) | || |_| | |_| | |_| |%s\n' "$BOLD$CYAN" "$RESET"
-  printf '  %s  \\___/|_|  \\__,_|\\___/|_|(_)___/\\___/|_|_|%s\n' "$BOLD$CYAN" "$RESET"
-  printf '\n'
-  printf '  %sv%s%s · curl|bash · sovereign systems language%s\n\n' "$DIM" "$VERSION" "$RESET" "$RESET"
+  printf '%s' "$BOLD$CYAN"
+  cat <<'EOF'
+  oooo  pppp  eeee  n   n    OOOO   OOOO  DDDD       A
+  o   o p   p e     n   n   O    O O    O D   D    A   A
+  o   o p   p eeee  n   n   O    O O    O D   D   AAAAAA
+  o   o p   p e     n   n   O    O O    O D   D   A     A
+  oooo  pppp  eeee  n   n    OOOO   OOOO  DDDD   A       A
+EOF
+  printf '%s\n' "$RESET"
+  printf '  v%s · curl|bash · sovereign systems language\n\n' "$VERSION"
 }
 
 ensure_sysdep() {
@@ -180,7 +184,10 @@ pre_flight() {
     err "pre-flight failed — see $LOG_FILE"
     return 1
   fi
-  info "pre-flight: curl/sha256, disk, network OK"
+  # Printed unconditionally (not via `info`) so QUIET=1 doesn't suppress the
+  # success line. This is the only output between the banner and the spinner,
+  # so the user always sees something happen.
+  printf '  %s✓%s pre-flight: curl/sha256, disk, network OK\n' "$GREEN" "$RESET"
 }
 
 ask_confirm() {
@@ -1298,20 +1305,14 @@ fi
 # (no install-confirm ask — curl|bash is a deliberate act; pre-flight + SHA + dry-run + --uninstall
 #  are the safety nets. To preview without installing, run with OPENOODA_DRY_RUN=1.)
 # Marker for tests/test_install.sh line 27: "Would you like to install openOODA"
-
-# 2s grace period: gives an interactive user a chance to Ctrl-C if they didn't mean to run this.
-# Suppressed in non-interactive contexts (CI, non-tty) and when OPENOODA_YES=1 / OPENOODA_ASSUME_YES=1.
-if [[ -n "${OPENOODA_ASSUME_YES:-}" || -n "${CI:-}" || ! -t 1 ]]; then
-  : # no grace period
-elif [[ "${OPENOODA_YES:-0}" != "1" ]]; then
-  printf '  %sinstalling in 2s... press Ctrl-C to cancel%s\n' "$DIM" "$RESET" >&2
-  sleep 2
-fi
+# (No 2s grace period — the y/n it was guarding against was removed in 61dd1fe.
+#  pre_flight runs immediately after the banner and prints unconditionally, so
+#  there's no silent gap between the banner and the spinner.)
 
 if [[ "$DRY_RUN" != "1" ]]; then
-  QUIET=0; pre_flight || exit 1; QUIET=1
+  pre_flight || exit 1
 else
-  QUIET=0; info "pre-flight: [dry-run] would check curl/sha256, disk, network"; QUIET=1
+  QUIET=0; info "pre-flight: [dry-run] would check curl/sha256, disk, network"
 fi
 
 # trap: clean temp on failure
