@@ -539,13 +539,13 @@ install_component() {
 
 setup_shell_rc() {
   if [[ $NO_MODIFY_SHELL -eq 1 ]]; then skip "shell rc: --no-modify-shell, not editing"; return 0; fi
-  if [[ "$DRY_RUN" == "1" ]]; then ok "[dry-run] would update shell rc (bashrc/zshrc/fish)"; return 0; fi
+  if [[ "$DRY_RUN" == "1" ]]; then ok "[dry-run] would update shell rc (bashrc)"; return 0; fi
   local l1='export PATH="$HOME/.openooda/bin:$PATH"'
   local l2='export OODA_STD_ROOT="$HOME/.openooda/std"'
   local l3='export OODA_COMPILER="$HOME/.openooda/bin/oodac"'
   local l4='export OODA_FS_READDIR="$HOME/Projects/openOODA"'
   local l5='export OODA_FS_WRITEDIR="$HOME"'
-  for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
+  for rc in "$HOME/.bashrc"; do
     [[ -e "$rc" ]] || : >> "$rc" 2>/dev/null || continue
     if [[ -f "$rc" && ! -f "$rc.bak.openooda" ]]; then cp -p "$rc" "$rc.bak.openooda" 2>/dev/null || true; _log "backup $rc -> $rc.bak.openooda"; fi
     if grep -q '\.local/bin/oodac' "$rc" 2>/dev/null; then
@@ -563,17 +563,22 @@ setup_shell_rc() {
       grep -Fqx "$_jl" "$rc" 2>/dev/null || printf '%s\n' "$_jl" >> "$rc"
     done
   done
-  # fish (XDG-aware)
-  local fish_cfg="${XDG_CONFIG_HOME}/fish/config.fish"
-  if [[ -d "${XDG_CONFIG_HOME}/fish" ]] || command -v fish >/dev/null 2>&1; then
-    mkdir -p "$(dirname "$fish_cfg")" 2>/dev/null || true
-    if [[ -f "$fish_cfg" && ! -f "$fish_cfg.bak.openooda" ]]; then cp -p "$fish_cfg" "$fish_cfg.bak.openooda" 2>/dev/null || true; fi
-    if ! grep -q 'fish_add_path.*\.openooda/bin' "$fish_cfg" 2>/dev/null; then
-      printf '\n# openOODA\nfish_add_path $HOME/.openooda/bin\nset -x OODA_STD_ROOT $HOME/.openooda/std\nset -x OODA_COMPILER $HOME/.openooda/bin/oodac\nset -x OODA_FS_READDIR $HOME/Projects/openOODA\nset -x OODA_FS_WRITEDIR $HOME\n' >> "$fish_cfg" 2>/dev/null || true
-      ok "fish config updated ($fish_cfg)"
-    else
-      info "fish config already has openOODA exports"
-    fi
+}
+
+# warn_for_other_shells: if zsh or fish is detected on PATH, print a one-line
+# hint telling the user how to add openOODA to their non-bash rc. The install
+# only writes ~/.bashrc; users with other shells do it themselves. Detected at
+# the level of "binary on PATH" (not "rc file exists") so a leftover ~/.zshrc
+# from a previous install doesn't trigger the warning.
+warn_for_other_shells() {
+  [[ "${QUIET:-0}" == "1" ]] && { _log "SKIP warn_for_other_shells (QUIET)"; return; }
+  if command -v zsh >/dev/null 2>&1; then
+    warn "zsh detected — to use openOODA in zsh, add to ~/.zshrc:"
+    printf '       export PATH="$HOME/.openooda/bin:$PATH"\n' >&2
+  fi
+  if command -v fish >/dev/null 2>&1; then
+    warn "fish detected — to use openOODA in fish, add to ~/.config/fish/config.fish:"
+    printf '       fish_add_path $HOME/.openooda/bin\n' >&2
   fi
 }
 
@@ -712,9 +717,10 @@ do_install() {
     fi
   fi
 
-  # step 4: shell rc
-  step_status "setting up shell environment (~/.bashrc, ~/.zshrc)"
+  # step 4: shell rc (bash only; zsh/fish users get a hint via warn_for_other_shells)
+  step_status "setting up shell environment (~/.bashrc)"
   if [[ "$DRY_RUN" != "1" ]]; then setup_shell_rc; fi
+  warn_for_other_shells
 
   # step 4b: /usr/local/bin shims
   if [[ "$DRY_RUN" == "1" ]]; then
@@ -762,7 +768,7 @@ print_summary() {
   printf '  %s✓%s std:         %s\n' "$GREEN" "$RESET" "$STD_DIR"
   printf '  %s✓%s sources:     %s\n' "$GREEN" "$RESET" "$OPENOODA_HOME/oodar"
   printf '  %s✓%s time:        %ss\n' "$GREEN" "$RESET" "$ELAPSED"
-  [[ "$DRY_RUN" != "1" ]] && printf '  %s✓%s shell rc:    bash + zsh updated (.bak.openooda backups)\n' "$GREEN" "$RESET"
+  [[ "$DRY_RUN" != "1" ]] && printf '  %s✓%s shell rc:    bash updated (.bak.openooda backup)\n' "$GREEN" "$RESET"
   printf '\n  %sWelcome to openOODA. https://openooda.org%s\n\n' "$BOLD$MAGENTA" "$RESET"
 }
 
@@ -795,15 +801,15 @@ export QUIET
 # y/n — verify user wants to install (skipped for DRY_RUN / non-tty / CI / OPENOODA_YES=1)
 if [[ $DO_UNINSTALL -eq 1 ]]; then
   QUIET=0
-  info "uninstall requested — removing $BIN_DIR and harness wiring"
+  info "uninstall requested — removing $BIN_DIR and toolchain"
   # remove /usr/local/bin shims pointing into BIN_DIR first (else they dangle)
   for s in /usr/local/bin/ooda /usr/local/bin/oodac /usr/local/bin/opm /usr/local/bin/ooda-lsp /usr/local/bin/ooda-mcp /usr/local/bin/blackbox; do
     if [[ -L "$s" && "$(readlink "$s" 2>/dev/null)" == "$BIN_DIR/"* ]]; then rm -f "$s" 2>/dev/null || true; fi
   done
   # remove binaries, std, and build sources (keep OPENOODA_HOME for logs)
   rm -rf "$BIN_DIR" "$STD_DIR" "$OPENOODA_HOME/oodar" 2>/dev/null || true
-  # revert shell rc from backups
-  for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$XDG_CONFIG_HOME/fish/config.fish"; do
+  # revert shell rc from backups (bash only — install no longer owns zshrc/fish)
+  for rc in "$HOME/.bashrc"; do
     if [[ -f "$rc.bak.openooda" ]]; then
       mv -f "$rc.bak.openooda" "$rc" 2>/dev/null && ok "reverted $rc from backup" || true
     fi

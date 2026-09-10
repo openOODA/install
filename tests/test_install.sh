@@ -1,5 +1,5 @@
 #!/bin/bash
-# install 9.3 — fail-closed sha256 sidecar, blackbox, toolchain-only
+# install 9.4 — fail-closed sha256 sidecar, blackbox, toolchain-only, bash rc
 set -e
 grep -q "sha256" install.sh || { echo "FAIL no sha256"; exit 1; }
 grep -q "missing SHA-256 sidecar" install.sh || { echo "FAIL no missing-sidecar refuse"; exit 1; }
@@ -22,7 +22,8 @@ grep -q "Would you like to install openOODA" install.sh || { echo "FAIL no insta
 grep -q "pre_flight" install.sh || { echo "FAIL no pre-flight"; exit 1; }
 grep -q "post_flight" install.sh || { echo "FAIL no post-flight"; exit 1; }
 grep -q "XDG_CONFIG_HOME" install.sh || { echo "FAIL no XDG"; exit 1; }
-grep -q "fish_add_path" install.sh || { echo "FAIL no fish"; exit 1; }
+grep -q 'for rc in "\$HOME/.bashrc";' install.sh || { echo "FAIL shell rc loop not bash-only"; exit 1; }
+grep -q "warn_for_other_shells" install.sh || { echo "FAIL no warn_for_other_shells"; exit 1; }
 grep -q "bak.openooda" install.sh || { echo "FAIL no backup"; exit 1; }
 grep -q "DO_UNINSTALL" install.sh || { echo "FAIL no uninstall"; exit 1; }
 grep -q "LOG_FILE" install.sh || { echo "FAIL no log"; exit 1; }
@@ -53,4 +54,4 @@ if grep -q 'BIN_DIR/ooda-mcp-grok\|BIN_DIR/ooda-lsp-grok\|bindir+"/ooda-lsp-grok
   echo "FAIL stale -grok shim command refs (never shipped)"; exit 1
 fi
 grep -q "NORTHSTAR.oot" install.sh || { echo "FAIL no codex fetch"; exit 1; }
-echo "PASS install 9.3 fail-closed sha256+blackbox+toolchain"
+echo "PASS install 9.4 fail-closed sha256+blackbox+toolchain+bash-rc"
