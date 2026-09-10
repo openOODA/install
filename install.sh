@@ -178,9 +178,31 @@ err()  { printf '  %s✗%s %s\n' "$RED"    "$RESET" "$*" >&2; _log "ERR $*"; }
 skip() { [[ "${QUIET:-0}" == "1" ]] && { _log "SKIP $*"; return; }; printf '  %s⊘%s %s\n' "$YELLOW" "$RESET" "$*"; _log "SKIP $*"; }
 info() { [[ "${QUIET:-0}" == "1" ]] && { _log "INFO $*"; return; }; printf '  %s•%s %s\n' "$GRAY"   "$RESET" "$*"; _log "INFO $*"; }
 
-# print_banner: one-line version stamp. No art — curl|bash is for shipping, not for show.
+# fetch_runtime_version: best-effort fetch of the openOODA/openOODA polyrepo's
+# latest tag, with a 3s timeout. Falls back to "?" on any failure (no
+# network, rate-limit, python3 missing). The runtime version is the
+# polyrepo's release tag (e.g. "2.10.28"), which is what the install
+# is about to put on disk. Surfaces the relationship between the
+# installer (this script) and the runtime (the polyrepo) — they're
+# versioned independently, and users should see both.
+fetch_runtime_version() {
+  curl -sSL --max-time 3 "https://api.github.com/repos/openOODA/openOODA/releases/latest" 2>/dev/null \
+    | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('tag_name','?'))" 2>/dev/null \
+    | sed 's/^v//' \
+    | head -c 30 \
+    || echo "?"
+}
+
+# print_banner: one-line version stamp. Two layers because openOODA is
+# a polyrepo: this script's own version (install/VERSION) and the
+# polyrepo's current release (openOODA/openOODA latest tag, fetched
+# at runtime). Both honest; the runtime half is a soft fetch that
+# gracefully degrades to "?" if the network is down.
 print_banner() {
-  printf '  openOODA v%s · curl|bash\n\n' "$VERSION"
+  local runtime
+  runtime=$(fetch_runtime_version)
+  [[ -z "$runtime" ]] && runtime="?"
+  printf '  openOODA v%s · runtime v%s · curl|bash\n\n' "$VERSION" "$runtime"
 }
 
 # print_preamble: short story before the install starts. Sets expectations,
