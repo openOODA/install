@@ -311,6 +311,20 @@ fetch_and_verify() {
   wc -c < "$dest" > "$wd/size" 2>/dev/null || echo 0 > "$wd/size"
 }
 
+# fetch_repo: git clone + verify the expected file exists, write ok|fail status.
+# Mirrors fetch_and_verify: runs in background subshell, parent spins on the pid.
+fetch_repo() {
+  local url="$1" dest="$2" verify="$3" branch="$4" wd="$5"
+  local args=(--depth 1)
+  [[ -n "$branch" ]] && args+=(--branch "$branch")
+  git clone "${args[@]}" "$url" "$dest" >/dev/null 2>&1
+  if [[ -f "$dest/$verify" ]]; then
+    echo "ok" > "$wd/status"
+  else
+    echo "fail" > "$wd/status"
+  fi
+}
+
 selftest_sha() {
   local td dest
   td=$(mktemp -d)
@@ -1318,11 +1332,19 @@ if [[ "$DRY_RUN" == "1" ]]; then
 elif [[ -f "$STD_DIR/ANCHOR.oo" ]]; then
   ok "std already at $STD_DIR"
 else
-  std_branch=()
-  [[ -n "${PINS[std]:-}" ]] && std_branch=(--branch "${PINS[std]}")
+  local wd; wd=$(mktemp -d 2>/dev/null || echo "/tmp/openooda-std-$$")
   info "cloning openOODA/std ${PINS[std]:-latest} ..."
-  (git clone --depth 1 "${std_branch[@]}" https://github.com/openOODA/std "$STD_DIR" >/dev/null 2>&1) & spinner $!
-  [[ -f "$STD_DIR/ANCHOR.oo" ]] && ok "cloned to $STD_DIR" || { err "std clone failed; check $STD_DIR"; exit 1; }
+  ( fetch_repo "https://github.com/openOODA/std" "$STD_DIR" "ANCHOR.oo" "${PINS[std]:-}" "$wd" ) &
+  spinner $!
+  wait $! 2>/dev/null || true
+  local status; status=$(cat "$wd/status" 2>/dev/null || echo "fail")
+  rm -rf "$wd"
+  if [[ "$status" == "ok" ]]; then
+    ok "cloned to $STD_DIR"
+  else
+    err "std clone failed; check $STD_DIR"
+    exit 1
+  fi
 fi
 tick
 
@@ -1333,15 +1355,21 @@ if [[ "$DRY_RUN" == "1" ]]; then
 elif [[ -f "$OODAR_SRC_DIR/oodar.c" ]]; then
   ok "oodar sources already at $OODAR_SRC_DIR"
 else
+  local wd; wd=$(mktemp -d 2>/dev/null || echo "/tmp/openooda-oodar-$$")
   oodar_branch=()
   [[ -n "${PINS[oodar]:-}" ]] && oodar_branch=(--branch "${PINS[oodar]}")
   info "cloning openOODA/oodar ${PINS[oodar]:-latest} (build sources) ..."
-  (git clone --depth 1 "${oodar_branch[@]}" https://github.com/openOODA/oodar "$OODAR_SRC_DIR" >/dev/null 2>&1) & spinner $!
-  if [[ -f "$OODAR_SRC_DIR/oodar.c" ]]; then
+  ( fetch_repo "https://github.com/openOODA/oodar" "$OODAR_SRC_DIR" "oodar.c" "${PINS[oodar]:-}" "$wd" ) &
+  spinner $!
+  wait $! 2>/dev/null || true
+  local status; status=$(cat "$wd/status" 2>/dev/null || echo "fail")
+  rm -rf "$wd"
+  if [[ "$status" == "ok" ]]; then
     rm -rf "$OODAR_SRC_DIR/.git"
     ok "cloned to $OODAR_SRC_DIR"
   else
-    err "oodar sources clone failed; check $OODAR_SRC_DIR"; exit 1
+    err "oodar sources clone failed; check $OODAR_SRC_DIR"
+    exit 1
   fi
 fi
 tick
