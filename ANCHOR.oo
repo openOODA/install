@@ -1,16 +1,15 @@
 // # Install Subsystem — Anchor for Agents
 //
-// Logline: How the toolchain lands on a machine. Bash bootstrap for curl | bash portability,
-//          plus openOODA harness_wire.oo for cap-closed mcp/lsp/blackbox wiring.
+// Logline: How the toolchain lands on a machine. Bash bootstrap for curl | bash portability.
+//          Toolchain-only — LLM-harness scanning/wiring removed 2026-09-11 (020693a).
 //
 // Setup: Pure structural file. VERSION must match the current git tag (RULES.oot §1.24 exception).
 //
 // Beats:
-//   1. install.sh is the thin bash bootstrap (OS/arch, curl, std clone, shell rc). SHA-256 sidecar required; missing or mismatch refuses. VERSION must match the current git tag (RULES.oot §1.24 exception — install is hand-bumped because curl|bash has no git history at install time).
-//   2. harness_wire.oo is the openOODA cap-closed wire (FsReadCap/FsWriteCap/EnvCap/ProcessCap, ≤256 lines per file)
-//   3. Detects 20 harnesses (antigravity-cli, opencode, muse, grok, gemini, claude-code, claude-desktop, cursor, windsurf, codex, cline, continue, zed, vscode, goose, mistral-vibe, grok-build, mcode, devin, charm) and wires 18 via bash install.sh plus 12 via cap-closed harness_wire.oo (8 file merges + 4 ProcessCap CLI stubs) when ooda+oodac are installed. devin and charm are detected but not yet wired (see M1 in 2026-09-10 focused audit).
-//   4. Idempotent, DRY_RUN preview, *.bak.openooda backup, y/n gated in install.sh, restart reminder
-//   5. To propose a change, keep every .oo ≤256 lines and fail closed. No python fallback in .oo path.
-//   6. Hybrid wiring: install.sh runs bash+python3 heredoc merges for 18 harnesses (the curl|bash default path). If ooda+oodac are on PATH, install.sh also runs harness_wire.oo for 8 file-merge harnesses (silent unless OPENOODA_DEBUG=1); on failure, falls back to bash. The .oo path is never the only path.
-
-// harness_wire.oo is the cap-closed wire — see beats above (no import needed for structural anchor)
+//   1. install.sh is the thin bash bootstrap (OS/arch detect, curl, SHA-256 sidecar verify,
+//      std clone, ~/.bashrc exports). Missing or mismatched sidecar refuses (fail-closed).
+//   2. VERSION must match the current git tag (§1.24 exception — hand-bumped because
+//      curl|bash has no git history at install time).
+//   3. Idempotent; --dry-run previews; ~/.bashrc backed up as .bak.openooda before edit;
+//      bash-only shell rc (zsh/fish dropped 2026-09-11, 34f4d54 — other shells export manually).
+//   4. To propose a change, keep every file ≤256 lines and fail closed.

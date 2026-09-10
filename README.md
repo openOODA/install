@@ -27,17 +27,13 @@ pacman (winget deferred). Not the `ooda install` subcommand.
 curl -fsSL https://openooda.org/install.sh | bash
 ```
 
-Right after launch the installer asks `Install openOODA? [Y/n]` (auto-yes for `curl | bash` with no tty, `CI`, `OPENOODA_YES=1`, or `OPENOODA_DRY_RUN=1`). After the core toolchain lands, it scans for LLM harnesses and asks `Connect detected harnesses (…) to mcp, lsp, and blackbox? [Y/n]` — answering `n` skips wiring. When harnesses were wired, it reminds you to restart any open harnesses so the new config is read (hosts read at startup). Use `OPENOODA_YES=1` or `printf "y\ny\n" | bash install.sh` for non-interactive.
+Right after launch the installer asks `Install openOODA? [Y/n]` (auto-yes for `curl | bash` with no tty, `CI`, `OPENOODA_YES=1`, or `OPENOODA_DRY_RUN=1`). Use `OPENOODA_YES=1` or `printf "y\n" | bash install.sh` for non-interactive.
 
-On each run the installer auto-detects installed LLM harnesses and idempotently wires `ooda-mcp --stdio`, `ooda-lsp --stdio`, and `blackbox mcp --stdio` with `OODA_COMPILER`, `OODA_FS_READDIR`, `OODA_FS_WRITEDIR`, `OODA_CODEX`/`OODACODEX`:
+Toolchain-only: the installer no longer scans for or wires LLM harnesses (removed 2026-09-11). Binaries land in `~/.openooda/bin`, the std tree in `~/.openooda/std`, and `~/.bashrc` gets the `PATH`/`OODA_*` exports (bash only; zsh/fish users export the same lines manually).
 
-- **Core (already on this machine):** `antigravity-cli`/`agy`, `opencode`, `muse` (Muse), `grok`, `gemini`
-- **New from web sweep (MCP-native, high adoption):** `claude-code` (`claude` CLI, `~/.claude.json`), `claude-desktop` (`claude_desktop_config.json`), `cursor` (`~/.cursor/mcp.json`), `windsurf` (`~/.codeium/windsurf/mcp_config.json`), `codex` (`~/.codex/config.toml`), `cline` (`cline_mcp_settings.json`), `continue` (`~/.continue/config.json`), `zed` (`~/.config/zed/settings.json` → `context_servers`), `vscode` (`~/.config/Code/User/mcp.json`), `goose` (`~/.config/goose/config.yaml`)
-- **Stubs (no MCP yet):** `mistral-vibe`, `grok-build`, `devin`, `charm`/`crush`
+`OPENOODA_DRY_RUN=1` previews without touching disk. Re-run is safe — the install is idempotent and `~/.bashrc` is backed up as `~/.bashrc.bak.openooda` before any edit.
 
-`OPENOODA_DRY_RUN=1` previews without touching disk. Re-run is safe — existing `mcpServers`/`mcp`/`context_servers`/`servers` entries are merged, unrelated servers are preserved, and a `*.bak.openooda` backup is kept.
-
-**Professional install (P0/P1):** `install.sh --help` (`--dry-run`/`--yes`/`--no-modify-shell`/`--uninstall`), pre-flight checks `curl`/`git`/`python3` + `df` >100 MB + `curl -Is raw.githubusercontent`, `fish` (`XDG_CONFIG_HOME/fish/config.fish`) + `bash`/`zsh` rc backed up as `*.bak.openooda`, `XDG_CONFIG_HOME` respected for all harness configs, `~/.openooda/install.log` (1M rotate) + `trap` cleanup, post-flight `verified: ooda/oodac/ooda-lsp/ooda-mcp/blackbox --help` + `harness mcp wiring contains openooda`, and cap-closed `harness_wire.oo` (214 lines) tried first (silent unless `OPENOODA_DEBUG=1`, falls back to bash for `curl | bash`).
+**Professional install (P0/P1):** `install.sh --help` (`--dry-run`/`--yes`/`--no-modify-shell`/`--uninstall`), pre-flight checks `curl`/`git`/`python3` + `df` >100 MB + `curl -Is raw.githubusercontent`, `~/.openooda/install.log` (1M rotate) + `trap` cleanup, post-flight verifies `ooda`/`oodac`/`ooda-lsp`/`ooda-mcp`/`blackbox` respond to `--help`.
 
 ## Docs
 
