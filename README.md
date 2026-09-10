@@ -57,6 +57,43 @@ All design, RFCs, practices, and onboarding live in [openOODA/openOODA](https://
 | [openOODA/website](https://github.com/openOODA/website) | Website source |
 | [openOODA/.github](https://github.com/openOODA/.github) | Org profile, shared community files, workflows |
 
+## Troubleshooting
+
+**`ooda update` fails with `curl: (6) Could not resolve host: openooda.org`**
+
+The ooda update flow runs curl in a child process. That child sometimes
+inherits a stripped environment (no DNS resolver, or a sandboxed one).
+The ooda binary's own hint already covers this — fetch the install
+script yourself and pass it via `--installer`:
+
+```bash
+curl -O https://openooda.org/install.sh
+ooda update --installer ./install.sh
+```
+
+The parent shell does the DNS-resolved fetch; ooda update only sees a
+local file path, so no DNS is needed inside the child.
+
+**`openooda.org` is unreachable from your network (corporate proxy,
+firewall, airgap)**
+
+Same workaround — fetch the script from a different mirror and pass
+it to `--installer`:
+
+```bash
+# from a machine that can reach the internet:
+curl -O https://raw.githubusercontent.com/openOODA/install/main/install.sh
+scp install.sh your-server:/tmp/
+# on the airgapped box:
+ooda update --installer /tmp/install.sh
+```
+
+**`bash: $BIN_DIR/ooda: cannot execute: required file not found` after install**
+
+The install's `/usr/local/bin` shim may have been removed by the OS
+package manager. Re-run the installer without uninstalling; the
+shim-creation step is idempotent.
+
 ## License
 
 Licensed under MIT. See [LICENSE](LICENSE).
