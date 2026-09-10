@@ -147,6 +147,31 @@ step_status() {
   [[ -n "${STATUS_FILE:-}" ]] || return 0
   printf '%s' "$*" > "$STATUS_FILE" 2>/dev/null || true
 }
+# dump_results: write the cross-subshell state to $RESULTS_FILE. The
+# ( do_install ) subshell populates INSTALLED/SKIPPED/HARNESS_WIRED/BYTES
+# in its own copy of the variables; when it exits, those vars are gone in
+# the parent. We serialise them to a tmp file (same pattern as STATUS_FILE)
+# so print_summary in the parent sees what really happened. Format is a
+# shell snippet sourced back in the parent; %q makes every element safe
+# to re-evaluate even with spaces or quotes in the value.
+dump_results() {
+  [[ -n "${RESULTS_FILE:-}" ]] || return 0
+  {
+    printf 'INSTALLED=(\n'
+    if [[ ${#INSTALLED[@]} -gt 0 ]]; then
+      for x in "${INSTALLED[@]}"; do printf '  %q\n' "$x"; done
+    fi
+    printf ')\nSKIPPED=(\n'
+    if [[ ${#SKIPPED[@]} -gt 0 ]]; then
+      for x in "${SKIPPED[@]}"; do printf '  %q\n' "$x"; done
+    fi
+    printf ')\nHARNESS_WIRED=(\n'
+    if [[ ${#HARNESS_WIRED[@]} -gt 0 ]]; then
+      for x in "${HARNESS_WIRED[@]}"; do printf '  %q\n' "$x"; done
+    fi
+    printf ')\nBYTES=%s\n' "${BYTES:-0}"
+  } > "$RESULTS_FILE" 2>/dev/null || true
+}
 ok()   { [[ "${QUIET:-0}" == "1" ]] && { _log "OK $*"; return; }; printf '  %s✓%s %s\n' "$GREEN"  "$RESET" "$*"; _log "OK $*"; }
 warn() { [[ "${QUIET:-0}" == "1" ]] && { _log "WARN $*"; return; }; printf '  %s!%s %s\n' "$YELLOW" "$RESET" "$*"; _log "WARN $*"; }
 err()  { printf '  %s✗%s %s\n' "$RED"    "$RESET" "$*" >&2; _log "ERR $*"; }
@@ -1408,6 +1433,11 @@ do_install() {
   step_status "verifying all binaries (post-flight check)"
   if [[ "$DRY_RUN" != "1" ]]; then post_flight; fi
 
+  # Serialise the cross-subshell state to RESULTS_FILE so the parent
+  # print_summary can read what really happened. Without this, the
+  # parent sees empty INSTALLED[] and prints "no components installed"
+  # even when all 7 binaries were downloaded and SHA-verified.
+  dump_results
   step_status "done"
   return 0
 }
@@ -1513,7 +1543,8 @@ mkdir -p "$BIN_DIR"
 # spinner is never garbled by stderr. The summary block below is the only
 # stdout output after the spinner stops.
 STATUS_FILE=$(mktemp 2>/dev/null || echo "/tmp/openooda-status.$$")
-export STATUS_FILE
+RESULTS_FILE=$(mktemp 2>/dev/null || echo "/tmp/openooda-results.$$")
+export STATUS_FILE RESULTS_FILE
 ( do_install ) >> "$LOG_FILE" 2>&1 &
 INSTALL_PID=$!
 spinner_with_status "$INSTALL_PID" "$STATUS_FILE"
@@ -1521,8 +1552,19 @@ INSTALL_RC=$?
 wait "$INSTALL_PID" 2>/dev/null || true
 rm -f "$STATUS_FILE" 2>/dev/null || true
 
+# Pull the cross-subshell state back into the parent. do_install dumped
+# INSTALLED / SKIPPED / HARNESS_WIRED / BYTES to RESULTS_FILE before
+# returning; sourcing it restores those vars so print_summary can show
+# the truth (e.g. all 7 binaries were installed and SHA-verified).
+INSTALLED=()
+SKIPPED=()
+HARNESS_WIRED=()
+BYTES=0
+[[ -r "$RESULTS_FILE" ]] && . "$RESULTS_FILE" 2>/dev/null || true
+
 # Print the summary (the only thing the user sees, besides the banner)
 print_summary
+rm -f "$RESULTS_FILE" 2>/dev/null || true
 
 # If install failed, surface the last few log lines
 if [[ $INSTALL_RC -ne 0 ]]; then
