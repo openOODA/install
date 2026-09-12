@@ -8,6 +8,6 @@
 //   1. Print the acceptance line and return 0.
 
 pub fn main() -> Int {
-    println("hello, sovereign world")
+    println("hello, primary world")
     return 0
 }
