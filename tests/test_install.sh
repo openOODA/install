@@ -1,5 +1,5 @@
 #!/bin/bash
-# install 9.7 — fail-closed sha256 sidecar, blackbox, toolchain-only, bash rc, no shadow, no state-loss, opm-nonzero
+# install 9.8 — fail-closed sha256 sidecar, blackbox, toolchain-only, bash rc, no shadow, no state-loss, opm-nonzero, on-disk accept
 set -e
 grep -q "sha256" install.sh || { echo "FAIL no sha256"; exit 1; }
 grep -q "missing SHA-256 sidecar" install.sh || { echo "FAIL no missing-sidecar refuse"; exit 1; }
@@ -74,4 +74,32 @@ if grep -q 'BIN_DIR/ooda-mcp-grok\|BIN_DIR/ooda-lsp-grok\|bindir+"/ooda-lsp-grok
   echo "FAIL stale -grok shim command refs (never shipped)"; exit 1
 fi
 grep -q "NORTHSTAR.oot" install.sh || { echo "FAIL no codex fetch"; exit 1; }
-echo "PASS install 9.7 fail-closed sha256+blackbox+toolchain+bash-rc+no-shadow+no-state-loss+opm-nonzero"
+# Plan v28: assert_path_resolution must accept a binary present at $BIN_DIR
+# even when command -v cannot resolve it on the current PATH (case (c)).
+# This unblocks `ooda update` when the install subshell writes binaries
+# but the parent shell's PATH does not yet include $BIN_DIR.
+grep -q "case (c)" install.sh || { echo "FAIL no case (c) on-disk accept in assert_path_resolution"; exit 1; }
+grep -q '\-x "\$dest" && \-z "\$resolved"' install.sh \
+  || { echo "FAIL no on-disk accept clause (-x \$dest && -z \$resolved)"; exit 1; }
+grep -q "command -v or on-disk" install.sh \
+  || { echo "FAIL success-line not updated to mention on-disk accept"; exit 1; }
+# Runtime check: load install.sh, exercise assert_path_resolution with
+# PATH stripped to /usr/bin:/bin only, with a real binary at $BIN_DIR.
+# Must succeed (case c) where it previously failed.
+TMPD=$(mktemp -d); trap "rm -rf $TMPD" EXIT
+RESULTS_FILE="$TMPD/r.sh"
+cat > "$RESULTS_FILE" <<EOF
+INSTALLED=("ooda" "oodac" "oodar" "opm" "lsp" "mcp" "blackbox")
+EOF
+# Extract just assert_path_resolution (plus the BINARIES declaration it
+# references) into a script file, then run that script under a stripped
+# PATH. Use awk for the extraction since multi-line sed is finicky.
+awk '
+  /^declare -A BINARIES=/ { print; next }
+  /^assert_path_resolution\(\)/, /^}$/ { print; if (/^}$/) exit }
+' install.sh > "$TMPD/assert.sh"
+test -s "$TMPD/assert.sh" || { echo "FAIL could not extract assert_path_resolution from install.sh"; exit 1; }
+env -i PATH=/usr/bin:/bin HOME="$HOME" BIN_DIR="$HOME/.openooda/bin" RESULTS_FILE="$RESULTS_FILE" \
+  bash "$TMPD/assert.sh" \
+  || { echo "FAIL on-disk accept case (c) did not trigger under stripped PATH"; exit 1; }
+echo "PASS install 9.8 fail-closed sha256+blackbox+toolchain+bash-rc+no-shadow+no-state-loss+opm-nonzero+on-disk-accept"

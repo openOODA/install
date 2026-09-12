@@ -669,11 +669,20 @@ assert_path_resolution() {
     #   (b) command -v resolves to the user's default install location
     #       ($HOME/.openooda/bin/) — that's the user's real install;
     #       this run's BIN_DIR is just shadowed by it, which is fine.
+    #   (c) the binary exists at $dest even though command -v missed it —
+    #       this happens when the install subshell writes the binary but
+    #       the parent shell's PATH does not include $BIN_DIR (e.g. when
+    #       spawned by `ooda update`). Treat as OK because post_flight
+    #       already SHA-verified the binary on disk; the PATH assertion
+    #       is a guard, not the source of truth.
     # Otherwise it's a real foreign shadow (e.g., ~/.local/bin/ooda from
     # a prior install layout) and we fail closed.
     local home_install="$HOME/.openooda/bin/$bin_name"
     if [[ "$resolved" == "$dest" || "$resolved" == "$home_install" ]]; then
-      : # OK
+      : # OK — case (a) or (b)
+    elif [[ -x "$dest" && -z "$resolved" ]]; then
+      info "PATH shadow: '$bin_name' not on current PATH but present at $dest (post_flight SHA-verified); accepting"
+      : # OK — case (c)
     else
       err "PATH shadow: '$bin_name' resolves to '$resolved' (expected '$dest')"
       err "  a stale openooda binary is shadowing the install"
@@ -687,7 +696,7 @@ assert_path_resolution() {
     err "post-install assertion failed: stale binary shadowed the install"
     return 1
   else
-    ok "post-install assertion: command -v resolves to $BIN_DIR for all $checked installed binaries"
+    ok "post-install assertion: $checked binary(ies) installed at $BIN_DIR (command -v or on-disk)"
   fi
 }
 
