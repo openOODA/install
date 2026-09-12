@@ -59,26 +59,10 @@ All design, RFCs, practices, and onboarding live in [openOODA/openOODA](https://
 
 ## Troubleshooting
 
-**`ooda update` fails with `curl: (6) Could not resolve host: openooda.org`**
-
-The ooda update flow runs curl in a child process. That child sometimes
-inherits a stripped environment (no DNS resolver, or a sandboxed one).
-The ooda binary's own hint already covers this — fetch the install
-script yourself and pass it via `--installer`:
-
-```bash
-curl -O https://openooda.org/install.sh
-ooda update --installer ./install.sh
-```
-
-The parent shell does the DNS-resolved fetch; ooda update only sees a
-local file path, so no DNS is needed inside the child.
-
 **`openooda.org` is unreachable from your network (corporate proxy,
 firewall, airgap)**
 
-Same workaround — fetch the script from a different mirror and pass
-it to `--installer`:
+Fetch the script from a different mirror and pass it to `--installer`:
 
 ```bash
 # from a machine that can reach the internet:
