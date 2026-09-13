@@ -76,8 +76,8 @@ else
 fi
 _log() { printf '[%s] %s\n' "$(date -Iseconds 2>/dev/null || date)" "$*" >&3 2>/dev/null || true; }
 
-declare -A REPOS=([ooda]=ooda [oodac]=oodac [oodar]=oodar [opm]=opm [lsp]=lsp [mcp]=mcp [bb]=bb)
-declare -A BINARIES=([ooda]=ooda [oodac]=oodac [oodar]=liboodar.a [opm]=opm [lsp]=ooda-lsp [mcp]=ooda-mcp [bb]=bb)
+declare -A REPOS=([ooda]=ooda [oodac]=oodac [oodar]=oodar [opm]=opm [lsp]=lsp [mcp]=mcp [bb]=bb [cli]=cli)
+declare -A BINARIES=([ooda]=ooda [oodac]=oodac [oodar]=liboodar.a [opm]=opm [lsp]=ooda-lsp [mcp]=ooda-mcp [bb]=bb [cli]=cli)
 
 # --- color --------------------------------------------------------------------
 
@@ -223,7 +223,7 @@ print_banner() {
 print_preamble() {
   printf '  %sopenOODA installer — what we'\''re about to do:%s\n\n' "$BOLD" "$RESET"
   printf '    %s1.%s check your environment (curl, sha256, network, disk)\n' "$DIM" "$RESET"
-  printf '    %s2.%s download 7 binaries (ooda, oodac, oodar, opm, lsp, mcp, bb)\n' "$DIM" "$RESET"
+  printf '    %s2.%s download 8 binaries (ooda, cli, oodac, oodar, opm, lsp, mcp, bb)\n' "$DIM" "$RESET"
   printf '    %s3.%s verify each binary'\''s SHA-256 against its release signature\n' "$DIM" "$RESET"
   printf '    %s4.%s clone the standard library (openOODA/std)\n' "$DIM" "$RESET"
   printf '    %s5.%s clone the runtime sources (openOODA/oodar)\n' "$DIM" "$RESET"
@@ -727,7 +727,7 @@ restart_stale_servers() {
 
 post_flight() {
   local fail=0
-  local bins=(ooda oodac ooda-lsp ooda-mcp opm)
+  local bins=(ooda cli oodac ooda-lsp ooda-mcp opm)
   if [[ -e "$BIN_DIR/bb" ]]; then
     bins+=(bb)
   elif [[ -e "$BIN_DIR/blackbox" ]]; then
@@ -789,7 +789,7 @@ do_install() {
   # step 2: components
   step_status "loading version pins"
   load_pins
-  for key in ooda oodac oodar opm lsp mcp bb; do
+  for key in ooda cli oodac oodar opm lsp mcp bb; do
     step_status "downloading + SHA-256 verifying $key"
     install_component "$key" || return 1
   done
@@ -903,7 +903,7 @@ do_install() {
   # Serialise the cross-subshell state to RESULTS_FILE so the parent
   # print_summary can read what really happened. Without this, the
   # parent sees empty INSTALLED[] and prints "no components installed"
-  # even when all 7 binaries were downloaded and SHA-verified. The
+  # even when all 8 binaries were downloaded and SHA-verified. The
   # state write is atomic (.tmp + mv) and fail-closed (returns 1 on
   # failure), so the install reports failure rather than printing a
   # misleading summary.
