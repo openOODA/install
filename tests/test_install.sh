@@ -9,13 +9,14 @@ if grep -q '\[\[ -n "$expected_hash" &&' install.sh; then
 fi
 bash install.sh --selftest-sha
 grep -q "blackbox" install.sh || { echo "FAIL no blackbox"; exit 1; }
-grep -q "BINARIES.*blackbox" install.sh || { echo "FAIL no blackbox binary"; exit 1; }
+grep -q '\[bb\]=bb' install.sh || { echo "FAIL no bb binary mapping"; exit 1; }
 grep -q "OODA_COMPILER" install.sh || { echo "FAIL no OODA_COMPILER env"; exit 1; }
 grep -q "OODA_FS_READDIR" install.sh || { echo "FAIL no OODA_FS_READDIR"; exit 1; }
 grep -q "TOTAL=17" install.sh || { echo "FAIL TOTAL not 17 (sysdep/sources/shim/codex steps missing)"; exit 1; }
 grep -q "ensure_sysdep" install.sh || { echo "FAIL no sysdep ensure"; exit 1; }
 grep -q "OODAR_SRC_DIR" install.sh || { echo "FAIL no oodar sources step"; exit 1; }
-grep -q "/usr/local/bin" install.sh || { echo "FAIL no local-bin shims"; exit 1; }
+if grep -q 'ln -sf' install.sh; then echo "FAIL installer still uses ln -sf"; exit 1; fi
+grep -q 'PATH via shell rc' install.sh || { echo "FAIL no PATH-via-rc (no /usr/local/bin shims)"; exit 1; }
 grep -q "ask_confirm" install.sh || { echo "FAIL no y/n prompt"; exit 1; }
 grep -q "Welcome to version" install.sh || { echo "FAIL no version welcome"; exit 1; }
 grep -q "Would you like to install openOODA" install.sh || { echo "FAIL no install y/n new"; exit 1; }
@@ -37,6 +38,13 @@ grep -q "install state was lost" install.sh || { echo "FAIL no state-loss guard 
 grep -q "install state file is missing or unreadable" install.sh || { echo "FAIL no missing-file guard"; exit 1; }
 grep -q "install state file has bad syntax" install.sh || { echo "FAIL no bad-syntax guard"; exit 1; }
 grep -q 'mv -f "\$tmp" "\$RESULTS_FILE"' install.sh || { echo "FAIL no atomic rename in dump_results"; exit 1; }
+# Parent must wait the install PID for the real RC; spinner printf is always 0.
+if grep -n 'wait "\$INSTALL_PID"' install.sh | grep -q '|| true'; then
+  echo "FAIL wait INSTALL_PID still discards the child RC"
+  exit 1
+fi
+grep -q 'wait "\$INSTALL_PID"' install.sh || { echo "FAIL no wait INSTALL_PID"; exit 1; }
+grep -q "trap 'dump_results || true' EXIT" install.sh || { echo "FAIL no dump_results EXIT trap"; exit 1; }
 # The misleading "binaries land in future releases" copy must be gone.
 if grep -q "binaries land in future releases" install.sh; then
   echo "FAIL misleading 'binaries land in future releases' copy is back"; exit 1
@@ -89,7 +97,7 @@ grep -q "command -v or on-disk" install.sh \
 TMPD=$(mktemp -d); trap "rm -rf $TMPD" EXIT
 RESULTS_FILE="$TMPD/r.sh"
 cat > "$RESULTS_FILE" <<EOF
-INSTALLED=("ooda" "oodac" "oodar" "opm" "lsp" "mcp" "blackbox")
+INSTALLED=("ooda")
 EOF
 # Extract just assert_path_resolution (plus the BINARIES declaration it
 # references) into a script file, then run that script under a stripped

@@ -516,15 +516,16 @@ install_component() {
   rm -rf "$wd"
 
   # Branch on results
-  if [[ "$vrc" == "0" && -x "$dest" ]]; then
+  if [[ "$vrc" == "0" && -e "$dest" ]]; then
     local mb; mb=$(awk -v s="$size" 'BEGIN{printf "%.1f", s/1048576}')
     info "$key: SHA-256 verified ($vhash...)"
     ok "installed $(basename "$dest") (${mb} MB)"; INSTALLED+=("$key")
     BYTES=$((BYTES + size))
   elif [[ "$dl" != "200" ]]; then
     rm -f "$dest.tmp" "$dest.tmp.sha256"
-    if [[ -x "$dest" ]]; then
+    if [[ -e "$dest" ]]; then
       warn "$key download failed (http $dl); preserved existing $(basename "$dest")"
+      INSTALLED+=("$key")
     elif [[ "$dl" == "404" ]]; then
       skip "$key not yet shipped for $OS-$ARCH"; SKIPPED+=("$key")
     elif [[ "$key" == "ooda" || "$key" == "oodac" ]]; then
@@ -726,7 +727,16 @@ restart_stale_servers() {
 
 post_flight() {
   local fail=0
-  for bin in ooda oodac ooda-lsp ooda-mcp bb opm; do
+  local bins=(ooda oodac ooda-lsp ooda-mcp opm)
+  if [[ -e "$BIN_DIR/bb" ]]; then
+    bins+=(bb)
+  elif [[ -e "$BIN_DIR/blackbox" ]]; then
+    bins+=(blackbox)
+  else
+    warn "verify: bb/blackbox not on disk"
+    fail=1
+  fi
+  for bin in "${bins[@]}"; do
     # Verify by output, not exit code: some tools exit nonzero on --help
     # (opm) or under non-tty stdout (ooda), and a silent stub that exits 0
     # must NOT count as verified. Every real banner carries the product
@@ -761,6 +771,9 @@ post_flight() {
 }
 
 do_install() {
+  # Always serialise INSTALLED/SKIPPED/BYTES, including on return 1,
+  # so the parent never treats a real failure as "state was lost".
+  trap 'dump_results || true' EXIT
   # pre-flight already ran before the subshell; no need to repeat
   step_status "checking environment (pre-flight done)"
   # step 1b: system deps the toolchain shells out to (gcc for builds, git for sources).
@@ -781,15 +794,18 @@ do_install() {
     install_component "$key" || return 1
   done
 
-  # step 2b: bb back-compat symlink (v0.0.12 only; v0.0.13 drops it)
+  # step 2b: bb back-compat name (copy, not a symlink)
   if [[ "$DRY_RUN" == "1" ]]; then
-    step_status "[dry-run] skipping bb back-compat symlink"
-    skip "[dry-run] skipping bb back-compat symlink"
-  elif [[ -x "$BIN_DIR/bb" ]]; then
-    step_status "creating bb back-compat symlink (~/.openooda/bin/blackbox -> bb)"
-    ln -sf bb "$BIN_DIR/blackbox" 2>/dev/null && \
-      printf '    %sOK%s   bb back-compat symlink -> ~/.openooda/bin/blackbox (v0.0.12 only)\n' "$GREEN" "$RESET" || \
-      warn "could not create bb back-compat symlink"
+    step_status "[dry-run] skipping bb back-compat name"
+    skip "[dry-run] skipping bb back-compat name"
+  elif [[ -e "$BIN_DIR/bb" && ! -e "$BIN_DIR/blackbox" ]]; then
+    step_status "copying bb to blackbox (back-compat name)"
+    if cp -f "$BIN_DIR/bb" "$BIN_DIR/blackbox" 2>/dev/null; then
+      chmod +x "$BIN_DIR/blackbox" 2>/dev/null || true
+      ok "bb back-compat name -> ~/.openooda/bin/blackbox"
+    else
+      warn "could not copy bb to blackbox"
+    fi
   fi
 
   # step 3: std (pinned when versions.toml pins it, else latest)
@@ -859,16 +875,14 @@ do_install() {
   if [[ "$DRY_RUN" != "1" ]]; then setup_shell_rc; fi
   warn_for_other_shells
 
-  # step 4b: /usr/local/bin shims
+  # step 4b: no /usr/local/bin shims. PATH comes from shell rc.
+  # Copies into /usr/local/bin would duplicate the toolchain; symlinks
+  # are forbidden. Stale links from older installers are removed on --uninstall.
   if [[ "$DRY_RUN" == "1" ]]; then
-    step_status "[dry-run] skipping /usr/local/bin shims"
-    skip "[dry-run] skipping /usr/local/bin shims"
-  elif [[ -d /usr/local/bin && -w /usr/local/bin ]]; then
-    step_status "creating /usr/local/bin shims (binaries resolve with no rc sourcing)"
-    for b in "$BIN_DIR"/*; do
-      [[ -x "$b" && -f "$b" ]] || continue
-      ln -sf "$b" "/usr/local/bin/$(basename "$b")" 2>/dev/null || true
-    done
+    step_status "[dry-run] skipping /usr/local/bin (PATH via shell rc)"
+    skip "[dry-run] skipping /usr/local/bin (PATH via shell rc)"
+  else
+    step_status "PATH via shell rc; not writing /usr/local/bin"
   fi
 
   # step 4c: clean stale openooda binaries in legacy shadow locations
@@ -1019,8 +1033,8 @@ else
 fi
 INSTALL_PID=$!
 spinner_with_status "$INSTALL_PID" "$STATUS_FILE"
+wait "$INSTALL_PID"
 INSTALL_RC=$?
-wait "$INSTALL_PID" 2>/dev/null || true
 rm -f "$STATUS_FILE" 2>/dev/null || true
 
 # Pull the cross-subshell state back into the parent. do_install dumped
@@ -1043,7 +1057,7 @@ if ! . "$RESULTS_FILE" 2>/dev/null; then
   err "this is an internal error; please report it with the install log attached"
   exit 1
 fi
-if [[ "$DRY_RUN" != "1" && ${INSTALL_RC} -eq 0 && ${#INSTALLED[@]} -eq 0 ]]; then
+if [[ "$DRY_RUN" != "1" && ${INSTALL_RC} -eq 0 && ${#INSTALLED[@]} -eq 0 && ${#SKIPPED[@]} -eq 0 ]]; then
   err "install state was lost: install subshell reported success but INSTALLED[] is empty"
   err "the binaries may be on disk but the summary cannot reflect that"
   err "this is an internal error; please report it with the install log attached"
