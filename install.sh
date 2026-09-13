@@ -582,14 +582,38 @@ setup_shell_rc() {
       printf '\n# openOODA\n%s\n%s\n%s\n%s\n%s\n' "$l1" "$l2" "$l3" "$l4" "$l5" >> "$rc"
       ok "$(basename "$rc") updated"
     fi
-    # Rewrite stale jail lines (predates /etc:/usr, or used unset $OPENOODA_HOME).
-    if grep -q '^export OODA_FS_READDIR=' "$rc" 2>/dev/null; then
-      sed -i 's|^export OODA_FS_READDIR=.*|'"$l4"'|' "$rc" 2>/dev/null || true
-    else
-      printf '%s\n' "$l4" >> "$rc"
-    fi
+    # Merge jail dirs into an existing READDIR. Never clobber extra
+    # developer paths (e.g. $HOME/Projects/openOODA:/tmp).
+    merge_readdir_line "$rc"
     grep -Fqx "$l5" "$rc" 2>/dev/null || printf '%s\n' "$l5" >> "$rc"
   done
+}
+
+# merge_readdir_line: ensure ~/.openooda:/etc:/usr are on OODA_FS_READDIR
+# without dropping extra entries. OODA_FS_WRITEDIR stays $HOME (l5).
+merge_readdir_line() {
+  local rc="$1"
+  local need=("$HOME/.openooda" "/etc" "/usr")
+  local cur raw out p extra
+  raw=$(grep '^export OODA_FS_READDIR=' "$rc" 2>/dev/null | tail -1 || true)
+  cur=$(printf '%s' "$raw" | sed -n 's/^export OODA_FS_READDIR="\(.*\)"/\1/p')
+  out='$HOME/.openooda:/etc:/usr'
+  extra=""
+  if [[ -n "$cur" ]]; then
+    IFS=':' read -ra parts <<< "$cur"
+    for p in "${parts[@]}"; do
+      [[ -z "$p" ]] && continue
+      case "$p" in
+        '$HOME/.openooda'|~/.openooda|"$HOME/.openooda"|/etc|/usr|'$OPENOODA_HOME') continue ;;
+      esac
+      extra="${extra}:$p"
+    done
+  fi
+  out="${out}${extra}"
+  if grep -q '^export OODA_FS_READDIR=' "$rc" 2>/dev/null; then
+    sed -i '/^export OODA_FS_READDIR=/d' "$rc" 2>/dev/null || true
+  fi
+  printf 'export OODA_FS_READDIR="%s"\n' "$out" >> "$rc"
 }
 
 # warn_for_other_shells: if zsh or fish is detected on PATH, print a one-line
@@ -742,6 +766,10 @@ restart_stale_servers() {
 }
 
 post_flight() {
+  # Freshly installed binaries landlock-ctor on --help. They need both
+  # jail vars; the installer child often has neither.
+  export OODA_FS_READDIR="${OODA_FS_READDIR:-$HOME/.openooda:/etc:/usr}"
+  export OODA_FS_WRITEDIR="${OODA_FS_WRITEDIR:-$HOME}"
   local fail=0
   local bins=(ooda cli oodac ooda-lsp ooda-mcp opm)
   if [[ -e "$BIN_DIR/bb" ]]; then
