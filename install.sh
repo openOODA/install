@@ -11,7 +11,16 @@
 
 set -euo pipefail
 
+# Child shells spawned by `ooda update` sometimes get HOME=~ (literal).
+HOME="${HOME:-/home/$(id -un)}"
+if [[ "$HOME" == "~" || "$HOME" == "~/"* ]]; then
+  HOME="$(getent passwd "$(id -un)" | cut -d: -f6)"
+  HOME="${HOME:-/home/$(id -un)}"
+fi
 OPENOODA_HOME="${OPENOODA_HOME:-$HOME/.openooda}"
+if [[ "$OPENOODA_HOME" == "~" || "$OPENOODA_HOME" == "~/"* ]]; then
+  OPENOODA_HOME="$HOME/${OPENOODA_HOME#\~/}"
+fi
 BIN_DIR="$OPENOODA_HOME/bin"
 STD_DIR="$OPENOODA_HOME/std"
 RELEASES="https://github.com/openOODA"
@@ -554,7 +563,10 @@ setup_shell_rc() {
   local l1='export PATH="$HOME/.openooda/bin:$PATH"'
   local l2='export OODA_STD_ROOT="$HOME/.openooda/std"'
   local l3='export OODA_COMPILER="$HOME/.openooda/bin/oodac"'
-  local l4='export OODA_FS_READDIR="$OPENOODA_HOME"'
+  # Jail must include /etc (resolv.conf, nsswitch, ssl) and /usr (libnss)
+  # or `ooda update`'s child curl cannot resolve DNS. Never expand
+  # $OPENOODA_HOME here: that var is often unset in interactive shells.
+  local l4='export OODA_FS_READDIR="$HOME/.openooda:/etc:/usr"'
   local l5='export OODA_FS_WRITEDIR="$HOME"'
   for rc in "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.zshrc"; do
     [[ -f "$rc" || ( "$rc" == "$HOME/.bashrc" && ! -f "$HOME/.bash_profile" && ! -f "$HOME/.zshrc" ) ]] || continue
@@ -570,10 +582,13 @@ setup_shell_rc() {
       printf '\n# openOODA\n%s\n%s\n%s\n%s\n%s\n' "$l1" "$l2" "$l3" "$l4" "$l5" >> "$rc"
       ok "$(basename "$rc") updated"
     fi
-    # jail defaults for installs that predate them (binaries must work with zero manual exports)
-    for _jl in "$l4" "$l5"; do
-      grep -Fqx "$_jl" "$rc" 2>/dev/null || printf '%s\n' "$_jl" >> "$rc"
-    done
+    # Rewrite stale jail lines (predates /etc:/usr, or used unset $OPENOODA_HOME).
+    if grep -q '^export OODA_FS_READDIR=' "$rc" 2>/dev/null; then
+      sed -i 's|^export OODA_FS_READDIR=.*|'"$l4"'|' "$rc" 2>/dev/null || true
+    else
+      printf '%s\n' "$l4" >> "$rc"
+    fi
+    grep -Fqx "$l5" "$rc" 2>/dev/null || printf '%s\n' "$l5" >> "$rc"
   done
 }
 
@@ -652,6 +667,7 @@ assert_path_resolution() {
     [[ -n "$key" ]] || continue
     local bin_name="${BINARIES[$key]:-$key}"
     local dest="$BIN_DIR/$bin_name"
+    dest="${dest/#\~/$HOME}"
     local resolved
     resolved=$(command -v "$bin_name" 2>/dev/null || true)
     checked=$((checked + 1))
@@ -1081,7 +1097,7 @@ rm -f "$RESULTS_FILE" 2>/dev/null || true
 
 # If install failed, surface the last few log lines
 if [[ $INSTALL_RC -ne 0 || $ASSERT_RC -ne 0 ]]; then
-  err "install failed (exit $INSTALL_RC) — last 20 lines of $LOG_FILE:"
+  err "install failed (install=$INSTALL_RC assert=$ASSERT_RC) — last 20 lines of $LOG_FILE:"
   if [[ "$DRY_RUN" != "1" && -f "$LOG_FILE" ]]; then
     tail -n 20 "$LOG_FILE" >&2 || true
   fi
