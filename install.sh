@@ -568,6 +568,7 @@ setup_shell_rc() {
   # $OPENOODA_HOME here: that var is often unset in interactive shells.
   local l4='export OODA_FS_READDIR="$HOME/.openooda:/etc:/usr"'
   local l5='export OODA_FS_WRITEDIR="$HOME"'
+  local l6='export OODACODEX="$HOME/.openooda/northstar.oot"'
   for rc in "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.zshrc"; do
     [[ -f "$rc" || ( "$rc" == "$HOME/.bashrc" && ! -f "$HOME/.bash_profile" && ! -f "$HOME/.zshrc" ) ]] || continue
     [[ -e "$rc" ]] || : >> "$rc" 2>/dev/null || continue
@@ -579,13 +580,14 @@ setup_shell_rc() {
     if grep -Fqx "$l1" "$rc" 2>/dev/null; then
       info "$(basename "$rc") already has openOODA exports"
     else
-      printf '\n# openOODA\n%s\n%s\n%s\n%s\n%s\n' "$l1" "$l2" "$l3" "$l4" "$l5" >> "$rc"
+      printf '\n# openOODA\n%s\n%s\n%s\n%s\n%s\n%s\n' "$l1" "$l2" "$l3" "$l4" "$l5" "$l6" >> "$rc"
       ok "$(basename "$rc") updated"
     fi
     # Merge jail dirs into an existing READDIR. Never clobber extra
     # developer paths (e.g. $HOME/Projects/openOODA:/tmp).
     merge_readdir_line "$rc"
     grep -Fqx "$l5" "$rc" 2>/dev/null || printf '%s\n' "$l5" >> "$rc"
+    grep -q '^export OODACODEX=' "$rc" 2>/dev/null || printf '%s\n' "$l6" >> "$rc"
   done
 }
 
