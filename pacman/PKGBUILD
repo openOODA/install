@@ -1,7 +1,7 @@
 pkgname=openooda
-pkgver=0.1.0
+pkgver=0.1.30
 pkgrel=1
-pkgdesc="openOODA — Sovereign Systems Language for the AI Era"
+pkgdesc="openOODA — Primary Systems Language for the AI Era (including blackbox)"
 arch=('x86_64' 'aarch64')
 url="https://openooda.org"
 license=('MIT')
@@ -14,12 +14,16 @@ package() {
     mkdir -p "${pkgdir}/usr/bin"
     mkdir -p "${pkgdir}/usr/lib/openooda"
     mkdir -p "${pkgdir}/etc/profile.d"
-    if ls "${srcdir}/../dist/"*-linux-* >/dev/null 2>&1; then
-        install -m 0755 "${srcdir}/../dist/"*-linux-* "${pkgdir}/usr/bin/"
-    fi
-    if ls "${srcdir}/../dist/"*-linux-*.a >/dev/null 2>&1; then
-        install -m 0644 "${srcdir}/../dist/"*-linux-*.a "${pkgdir}/usr/lib/openooda/"
-    fi
+    for f in "${srcdir}/../dist/"*-linux-*; do
+        [ -f "$f" ] || continue
+        case "$f" in
+            *.a|*liboodar.a*)
+                install -m 0644 "$f" "${pkgdir}/usr/lib/openooda/liboodar.a" ;;
+            *)
+                b=$(basename "$f" | sed -E 's/-linux-(x86_64|arm64)$//')
+                install -m 0755 "$f" "${pkgdir}/usr/bin/$b" ;;
+        esac
+    done
     git clone --depth 1 https://github.com/openOODA/std "${pkgdir}/usr/lib/openooda/std"
     rm -rf "${pkgdir}/usr/lib/openooda/std/.git"
     install -m 0644 "${srcdir}/profile.d.sh" "${pkgdir}/etc/profile.d/openooda.sh"

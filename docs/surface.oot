@@ -1,5 +1,5 @@
 # install — how bits land
-File: install/docs/SURFACE.oot
+File: install/docs/surface.oot
 
 How the toolchain lands on a machine. Git tags are the
 version (RFC-0006). Ships `install.sh` plus apt, dnf, and

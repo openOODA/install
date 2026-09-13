@@ -22,7 +22,7 @@ grep -q "Would you like to install openOODA" install.sh || { echo "FAIL no insta
 grep -q "pre_flight" install.sh || { echo "FAIL no pre-flight"; exit 1; }
 grep -q "post_flight" install.sh || { echo "FAIL no post-flight"; exit 1; }
 grep -q "XDG_CONFIG_HOME" install.sh || { echo "FAIL no XDG"; exit 1; }
-grep -q 'for rc in "\$HOME/.bashrc";' install.sh || { echo "FAIL shell rc loop not bash-only"; exit 1; }
+grep -q '\.bashrc' install.sh && grep -q '\.bash_profile' install.sh && grep -q '\.zshrc' install.sh || { echo "FAIL shell rc loop missing multi-shell support"; exit 1; }
 grep -q "warn_for_other_shells" install.sh || { echo "FAIL no warn_for_other_shells"; exit 1; }
 grep -q "clean_stale_shadow_binaries" install.sh || { echo "FAIL no clean_stale_shadow_binaries"; exit 1; }
 grep -q "assert_path_resolution" install.sh || { echo "FAIL no assert_path_resolution"; exit 1; }
@@ -73,7 +73,7 @@ PY
 if grep -q 'BIN_DIR/ooda-mcp-grok\|BIN_DIR/ooda-lsp-grok\|bindir+"/ooda-lsp-grok"' install.sh; then
   echo "FAIL stale -grok shim command refs (never shipped)"; exit 1
 fi
-grep -q "NORTHSTAR.oot" install.sh || { echo "FAIL no codex fetch"; exit 1; }
+grep -q "northstar.oot" install.sh || { echo "FAIL no codex fetch"; exit 1; }
 # Plan v28: assert_path_resolution must accept a binary present at $BIN_DIR
 # even when command -v cannot resolve it on the current PATH (case (c)).
 # This unblocks `ooda update` when the install subshell writes binaries

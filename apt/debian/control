@@ -7,6 +7,6 @@ Build-Depends: debhelper-compat (= 13), git
 Package: openooda
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}
-Description: openOODA — Sovereign Systems Language for the AI Era
+Description: openOODA — Primary Systems Language for the AI Era
  The openOODA toolchain: driver, compiler, runtime, standard library,
- package manager, language server, and MCP server.
+ package manager, language server, MCP server, and flight recorder (blackbox).

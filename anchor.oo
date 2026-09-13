@@ -3,7 +3,7 @@
 // Logline: How the toolchain lands on a machine. Bash bootstrap for curl | bash portability.
 //          Toolchain-only — LLM-harness scanning/wiring removed 2026-09-11 (020693a).
 //
-// Setup: Pure structural file. VERSION must match the current git tag (RULES.oot §1.24 exception).
+// Setup: Pure structural file. VERSION must match the current git tag (rules.oot §1.24 exception).
 //
 // Beats:
 //   1. install.sh is the thin bash bootstrap (OS/arch detect, curl, SHA-256 sidecar verify,

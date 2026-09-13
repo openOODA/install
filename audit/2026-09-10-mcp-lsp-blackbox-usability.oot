@@ -7,10 +7,10 @@
 //          plus a bash quoting bug in wire_mistral_vibe drops WRITEDIR.
 //
 // Setup: Read alongside the 5 service docs in their own repos:
-//          - mcp/docs/MCP_SETUP.oot
-//          - lsp/docs/LSP_SETUP.oot
+//          - mcp/docs/mcp_setup.oot
+//          - lsp/docs/lsp_setup.oot
 //          - blackbox/docs/blackbox.oot
-//          - install/ANCHOR.oo
+//          - install/anchor.oo
 //          - install/harness_wire.oo
 //        Each numbered item has a Fix column. The first column is a stable
 //        ID for the issue. Run install/repair_harness_wiring.sh to patch
@@ -32,7 +32,7 @@
 //
 // $ cat ~/.grok/config.toml (relevant slice)
 //   [mcp_servers.openooda.env]
-//   OODA_CODEX = "/home/jeryd/Projects/openOODA/openOODA/NORTHSTAR.oot"
+//   OODA_CODEX = "/home/jeryd/Projects/openOODA/openOODA/northstar.oot"
 //   OODA_FS_READDIR = "/home/jeryd/Projects/openOODA"
 //   # OODA_FS_WRITEDIR is MISSING.
 //
@@ -152,7 +152,7 @@
 //    - patches ~/.config/muse, ~/.grok, ~/.vibe, ~/.gemini in place
 //    - backup-rename to *.bak.repair-$TS so uninstall stays correct
 //
-//  mcp/docs/MCP_SETUP.oot, lsp/docs/LSP_SETUP.oot, blackbox/docs/blackbox.oot:
+//  mcp/docs/mcp_setup.oot, lsp/docs/lsp_setup.oot, blackbox/docs/blackbox.oot:
 //    - lead with the jail env invariant; require both OODA_FS_READDIR and
 //      OODA_FS_WRITEDIR; call out OODA_NO_JAIL=1 escape hatch
 //

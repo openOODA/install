@@ -11,6 +11,14 @@
 # is apt-installed, missing gcc/git fail the run via installer sysdeps):
 #   HELLO60_IMAGE=docker.io/library/ubuntu:24.04 ./tests/test_hello60.sh
 set -u
+TMPD=""
+STAGE=""
+cleanup() {
+  rm -f /tmp/hello_body.txt
+  [[ -n "$TMPD" ]] && rm -rf "$TMPD"
+  [[ -n "$STAGE" ]] && rm -rf "$STAGE"
+}
+trap cleanup EXIT
 cd "$(dirname "$0")"
 RT=""
 command -v podman >/dev/null 2>&1 && RT=podman
@@ -28,14 +36,17 @@ if [[ "${HELLO60_LIVE:-0}" != "1" ]]; then
   grep -q 'command -v ooda' test_hello60_inner.sh || { echo "FAIL inner must assert PATH"; exit 1; }
   grep -q 'BUDGET' test_hello60_inner.sh || { echo "FAIL inner must enforce budget"; exit 1; }
   grep -qE '(^|[;&| ])source( |$)' test_hello60_inner.sh && { echo "FAIL inner must not source rc files"; exit 1; }
+  TMPD=$(mktemp -d /tmp/hello60_XXXXXX)
   # Inner heredoc program must match the committed fixture (single source of truth).
-  python3 - > /tmp/hello_body.txt <<'PY'
+  python3 - > "$TMPD/hello_body.txt" <<'PY'
 import re
 src = open('test_hello60_inner.sh').read()
 m = re.search(r"cat > main\.oo <<'OO'\n(.*?\n)OO\n", src, re.S)
 open('/tmp/hello_body.txt', 'w').write(m.group(1) if m else '')
 PY
-  diff /tmp/hello_body.txt hello_fixture.oo > /dev/null \
+  cp -f /tmp/hello_body.txt "$TMPD/hello_body.txt" 2>/dev/null || true
+  rm -f /tmp/hello_body.txt 2>/dev/null || true
+  diff "$TMPD/hello_body.txt" hello_fixture.oo > /dev/null \
     || { echo "FAIL inner program drifted from hello_fixture.oo"; exit 1; }
   echo "PASS hello60 contract (static). Set HELLO60_LIVE=1 for the container run."
   exit 0
@@ -48,7 +59,6 @@ PREP="command -v curl >/dev/null 2>&1 || (apt-get update -qq && apt-get install 
 # SELinux (enforcing hosts): mounts need a relabeled STAGE of copies so the
 # repo itself is never relabeled.
 STAGE="$(mktemp -d)"
-trap 'rm -rf "$STAGE"' EXIT
 cp test_hello60_inner.sh "$STAGE/t.sh"
 if [[ -n "${INSTALL_MNT:-}" ]]; then
   # Test a LOCAL install.sh: stage a copy, run the file (same code path as curl|bash).

@@ -9,12 +9,17 @@ override_dh_auto_install:
 	install -d debian/openooda/usr/lib/openooda
 	install -d debian/openooda/etc/profile.d
 	# Stage binaries from ../dist/*-linux-* (built upstream by the release pipeline).
-	if ls ../dist/*-linux-* >/dev/null 2>&1; then \
-		install -m 0755 ../dist/*-linux-* debian/openooda/usr/bin/ ; \
-	fi
-	if ls ../dist/*-linux-*.a >/dev/null 2>&1; then \
-		install -m 0644 ../dist/*-linux-*.a debian/openooda/usr/lib/openooda/ ; \
-	fi
+	# Strip architecture suffixes (-linux-x86_64, -linux-arm64) and place liboodar.a in /usr/lib/openooda/.
+	for f in ../dist/*-linux-*; do \
+		[ -f "$$f" ] || continue; \
+		case "$$f" in \
+			*.a|*liboodar.a*) \
+				install -m 0644 "$$f" debian/openooda/usr/lib/openooda/liboodar.a ;; \
+			*) \
+				b=$$(basename "$$f" | sed -E 's/-linux-(x86_64|arm64)$$//'); \
+				install -m 0755 "$$f" "debian/openooda/usr/bin/$$b" ;; \
+		esac; \
+	done
 	# Bundle std library (git clone of openOODA/std at build time).
 	git clone --depth 1 https://github.com/openOODA/std debian/openooda/usr/lib/openooda/std
 	rm -rf debian/openooda/usr/lib/openooda/std/.git

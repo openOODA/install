@@ -63,21 +63,21 @@ for arg in "$@"; do
   esac
 done
 # log setup — append, keep 1M rotation
-mkdir -p "$OPENOODA_HOME" 2>/dev/null || true
-touch "$LOG_FILE" 2>/dev/null || true
-# rotate if >1M
-if [[ -f "$LOG_FILE" ]] && [[ $(wc -c < "$LOG_FILE" 2>/dev/null || echo 0) -gt 1048576 ]]; then
-  mv "$LOG_FILE" "$LOG_FILE.old" 2>/dev/null || true
+if [[ "$DRY_RUN" != "1" ]]; then
+  mkdir -p "$OPENOODA_HOME" 2>/dev/null || true
+  touch "$LOG_FILE" 2>/dev/null || true
+  # rotate if >1M
+  if [[ -f "$LOG_FILE" ]] && [[ $(wc -c < "$LOG_FILE" 2>/dev/null || echo 0) -gt 1048576 ]]; then
+    mv "$LOG_FILE" "$LOG_FILE.old" 2>/dev/null || true
+  fi
+  exec 3>>"$LOG_FILE" || exec 3>/dev/null
+else
+  exec 3>/dev/null
 fi
-# No `2>/dev/null` on the exec — bash 5.3.9 has a quirk where
-# `exec 3>>file 2>/dev/null` silently kills the script. The fallback
-# `|| exec 3>/dev/null` still catches the failure; the error message
-# (if the log file can't be opened) goes to stderr, which is informative.
-exec 3>>"$LOG_FILE" || exec 3>/dev/null
 _log() { printf '[%s] %s\n' "$(date -Iseconds 2>/dev/null || date)" "$*" >&3 2>/dev/null || true; }
 
-declare -A REPOS=([ooda]=ooda [oodac]=oodac [oodar]=oodar [opm]=opm [lsp]=lsp [mcp]=mcp [blackbox]=blackbox)
-declare -A BINARIES=([ooda]=ooda [oodac]=oodac [oodar]=liboodar.a [opm]=opm [lsp]=ooda-lsp [mcp]=ooda-mcp [blackbox]=blackbox)
+declare -A REPOS=([ooda]=ooda [oodac]=oodac [oodar]=oodar [opm]=opm [lsp]=lsp [mcp]=mcp [bb]=bb)
+declare -A BINARIES=([ooda]=ooda [oodac]=oodac [oodar]=liboodar.a [opm]=opm [lsp]=ooda-lsp [mcp]=ooda-mcp [bb]=bb)
 
 # --- color --------------------------------------------------------------------
 
@@ -223,7 +223,7 @@ print_banner() {
 print_preamble() {
   printf '  %sopenOODA installer — what we'\''re about to do:%s\n\n' "$BOLD" "$RESET"
   printf '    %s1.%s check your environment (curl, sha256, network, disk)\n' "$DIM" "$RESET"
-  printf '    %s2.%s download 7 binaries (ooda, oodac, oodar, opm, lsp, mcp, blackbox)\n' "$DIM" "$RESET"
+  printf '    %s2.%s download 7 binaries (ooda, oodac, oodar, opm, lsp, mcp, bb)\n' "$DIM" "$RESET"
   printf '    %s3.%s verify each binary'\''s SHA-256 against its release signature\n' "$DIM" "$RESET"
   printf '    %s4.%s clone the standard library (openOODA/std)\n' "$DIM" "$RESET"
   printf '    %s5.%s clone the runtime sources (openOODA/oodar)\n' "$DIM" "$RESET"
@@ -492,20 +492,9 @@ install_component() {
   printf '  %s%s%s\n' "$BOLD" "$key" "$RESET"
 
   if [[ "$DRY_RUN" == "1" ]]; then
-    local code
-    code=$(curl -sSL -o /dev/null -w '%{http_code}' -I "$url" 2>/dev/null || echo 000)
-    if [[ "$code" != "200" ]]; then
-      skip "[dry-run] $key not yet shipped for $OS-$ARCH"; SKIPPED+=("$key")
-      return
-    fi
-    local sha_code
-    sha_code=$(curl -sSL -o /dev/null -w '%{http_code}' -I "${url}.sha256" 2>/dev/null || echo 000)
-    if [[ "$sha_code" != "200" ]]; then
-      err "[dry-run] $key: missing SHA-256 sidecar; refuse unsigned install"
-      return 1
-    fi
-    ok "[dry-run] would install $(basename "$dest")"; INSTALLED+=("$key")
-    return
+    ok "[dry-run] would install $(basename "$dest")"
+    INSTALLED+=("$key")
+    return 0
   fi
 
   # ONE subshell + ONE spinner for the whole per-component install
@@ -560,13 +549,14 @@ install_component() {
 
 setup_shell_rc() {
   if [[ $NO_MODIFY_SHELL -eq 1 ]]; then skip "shell rc: --no-modify-shell, not editing"; return 0; fi
-  if [[ "$DRY_RUN" == "1" ]]; then ok "[dry-run] would update shell rc (bashrc)"; return 0; fi
+  if [[ "$DRY_RUN" == "1" ]]; then ok "[dry-run] would update shell rc (.bashrc, .bash_profile, .zshrc)"; return 0; fi
   local l1='export PATH="$HOME/.openooda/bin:$PATH"'
   local l2='export OODA_STD_ROOT="$HOME/.openooda/std"'
   local l3='export OODA_COMPILER="$HOME/.openooda/bin/oodac"'
-  local l4='export OODA_FS_READDIR="$HOME/Projects/openOODA"'
+  local l4='export OODA_FS_READDIR="$OPENOODA_HOME"'
   local l5='export OODA_FS_WRITEDIR="$HOME"'
-  for rc in "$HOME/.bashrc"; do
+  for rc in "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.zshrc"; do
+    [[ -f "$rc" || ( "$rc" == "$HOME/.bashrc" && ! -f "$HOME/.bash_profile" && ! -f "$HOME/.zshrc" ) ]] || continue
     [[ -e "$rc" ]] || : >> "$rc" 2>/dev/null || continue
     if [[ -f "$rc" && ! -f "$rc.bak.openooda" ]]; then cp -p "$rc" "$rc.bak.openooda" 2>/dev/null || true; _log "backup $rc -> $rc.bak.openooda"; fi
     if grep -q '\.local/bin/oodac' "$rc" 2>/dev/null; then
@@ -611,7 +601,7 @@ warn_for_other_shells() {
 # shadow and fails closed.
 clean_stale_shadow_binaries() {
   [[ "${DRY_RUN:-0}" == "1" ]] && { ok "[dry-run] would clean stale openooda binaries in legacy locations"; return 0; }
-  local targets=("ooda" "oodac" "ooda-lsp" "ooda-mcp" "opm" "blackbox" "oodac.bak")
+  local targets=("ooda" "oodac" "ooda-lsp" "ooda-mcp" "opm" "bb" "oodac.bak")
   local removed=0 kept=0
   for shadow_dir in "$HOME/.local/bin" /usr/local/bin; do
     [[ -d "$shadow_dir" ]] || continue
@@ -736,7 +726,7 @@ restart_stale_servers() {
 
 post_flight() {
   local fail=0
-  for bin in ooda oodac ooda-lsp ooda-mcp blackbox opm; do
+  for bin in ooda oodac ooda-lsp ooda-mcp bb opm; do
     # Verify by output, not exit code: some tools exit nonzero on --help
     # (opm) or under non-tty stdout (ooda), and a silent stub that exits 0
     # must NOT count as verified. Every real banner carries the product
@@ -762,9 +752,11 @@ post_flight() {
     fi
   done
   if [[ $fail -eq 1 ]]; then
-    warn "post-flight: one or more binaries failed --help — see $LOG_FILE"
+    err "post-flight: one or more binaries failed --help — see $LOG_FILE"
+    return 1
   else
     ok "post-flight: all binaries verified"
+    return 0
   fi
 }
 
@@ -784,19 +776,30 @@ do_install() {
   # step 2: components
   step_status "loading version pins"
   load_pins
-  for key in ooda oodac oodar opm lsp mcp blackbox; do
+  for key in ooda oodac oodar opm lsp mcp bb; do
     step_status "downloading + SHA-256 verifying $key"
     install_component "$key" || return 1
   done
+
+  # step 2b: bb back-compat symlink (v0.0.12 only; v0.0.13 drops it)
+  if [[ "$DRY_RUN" == "1" ]]; then
+    step_status "[dry-run] skipping bb back-compat symlink"
+    skip "[dry-run] skipping bb back-compat symlink"
+  elif [[ -x "$BIN_DIR/bb" ]]; then
+    step_status "creating bb back-compat symlink (~/.openooda/bin/blackbox -> bb)"
+    ln -sf bb "$BIN_DIR/blackbox" 2>/dev/null && \
+      printf '    %sOK%s   bb back-compat symlink -> ~/.openooda/bin/blackbox (v0.0.12 only)\n' "$GREEN" "$RESET" || \
+      warn "could not create bb back-compat symlink"
+  fi
 
   # step 3: std (pinned when versions.toml pins it, else latest)
   if [[ "$DRY_RUN" == "1" ]]; then
     step_status "[dry-run] skipping std clone"
     skip "[dry-run] skipping std clone"
-  elif [[ ! -f "$STD_DIR/ANCHOR.oo" ]]; then
+  elif [[ ! -f "$STD_DIR/anchor.oo" && ! -f "$STD_DIR/ANCHOR.oo" ]]; then
     step_status "cloning standard library (openOODA/std)"
     local wd; wd=$(mktemp -d 2>/dev/null || echo "/tmp/openooda-std-$$")
-    ( fetch_repo "https://github.com/openOODA/std" "$STD_DIR" "ANCHOR.oo" "${PINS[std]:-}" "$wd" ) &
+    ( fetch_repo "https://github.com/openOODA/std" "$STD_DIR" "anchor.oo" "${PINS[std]:-}" "$wd" ) &
     spinner $!
     wait $! 2>/dev/null || true
     local status; status=$(cat "$wd/status" 2>/dev/null || echo "fail")
@@ -838,13 +841,13 @@ do_install() {
     # Download to .tmp then rename on success (same atomic pattern as
     # fetch_and_verify): a failed refresh must never clobber a codex we
     # already hold — MCP servers fail closed without OODACODEX.
-    step_status "fetching orientation codex (openOODA/NORTHSTAR.oot)"
-    if curl -sSL --connect-timeout 10 --max-time 60 -o "$OPENOODA_HOME/NORTHSTAR.oot.tmp" "https://raw.githubusercontent.com/openOODA/openOODA/main/NORTHSTAR.oot" 2>/dev/null && [[ -s "$OPENOODA_HOME/NORTHSTAR.oot.tmp" ]]; then
-      mv -f "$OPENOODA_HOME/NORTHSTAR.oot.tmp" "$OPENOODA_HOME/NORTHSTAR.oot" 2>/dev/null || warn "codex rename failed; keeping previous NORTHSTAR.oot"
+    step_status "fetching orientation codex (openOODA/northstar.oot)"
+    if curl -sSL --connect-timeout 10 --max-time 60 -o "$OPENOODA_HOME/northstar.oot.tmp" "https://raw.githubusercontent.com/openOODA/openOODA/main/northstar.oot" 2>/dev/null && [[ -s "$OPENOODA_HOME/northstar.oot.tmp" ]]; then
+      mv -f "$OPENOODA_HOME/northstar.oot.tmp" "$OPENOODA_HOME/northstar.oot" 2>/dev/null || warn "codex rename failed; keeping previous northstar.oot"
     else
-      rm -f "$OPENOODA_HOME/NORTHSTAR.oot.tmp" 2>/dev/null || true
-      if [[ -s "$OPENOODA_HOME/NORTHSTAR.oot" ]]; then
-        warn "codex refresh failed; keeping existing NORTHSTAR.oot"
+      rm -f "$OPENOODA_HOME/northstar.oot.tmp" 2>/dev/null || true
+      if [[ -s "$OPENOODA_HOME/northstar.oot" ]]; then
+        warn "codex refresh failed; keeping existing northstar.oot"
       else
         warn "codex fetch failed; MCP wiring gets an empty OODACODEX until network returns"
       fi
@@ -881,7 +884,7 @@ do_install() {
 
   # step 6: post-flight
   step_status "verifying all binaries (post-flight check)"
-  if [[ "$DRY_RUN" != "1" ]]; then post_flight; fi
+  if [[ "$DRY_RUN" != "1" ]]; then post_flight || return 1; fi
 
   # Serialise the cross-subshell state to RESULTS_FILE so the parent
   # print_summary can read what really happened. Without this, the
@@ -900,6 +903,17 @@ do_install() {
 print_summary() {
   ELAPSED=$(( $(date +%s) - START ))
   printf '\n%s%s Summary %s\n' "$BOLD" "$MAGENTA" "$RESET"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    printf '  %s✓%s [dry-run] simulated install: %s\n' "$GREEN" "$RESET" "${INSTALLED[*]}"
+    printf '  %s✓%s [dry-run] no files written to disk\n' "$GREEN" "$RESET"
+    [[ ${#SKIPPED[@]} -gt 0 ]] && printf '  %s✓%s skipped:     %s\n' "$GREEN" "$RESET" "${SKIPPED[*]}"
+    printf '  %s✓%s binaries:    %s\n' "$GREEN" "$RESET" "$BIN_DIR"
+    printf '  %s✓%s std:         %s\n' "$GREEN" "$RESET" "$STD_DIR"
+    printf '  %s✓%s sources:     %s\n' "$GREEN" "$RESET" "$OPENOODA_HOME/oodar"
+    printf '  %s✓%s time:        %ss\n' "$GREEN" "$RESET" "$ELAPSED"
+    printf '\n  %sWelcome to openOODA. https://openooda.org%s\n\n' "$BOLD$MAGENTA" "$RESET"
+    return
+  fi
   if [[ ${#INSTALLED[@]} -gt 0 ]]; then
     printf '  %s✓%s installed:   %s\n' "$GREEN" "$RESET" "${INSTALLED[*]}"
     printf '  %s✓%s SHA-256 verified: %s\n' "$GREEN" "$RESET" "${INSTALLED[*]}"
@@ -951,15 +965,16 @@ if [[ $DO_UNINSTALL -eq 1 ]]; then
   QUIET=0
   info "uninstall requested — removing $BIN_DIR and toolchain"
   # remove /usr/local/bin shims pointing into BIN_DIR first (else they dangle)
-  for s in /usr/local/bin/ooda /usr/local/bin/oodac /usr/local/bin/opm /usr/local/bin/ooda-lsp /usr/local/bin/ooda-mcp /usr/local/bin/blackbox; do
+  for s in /usr/local/bin/ooda /usr/local/bin/oodac /usr/local/bin/opm /usr/local/bin/ooda-lsp /usr/local/bin/ooda-mcp /usr/local/bin/bb; do
     if [[ -L "$s" && "$(readlink "$s" 2>/dev/null)" == "$BIN_DIR/"* ]]; then rm -f "$s" 2>/dev/null || true; fi
   done
   # remove binaries, std, and build sources (keep OPENOODA_HOME for logs)
   rm -rf "$BIN_DIR" "$STD_DIR" "$OPENOODA_HOME/oodar" 2>/dev/null || true
-  # revert shell rc from backups (bash only — install no longer owns zshrc/fish)
-  for rc in "$HOME/.bashrc"; do
-    if [[ -f "$rc.bak.openooda" ]]; then
-      mv -f "$rc.bak.openooda" "$rc" 2>/dev/null && ok "reverted $rc from backup" || true
+  # surgically remove the # openOODA section from shell rc files
+  for rc in "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.zshrc"; do
+    if [[ -f "$rc" ]] && grep -q '# openOODA' "$rc" 2>/dev/null; then
+      sed -i '/# openOODA/,/export OODA_FS_WRITEDIR/d' "$rc" 2>/dev/null || true
+      ok "surgically removed openOODA section from $(basename "$rc")"
     fi
   done
   ok "uninstall complete"
@@ -983,7 +998,9 @@ TMPD=""
 trap 'rc=$?; rm -rf "${TMPD:-}" 2>/dev/null || true' EXIT
 trap 'err "interrupted"; exit 130' INT TERM
 
-mkdir -p "$BIN_DIR"
+if [[ "$DRY_RUN" != "1" ]]; then
+  mkdir -p "$BIN_DIR"
+fi
 
 # Run the entire install in a background subshell with a continuous spinner.
 # All per-step output is captured to $LOG_FILE (already set up at line ~60).
@@ -995,7 +1012,11 @@ mkdir -p "$BIN_DIR"
 STATUS_FILE=$(mktemp 2>/dev/null || echo "/tmp/openooda-status.$$")
 RESULTS_FILE=$(mktemp 2>/dev/null || echo "/tmp/openooda-results.$$")
 export STATUS_FILE RESULTS_FILE
-( do_install ) >> "$LOG_FILE" 2>&1 &
+if [[ "$DRY_RUN" != "1" ]]; then
+  ( do_install ) >> "$LOG_FILE" 2>&1 &
+else
+  ( do_install ) >/dev/null 2>&1 &
+fi
 INSTALL_PID=$!
 spinner_with_status "$INSTALL_PID" "$STATUS_FILE"
 INSTALL_RC=$?
@@ -1022,7 +1043,7 @@ if ! . "$RESULTS_FILE" 2>/dev/null; then
   err "this is an internal error; please report it with the install log attached"
   exit 1
 fi
-if [[ ${INSTALL_RC} -eq 0 && ${#INSTALLED[@]} -eq 0 ]]; then
+if [[ "$DRY_RUN" != "1" && ${INSTALL_RC} -eq 0 && ${#INSTALLED[@]} -eq 0 ]]; then
   err "install state was lost: install subshell reported success but INSTALLED[] is empty"
   err "the binaries may be on disk but the summary cannot reflect that"
   err "this is an internal error; please report it with the install log attached"
@@ -1040,9 +1061,11 @@ print_summary
 rm -f "$RESULTS_FILE" 2>/dev/null || true
 
 # If install failed, surface the last few log lines
-if [[ $INSTALL_RC -ne 0 ]]; then
+if [[ $INSTALL_RC -ne 0 || $ASSERT_RC -ne 0 ]]; then
   err "install failed (exit $INSTALL_RC) — last 20 lines of $LOG_FILE:"
-  tail -n 20 "$LOG_FILE" >&2 || true
+  if [[ "$DRY_RUN" != "1" && -f "$LOG_FILE" ]]; then
+    tail -n 20 "$LOG_FILE" >&2 || true
+  fi
   exit 1
 fi
 

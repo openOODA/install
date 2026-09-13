@@ -22,7 +22,7 @@
 // | Pass | Verdict | Note |
 // |------|---------|------|
 // | 0 Pre-flight | WIP | 1 dirty (this audit dir). Last commit 020693a 2026-09-11 — removed LLM-harness scanning/wiring. |
-// | 1 File law | PASS | All 7 .sh match §1.14 carve-outs (install.sh, */profile.d.sh, tests/test_*.sh, tests/*_inner.sh). harness_wire.oo loose but headed. 3 ANCHOR.oo ALLCAPS. |
+// | 1 File law | PASS | All 7 .sh match §1.14 carve-outs (install.sh, */profile.d.sh, tests/test_*.sh, tests/*_inner.sh). harness_wire.oo loose but headed. 3 anchor.oo ALLCAPS. |
 // | 2 Verification logic | PASS | Fail-closed on every checked path (below). |
 // | 3 Host parity | **FAIL** | PATH shadow: stale ~/.local/bin toolchain outranks ~/.openooda/bin. |
 
@@ -98,7 +98,7 @@
 //   m3 → FIXED. harness_wire.oo deleted (dead code from the removed
 //       harness-wiring feature, commit 020693a; latent defects noted:
 //       whole-file JSON "overwrite" merge + vacuous ProcessCap stubs).
-//       ANCHOR.oo and README.md synced to toolchain-only reality.
+//       anchor.oo and README.md synced to toolchain-only reality.
 //       Remainder for mcode (active install.sh lane): the stale
 //       "python3 only needed for harness wiring" comment at
 //       install.sh:254 — python3 is actually still used at :186 for
@@ -129,7 +129,7 @@
 // NEW FINDINGS fixed in this pass:
 //   i1. install.sh:810 called _ooda_codex_path — undefined function.
 //       $() → empty → always-true: every install refetched the codex,
-//       and on fetch failure it rm -f'd an EXISTING NORTHSTAR.oot
+//       and on fetch failure it rm -f'd an EXISTING northstar.oot
 //       (offline reinstall would delete the codex MCP needs). Fixed
 //       to tmp-download + atomic mv (same pattern as fetch_and_verify):
 //       refresh on success, keep existing on failure.

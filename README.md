@@ -8,7 +8,7 @@
       /_/                   \___/ \___/|____/_/   \_\
 </pre>
 
-### openOODA — Sovereign Systems Language for the AI Era
+### openOODA — Primary Systems Language for the AI Era
 
 [openooda.org](https://openooda.org)
 
@@ -33,7 +33,7 @@ Toolchain-only: the installer no longer scans for or wires LLM harnesses (remove
 
 `OPENOODA_DRY_RUN=1` previews without touching disk. Re-run is safe — the install is idempotent and `~/.bashrc` is backed up as `~/.bashrc.bak.openooda` before any edit.
 
-**Professional install (P0/P1):** `install.sh --help` (`--dry-run`/`--yes`/`--no-modify-shell`/`--uninstall`), pre-flight checks `curl`/`git`/`python3` + `df` >100 MB + `curl -Is raw.githubusercontent`, `~/.openooda/install.log` (1M rotate) + `trap` cleanup, post-flight verifies `ooda`/`oodac`/`ooda-lsp`/`ooda-mcp`/`blackbox` respond to `--help`.
+**Professional install (P0/P1):** `install.sh --help` (`--dry-run`/`--yes`/`--no-modify-shell`/`--uninstall`), pre-flight checks `curl`/`git`/`python3` + `df` >100 MB + `curl -Is raw.githubusercontent`, `~/.openooda/install.log` (1M rotate) + `trap` cleanup, post-flight verifies `ooda`/`oodac`/`ooda-lsp`/`ooda-mcp`/`bb` respond to `--help`.
 
 ## Docs
 
@@ -53,7 +53,7 @@ All design, RFCs, practices, and onboarding live in [openOODA/openOODA](https://
 | [openOODA/catalog](https://github.com/openOODA/catalog) | Public package catalog |
 | [openOODA/lsp](https://github.com/openOODA/lsp) | Language server |
 | [openOODA/mcp](https://github.com/openOODA/mcp) | MCP server |
-| [openOODA/blackbox](https://github.com/openOODA/blackbox) | Operational Logistics: Agent-native execution flight recorder and crash autopsy engine |
+| [openOODA/bb](https://github.com/openOODA/bb) | Operational Logistics: Agent-native execution flight recorder and crash autopsy engine |
 | [openOODA/website](https://github.com/openOODA/website) | Website source |
 | [openOODA/.github](https://github.com/openOODA/.github) | Org profile, shared community files, workflows |
 

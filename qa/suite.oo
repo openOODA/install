@@ -1,50 +1,92 @@
 // # install QA Suite — Unified Entry
 //
-// Logline: Run all install/ probes in sequence, typecheck each, report pass/fail.
+// Logline: Run all install/ probes twice in sequence, report pass/fail.
 //          Fails closed on the first probe that fails typecheck or execution.
 //
-// Setup: OODA_COMPILER must point at oodac. Run from install/ (or set CWD).
+// Setup: OODA_COMPILER must point at oodac.
 //        INSTALL_ROOT env var defaults to /home/jeryd/Projects/openOODA/install.
 //
 // Beats:
-//   1. Resolve oodac from OODA_COMPILER.
-//   2. oodac check each probe driver. Fail on first Err or ERR in stdout.
+//   1. Resolve oodac and ooda from environment.
+//   2. Typecheck and double-run each probe driver (Run_1 == Run_2 = 0).
 //   3. Print summary.
 
 fn find_oodac(fs: &FsReadCap, env: &EnvCap) -> String {
   let r: Result[String, String] = env_get(env, "OODA_COMPILER");
   let p: String = match r { Ok(s) => s, Err(_) => "" };
-  if p == "" {
-    println("ERR\tsuite\tOODA_COMPILER required");
-    process_exit(1);
-    return "";
+  if p != "" && path_exists(fs, p) {
+    return p;
   }
-  if !path_exists(fs, p) {
-    println("ERR\tsuite\tOODA_COMPILER missing: " + p);
-    process_exit(1);
-    return "";
+  let h_res: Result[String, String] = env_get(env, "HOME");
+  let h: String = match h_res { Ok(s) => s, Err(_) => "/home/jeryd" };
+  let default_c: String = h + "/.openooda/bin/oodac";
+  if path_exists(fs, default_c) {
+    return default_c;
   }
-  return p;
+  return "oodac";
+}
+
+fn find_ooda(fs: &FsReadCap, env: &EnvCap) -> String {
+  let r: Result[String, String] = env_get(env, "OODA_BIN");
+  let p: String = match r { Ok(s) => s, Err(_) => "" };
+  if p != "" && path_exists(fs, p) {
+    return p;
+  }
+  let h_res: Result[String, String] = env_get(env, "HOME");
+  let h: String = match h_res { Ok(s) => s, Err(_) => "/home/jeryd" };
+  let default_ooda: String = h + "/.openooda/bin/ooda";
+  if path_exists(fs, default_ooda) {
+    return default_ooda;
+  }
+  return "ooda";
 }
 
 fn check_one(p: &ProcessCap, oodac: String, path: String) -> Bool {
-  println("  checking " + path);
+  println("  typecheck " + path);
   let r1: Result[String, String] = sys_exec(p, oodac, "check", path);
   if r1.is_err() {
     let err: String = match r1 { Ok(_) => "", Err(e) => e };
-    println(err);
+    println("ERR\ttypecheck failed: " + err);
     return false;
   }
   let out1: String = match r1 { Ok(s) => s, Err(_) => "" };
   if str_index_of(out1, "ERR") >= 0 {
-    println("ERR\tsuite\tERR in stdout " + path);
+    println("ERR\tsuite\tERR in stdout: " + path);
     return false;
   }
   return true;
 }
 
+fn run_probe_twice(p: &ProcessCap, ooda: String, path: String) -> Bool {
+  println("  run 1: " + path);
+  let r1: Result[String, String] = sys_exec(p, ooda, "run", path);
+  if r1.is_err() {
+    let err1: String = match r1 { Ok(_) => "", Err(e) => e };
+    println("ERR\trun 1 failed: " + err1);
+    return false;
+  }
+  let out1: String = match r1 { Ok(s) => s, Err(_) => "" };
+
+  println("  run 2: " + path);
+  let r2: Result[String, String] = sys_exec(p, ooda, "run", path);
+  if r2.is_err() {
+    let err2: String = match r2 { Ok(_) => "", Err(e) => e };
+    println("ERR\trun 2 failed: " + err2);
+    return false;
+  }
+  let out2: String = match r2 { Ok(s) => s, Err(_) => "" };
+
+  if out1 != out2 {
+    println("ERR\tdouble-run nondeterminism: run1 != run2 on " + path);
+    return false;
+  }
+  println("  double-run verified (Run_1 == Run_2 = 0)");
+  return true;
+}
+
 pub fn main(p: &ProcessCap, fs_r: &FsReadCap, env: &EnvCap, args: List[String]) -> Result[Int, String] {
   let oodac: String = find_oodac(fs_r, env);
+  let ooda: String = find_ooda(fs_r, env);
   let l0: List[String] = list_new();
   let l1: List[String] = list_push(l0, "qa/qa-01-line_caps.oo");
   let drivers: List[String] = list_push(l1, "qa/qa-02-bin_manifest.oo");
@@ -52,11 +94,14 @@ pub fn main(p: &ProcessCap, fs_r: &FsReadCap, env: &EnvCap, args: List[String]) 
   while i < list_len(drivers) {
     let path: String = list_get(drivers, i);
     if !check_one(p, oodac, path) {
-      return Err("self-test failures");
+      return Err("self-test typecheck failure on " + path);
+    }
+    if !run_probe_twice(p, ooda, path) {
+      return Err("self-test double-run failure on " + path);
     }
     i = i + 1;
   }
-  println("install QA suite: all probes typechecked (2/2)");
+  println("install QA suite: all probes passed double-run (2/2)");
   let _a: Int = list_len(args);
   return Ok(0);
 }

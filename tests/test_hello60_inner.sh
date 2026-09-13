@@ -11,6 +11,7 @@
 #   INSTALL_CMD="bash /mnt/install.sh" BUDGET=300 ./test_hello60_inner.sh
 set -u
 set -o pipefail
+trap 'rm -rf /tmp/hello' EXIT
 BUDGET="${BUDGET:-60}"
 INSTALL_CMD="${INSTALL_CMD:-curl -fsSL https://openooda.org/install.sh | bash}"
 START=$(date +%s)
@@ -41,13 +42,13 @@ cat > main.oo <<'OO'
 //   1. Print the acceptance line and return 0.
 
 pub fn main() -> Int {
-    println("hello, sovereign world")
+    println("hello, primary world")
     return 0
 }
 OO
 env -i PATH="$PATH" HOME="$HOME" TERM="${TERM:-dumb}" ooda run main.oo > out.txt 2>&1 \
   || die "ooda run failed ($(elapsed)s): $(head -n 10 out.txt)"
-grep -q "hello, sovereign world" out.txt \
+grep -q "hello, primary world" out.txt \
   || die "wrong output ($(elapsed)s): $(head -n 10 out.txt)"
 
 END=$(elapsed)

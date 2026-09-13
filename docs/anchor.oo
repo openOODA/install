@@ -8,7 +8,7 @@
 //        This repo is not `ooda install`.
 //
 // Beats:
-//   1. SURFACE.oot — distro surface and public install URL.
+//   1. surface.oot — distro surface and public install URL.
 //   2. INSTALL.md — flags, ~/.openooda/ layout, three paths.
 
-import "SURFACE.oot";
+import "surface.oot";
