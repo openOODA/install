@@ -86,7 +86,10 @@ fi
 _log() { printf '[%s] %s\n' "$(date -Iseconds 2>/dev/null || date)" "$*" >&3 2>/dev/null || true; }
 
 declare -A REPOS=([ooda]=ooda [oodac]=oodac [oodar]=oodar [opm]=opm [lsp]=lsp [mcp]=mcp [bb]=bb [cli]=cli [tui]=tui)
-declare -A BINARIES=([ooda]=ooda [oodac]=oodac [oodar]=liboodar.a [opm]=opm [lsp]=ooda-lsp [mcp]=ooda-mcp [bb]=bb [cli]=cli [tui]=ooda-tui)
+# Dest names match repo names. ASSETS is the GitHub release stem when it
+# still differs (lsp/mcp have not republished as lsp-linux-x86_64 yet).
+declare -A BINARIES=([ooda]=ooda [oodac]=oodac [oodar]=liboodar.a [opm]=opm [lsp]=lsp [mcp]=mcp [bb]=bb [cli]=cli [tui]=tui)
+declare -A ASSETS=([lsp]=ooda-lsp [mcp]=ooda-mcp)
 
 # --- color --------------------------------------------------------------------
 
@@ -232,7 +235,7 @@ print_banner() {
 print_preamble() {
   printf '  %sopenOODA installer — what we'\''re about to do:%s\n\n' "$BOLD" "$RESET"
   printf '    %s1.%s check your environment (curl, sha256, network, disk)\n' "$DIM" "$RESET"
-  printf '    %s2.%s download 9 binaries (ooda, cli, oodac, oodar, opm, lsp, mcp, bb, ooda-tui)\n' "$DIM" "$RESET"
+  printf '    %s2.%s download 9 binaries (ooda, cli, tui, oodac, oodar, opm, lsp, mcp, bb)\n' "$DIM" "$RESET"
   printf '    %s3.%s verify each binary'\''s SHA-256 against its release signature\n' "$DIM" "$RESET"
   printf '    %s4.%s clone the standard library (openOODA/std)\n' "$DIM" "$RESET"
   printf '    %s5.%s clone the runtime sources (openOODA/oodar)\n' "$DIM" "$RESET"
@@ -366,12 +369,17 @@ load_pins() {
   done < "$(dirname "${BASH_SOURCE[0]:-$0}")/versions.toml"
 }
 
+asset_stem() {
+  echo "${ASSETS[$1]:-${BINARIES[$1]}}"
+}
+
 release_url() {
   local tag="${PINS[$1]:-latest}"
+  local stem; stem=$(asset_stem "$1")
   if [[ "$tag" == "latest" ]]; then
-    echo "${RELEASES}/${REPOS[$1]}/releases/latest/download/${BINARIES[$1]}-${OS}-${ARCH}"
+    echo "${RELEASES}/${REPOS[$1]}/releases/latest/download/${stem}-${OS}-${ARCH}"
   else
-    echo "${RELEASES}/${REPOS[$1]}/releases/download/${tag}/${BINARIES[$1]}-${OS}-${ARCH}"
+    echo "${RELEASES}/${REPOS[$1]}/releases/download/${tag}/${stem}-${OS}-${ARCH}"
   fi
 }
 
@@ -773,7 +781,7 @@ post_flight() {
   export OODA_FS_READDIR="${OODA_FS_READDIR:-$HOME/.openooda:/etc:/usr}"
   export OODA_FS_WRITEDIR="${OODA_FS_WRITEDIR:-$HOME}"
   local fail=0
-  local bins=(ooda cli oodac ooda-lsp ooda-mcp opm ooda-tui)
+  local bins=(ooda cli tui oodac lsp mcp opm)
   if [[ -e "$BIN_DIR/bb" ]]; then
     bins+=(bb)
   elif [[ -e "$BIN_DIR/blackbox" ]]; then
@@ -797,7 +805,7 @@ post_flight() {
     # still keys off the captured banner, so a silent stub or a binary
     # with no banner still fails verification.
     helpline=$("$BIN_DIR/$bin" --help 2>&1 | head -n 1 || true)
-    if [[ -x "$BIN_DIR/$bin" ]] && printf '%s' "$helpline" | grep -qiE 'openooda|usage|ooda-tui|flags' 2>/dev/null; then
+    if [[ -x "$BIN_DIR/$bin" ]] && printf '%s' "$helpline" | grep -qiE 'openooda|usage|ooda-tui|^tui|flags' 2>/dev/null; then
       ok "verified: $bin --help"
     elif [[ -x "$BIN_DIR/$bin" && -n "$helpline" ]]; then
       warn "verify: $bin ran but --help banner unrecognized: ${helpline:0:60}"
