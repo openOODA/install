@@ -14,7 +14,7 @@ grep -q "OODA_COMPILER" install.sh || { echo "FAIL no OODA_COMPILER env"; exit 1
 grep -q "OODA_FS_READDIR" install.sh || { echo "FAIL no OODA_FS_READDIR"; exit 1; }
 grep -q "TOTAL=17" install.sh || { echo "FAIL TOTAL not 17 (sysdep/sources/shim/codex steps missing)"; exit 1; }
 grep -q "ensure_sysdep" install.sh || { echo "FAIL no sysdep ensure"; exit 1; }
-grep -q "OODAR_SRC_DIR" install.sh || { echo "FAIL no oodar sources step"; exit 1; }
+grep -q 'liboodar.a' install.sh || { echo "FAIL no oodar artifact (liboodar.a)"; exit 1; }
 if grep -q 'ln -sf' install.sh; then echo "FAIL installer still uses ln -sf"; exit 1; fi
 grep -q 'PATH via shell rc' install.sh || { echo "FAIL no PATH-via-rc (no /usr/local/bin shims)"; exit 1; }
 grep -q "ask_confirm" install.sh || { echo "FAIL no y/n prompt"; exit 1; }

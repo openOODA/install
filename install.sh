@@ -3,7 +3,7 @@
 #   curl -fsSL https://openooda.org/install.sh | bash
 #
 # Idempotent. Detects OS/arch, downloads each component's release asset,
-# clones the standard library, and sets up the shell. Re-run is safe.
+# Each GitHub repo is one install. Re-run is safe.
 #
 # Set NO_COLOR=1 to disable color.
 # Set OPENOODA_DRY_RUN=1 to preview without downloading.
@@ -233,14 +233,18 @@ print_banner() {
 # names the SHA-256 verification step explicitly, and gives the user a
 # sense of time. Tells the user what is about to happen, in plain words.
 print_preamble() {
-  printf '  %sopenOODA installer — what we'\''re about to do:%s\n\n' "$BOLD" "$RESET"
-  printf '    %s1.%s check your environment (curl, sha256, network, disk)\n' "$DIM" "$RESET"
-  printf '    %s2.%s download 9 binaries (ooda, cli, tui, oodac, oodar, opm, lsp, mcp, bb)\n' "$DIM" "$RESET"
-  printf '    %s3.%s verify each binary'\''s SHA-256 against its release signature\n' "$DIM" "$RESET"
-  printf '    %s4.%s clone the standard library (openOODA/std)\n' "$DIM" "$RESET"
-  printf '    %s5.%s clone the runtime sources (openOODA/oodar)\n' "$DIM" "$RESET"
-  printf '    %s6.%s set up shell environment (PATH, OODA_COMPILER, etc.)\n\n' "$DIM" "$RESET"
-  printf '  %sEstimated time: 10-60 seconds. Press Ctrl-C to cancel.%s\n\n' "$DIM" "$RESET"
+  printf '  %sEach GitHub repo is one install. Fetch, SHA-256, place.%s\n\n' "$BOLD" "$RESET"
+  printf '    ooda     ~/.openooda/bin/ooda\n'
+  printf '    cli      ~/.openooda/bin/cli\n'
+  printf '    tui      ~/.openooda/bin/tui\n'
+  printf '    oodac    ~/.openooda/bin/oodac\n'
+  printf '    oodar    ~/.openooda/bin/liboodar.a\n'
+  printf '    std      ~/.openooda/std\n'
+  printf '    opm      ~/.openooda/bin/opm\n'
+  printf '    lsp      ~/.openooda/bin/lsp\n'
+  printf '    mcp      ~/.openooda/bin/mcp\n'
+  printf '    bb       ~/.openooda/bin/bb\n'
+  printf '\n  %sEstimated time: 10-60 seconds. Press Ctrl-C to cancel.%s\n\n' "$DIM" "$RESET"
 }
 
 ensure_sysdep() {
@@ -289,7 +293,7 @@ pre_flight() {
   local avail_kb
   avail_kb=$(df -k "$HOME" 2>/dev/null | awk 'NR==2{print $4}' || echo 0)
   if [[ "$avail_kb" -gt 0 && "$avail_kb" -lt 102400 ]]; then
-    err "pre-flight: <100 MB free in $HOME (${avail_kb}KB) — need ~60 MB for 7 bins + std + oodar sources"
+    err "pre-flight: <100 MB free in $HOME (${avail_kb}KB) — need room for the toolchain"
     need_fail=1
   fi
   # network: quick HEAD to raw.githubusercontent (3s)
@@ -844,7 +848,7 @@ do_install() {
   step_status "loading version pins"
   load_pins
   for key in ooda cli oodac oodar opm lsp mcp bb tui; do
-    step_status "downloading + SHA-256 verifying $key"
+    step_status "installing $key"
     install_component "$key" || return 1
   done
 
@@ -867,7 +871,7 @@ do_install() {
     step_status "[dry-run] skipping std clone"
     skip "[dry-run] skipping std clone"
   elif [[ ! -f "$STD_DIR/anchor.oo" && ! -f "$STD_DIR/ANCHOR.oo" ]]; then
-    step_status "cloning standard library (openOODA/std)"
+    step_status "installing std"
     local wd; wd=$(mktemp -d 2>/dev/null || echo "/tmp/openooda-std-$$")
     ( fetch_repo "https://github.com/openOODA/std" "$STD_DIR" "anchor.oo" "${PINS[std]:-}" "$wd" ) &
     spinner $!
@@ -880,28 +884,8 @@ do_install() {
     fi
   fi
 
-  # step 3b: oodar build sources
-  OODAR_SRC_DIR="$OPENOODA_HOME/oodar"
-  if [[ "$DRY_RUN" == "1" ]]; then
-    step_status "[dry-run] skipping oodar sources clone"
-    skip "[dry-run] skipping oodar sources clone"
-  elif [[ ! -f "$OODAR_SRC_DIR/oodar.c" ]]; then
-    step_status "cloning runtime sources (openOODA/oodar)"
-    local wd; wd=$(mktemp -d 2>/dev/null || echo "/tmp/openooda-oodar-$$")
-    oodar_branch=()
-    [[ -n "${PINS[oodar]:-}" ]] && oodar_branch=(--branch "${PINS[oodar]}")
-    ( fetch_repo "https://github.com/openOODA/oodar" "$OODAR_SRC_DIR" "oodar.c" "${PINS[oodar]:-}" "$wd" ) &
-    spinner $!
-    wait $! 2>/dev/null || true
-    local status; status=$(cat "$wd/status" 2>/dev/null || echo "fail")
-    rm -rf "$wd"
-    if [[ "$status" == "ok" ]]; then
-      rm -rf "$OODAR_SRC_DIR/.git"
-    else
-      err "oodar sources clone failed; check $OODAR_SRC_DIR"
-      return 1
-    fi
-  fi
+  # oodar is liboodar.a (install_component above). Do not also clone
+  # sources — one repo, one artifact.
 
   # step 3c: orientation codex (MCP servers fail closed without OODACODEX)
   if [[ "$DRY_RUN" == "1" ]]; then
@@ -975,9 +959,7 @@ print_summary() {
     printf '  %s✓%s [dry-run] simulated install: %s\n' "$GREEN" "$RESET" "${INSTALLED[*]}"
     printf '  %s✓%s [dry-run] no files written to disk\n' "$GREEN" "$RESET"
     [[ ${#SKIPPED[@]} -gt 0 ]] && printf '  %s✓%s skipped:     %s\n' "$GREEN" "$RESET" "${SKIPPED[*]}"
-    printf '  %s✓%s binaries:    %s\n' "$GREEN" "$RESET" "$BIN_DIR"
-    printf '  %s✓%s std:         %s\n' "$GREEN" "$RESET" "$STD_DIR"
-    printf '  %s✓%s sources:     %s\n' "$GREEN" "$RESET" "$OPENOODA_HOME/oodar"
+    printf '  %s✓%s prefix:      %s\n' "$GREEN" "$RESET" "$OPENOODA_HOME"
     printf '  %s✓%s time:        %ss\n' "$GREEN" "$RESET" "$ELAPSED"
     printf '\n  %sWelcome to openOODA. https://openooda.org%s\n\n' "$BOLD$MAGENTA" "$RESET"
     return
@@ -994,9 +976,7 @@ print_summary() {
   fi
   [[ ${#SKIPPED[@]} -gt 0 ]] && printf '  %s✓%s skipped:     %s\n' "$GREEN" "$RESET" "${SKIPPED[*]}"
   [[ $BYTES -gt 0 ]] && printf '  %s✓%s downloaded:  %s\n' "$GREEN" "$RESET" "$(awk -v b="$BYTES" 'BEGIN{printf "%.1f MB", b/1048576}')"
-  printf '  %s✓%s binaries:    %s\n' "$GREEN" "$RESET" "$BIN_DIR"
-  printf '  %s✓%s std:         %s\n' "$GREEN" "$RESET" "$STD_DIR"
-  printf '  %s✓%s sources:     %s\n' "$GREEN" "$RESET" "$OPENOODA_HOME/oodar"
+  printf '  %s✓%s prefix:      %s\n' "$GREEN" "$RESET" "$OPENOODA_HOME"
   printf '  %s✓%s time:        %ss\n' "$GREEN" "$RESET" "$ELAPSED"
   [[ "$DRY_RUN" != "1" ]] && printf '  %s✓%s shell rc:    bash updated (.bak.openooda backup)\n' "$GREEN" "$RESET"
   printf '\n  %sWelcome to openOODA. https://openooda.org%s\n\n' "$BOLD$MAGENTA" "$RESET"
