@@ -1033,8 +1033,11 @@ else
 fi
 INSTALL_PID=$!
 spinner_with_status "$INSTALL_PID" "$STATUS_FILE"
+# set -e would abort on a nonzero wait, skipping the log tail. Capture RC first.
+set +e
 wait "$INSTALL_PID"
 INSTALL_RC=$?
+set -e
 rm -f "$STATUS_FILE" 2>/dev/null || true
 
 # Pull the cross-subshell state back into the parent. do_install dumped
@@ -1067,8 +1070,10 @@ fi
 # Post-install invariant: every installed binary must resolve via
 # `command -v` to $BIN_DIR. If a stale shadow wins on PATH, fail closed.
 # (assert_path_resolution also sources $RESULTS_FILE to read INSTALLED.)
+set +e
 assert_path_resolution
 ASSERT_RC=$?
+set -e
 
 # Print the summary (the only thing the user sees, besides the banner)
 print_summary

@@ -39,12 +39,20 @@ grep -q "install state file is missing or unreadable" install.sh || { echo "FAIL
 grep -q "install state file has bad syntax" install.sh || { echo "FAIL no bad-syntax guard"; exit 1; }
 grep -q 'mv -f "\$tmp" "\$RESULTS_FILE"' install.sh || { echo "FAIL no atomic rename in dump_results"; exit 1; }
 # Parent must wait the install PID for the real RC; spinner printf is always 0.
+# set -e must be off around that wait, or a failed child never reaches the log tail.
+grep -q 'wait "\$INSTALL_PID"' install.sh || { echo "FAIL no wait INSTALL_PID"; exit 1; }
 if grep -n 'wait "\$INSTALL_PID"' install.sh | grep -q '|| true'; then
   echo "FAIL wait INSTALL_PID still discards the child RC"
   exit 1
 fi
-grep -q 'wait "\$INSTALL_PID"' install.sh || { echo "FAIL no wait INSTALL_PID"; exit 1; }
 grep -q "trap 'dump_results || true' EXIT" install.sh || { echo "FAIL no dump_results EXIT trap"; exit 1; }
+awk '
+  /wait "\$INSTALL_PID"/ {
+    for (j=NR-5; j<=NR; j++) if (lines[j] ~ /set \+e/) found=1
+  }
+  { lines[NR]=$0 }
+  END { if (!found) { print "FAIL wait INSTALL_PID not under set +e"; exit 1 } }
+' install.sh || exit 1
 # The misleading "binaries land in future releases" copy must be gone.
 if grep -q "binaries land in future releases" install.sh; then
   echo "FAIL misleading 'binaries land in future releases' copy is back"; exit 1
