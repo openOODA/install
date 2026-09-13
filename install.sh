@@ -2,8 +2,7 @@
 # openOODA one-line installer
 #   curl -fsSL https://openooda.org/install.sh | bash
 #
-# Idempotent. Detects OS/arch, downloads each component's release asset,
-# Each GitHub repo is one install. Re-run is safe.
+# Each GitHub repo is one install (fetch, SHA-256, place). Re-run is safe.
 #
 # Set NO_COLOR=1 to disable color.
 # Set OPENOODA_DRY_RUN=1 to preview without downloading.
