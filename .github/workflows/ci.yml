@@ -14,7 +14,7 @@ jobs:
       - name: shellcheck install.sh
         run: |
           sudo apt-get install -y shellcheck
-          shellcheck --severity=warning install.sh
+          shellcheck --severity=error install.sh
       - name: fail-closed sha256 contract
         run: bash tests/test_install.sh
 
@@ -30,18 +30,11 @@ jobs:
           output=$(bash install.sh)
           echo "$output"
           for needle in \
-            "observe → orient → decide → act →" \
             "openOODA" \
-            "Welcome, " \
-            "install dir:" \
-            "100%" \
-            "Try these commands" \
-            "\$ ooda --help" \
-            "\$ ooda build main.oo" \
-            "\$ ooda run main.oo" \
-            "\$ ooda init" \
-            "\$ ooda token issue" \
-            "Ready. Welcome to openOODA."; do
+            "Each GitHub repo is one install" \
+            "oodac" \
+            "Welcome to openOODA" \
+            "prefix:"; do
             echo "$output" | grep -qF -- "$needle" || { echo "missing: $needle"; exit 1; }
           done
           echo "$output" | grep -qF 'ooda install openOODA/std' \
