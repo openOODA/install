@@ -33,10 +33,10 @@ XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 # VERSION: read from the VERSION file next to this script, with a fallback
 # for curl|bash invocations where the script is on stdin (no file).
 # Curl fallback fetches from GitHub (3s timeout) so curl|bash always shows
-# a real version; static fallback "0.1.32" if both fail.
-VERSION="$(cat "$(dirname "${BASH_SOURCE[0]:-$0}")/VERSION" 2>/dev/null || curl -sSL --max-time 3 "https://raw.githubusercontent.com/openOODA/install/main/VERSION" 2>/dev/null || echo "0.1.32")"
+# a real version; static fallback "0.1.33" if both fail.
+VERSION="$(cat "$(dirname "${BASH_SOURCE[0]:-$0}")/VERSION" 2>/dev/null || curl -sSL --max-time 3 "https://raw.githubusercontent.com/openOODA/install/main/VERSION" 2>/dev/null || echo "0.1.33")"
 VERSION="$(printf '%s' "$VERSION" | tr -d '\r\n ' | head -c 20)"
-[[ -z "$VERSION" ]] && VERSION="0.1.32"
+[[ -z "$VERSION" ]] && VERSION="0.1.33"
 
 # --- arg parsing (curl | bash -s -- --help) ---------------------------------
 usage() {
@@ -606,7 +606,7 @@ setup_shell_rc() {
 # without dropping extra entries. OODA_FS_WRITEDIR stays $HOME (l5).
 merge_readdir_line() {
   local rc="$1"
-  local need=("$HOME/.openooda" "/etc" "/usr")
+  # Paths merged into READDIR: $HOME/.openooda:/etc:/usr plus extras.
   local cur raw out p extra
   raw=$(grep '^export OODA_FS_READDIR=' "$rc" 2>/dev/null | tail -1 || true)
   cur=$(printf '%s' "$raw" | sed -n 's/^export OODA_FS_READDIR="\(.*\)"/\1/p')
