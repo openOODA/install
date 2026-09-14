@@ -33,10 +33,10 @@ XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 # VERSION: read from the VERSION file next to this script, with a fallback
 # for curl|bash invocations where the script is on stdin (no file).
 # Curl fallback fetches from GitHub (3s timeout) so curl|bash always shows
-# a real version; static fallback "0.1.31" if both fail.
-VERSION="$(cat "$(dirname "${BASH_SOURCE[0]:-$0}")/VERSION" 2>/dev/null || curl -sSL --max-time 3 "https://raw.githubusercontent.com/openOODA/install/main/VERSION" 2>/dev/null || echo "0.1.31")"
+# a real version; static fallback "0.1.32" if both fail.
+VERSION="$(cat "$(dirname "${BASH_SOURCE[0]:-$0}")/VERSION" 2>/dev/null || curl -sSL --max-time 3 "https://raw.githubusercontent.com/openOODA/install/main/VERSION" 2>/dev/null || echo "0.1.32")"
 VERSION="$(printf '%s' "$VERSION" | tr -d '\r\n ' | head -c 20)"
-[[ -z "$VERSION" ]] && VERSION="0.1.31"
+[[ -z "$VERSION" ]] && VERSION="0.1.32"
 
 # --- arg parsing (curl | bash -s -- --help) ---------------------------------
 usage() {
