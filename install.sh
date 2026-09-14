@@ -235,7 +235,7 @@ print_preamble() {
   printf '  %sEach GitHub repo is one install. Fetch, SHA-256, place.%s\n\n' "$BOLD" "$RESET"
   printf '    ooda     ~/.openooda/bin/ooda\n'
   printf '    cli      ~/.openooda/bin/cli\n'
-  printf '    tui      ~/.openooda/bin/tui\n'
+  printf '    tui      ~/.openooda/bin/tui  (also ooda-tui)\n'
   printf '    oodac    ~/.openooda/bin/oodac\n'
   printf '    oodar    ~/.openooda/bin/liboodar.a\n'
   printf '    std      ~/.openooda/std\n'
@@ -541,6 +541,13 @@ install_component() {
     info "$key: SHA-256 verified ($vhash...)"
     ok "installed $(basename "$dest") (${mb} MB)"; INSTALLED+=("$key")
     BYTES=$((BYTES + size))
+    # ooda/cli spawn and `cli update --check` look for ooda-tui.
+    if [[ "$key" == "tui" ]]; then
+      if cp -f "$dest" "$BIN_DIR/ooda-tui" 2>/dev/null; then
+        chmod +x "$BIN_DIR/ooda-tui" 2>/dev/null || true
+        ok "tui also installed as ~/.openooda/bin/ooda-tui"
+      fi
+    fi
   elif [[ "$dl" != "200" ]]; then
     rm -f "$dest.tmp" "$dest.tmp.sha256"
     if [[ -e "$dest" ]]; then
