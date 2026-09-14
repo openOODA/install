@@ -19,6 +19,7 @@ if grep -q 'ln -sf' install.sh; then echo "FAIL installer still uses ln -sf"; ex
 grep -q 'PATH via shell rc' install.sh || { echo "FAIL no PATH-via-rc (no /usr/local/bin shims)"; exit 1; }
 grep -q "ask_confirm" install.sh || { echo "FAIL no y/n prompt"; exit 1; }
 grep -q "Welcome to version" install.sh || { echo "FAIL no version welcome"; exit 1; }
+grep -q "Later: ooda update" install.sh || { echo "FAIL no ooda update hint"; exit 1; }
 grep -q "Would you like to install openOODA" install.sh || { echo "FAIL no install y/n new"; exit 1; }
 grep -q "pre_flight" install.sh || { echo "FAIL no pre-flight"; exit 1; }
 grep -q "post_flight" install.sh || { echo "FAIL no post-flight"; exit 1; }

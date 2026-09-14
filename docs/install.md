@@ -103,16 +103,22 @@ progress bar from `▰▱` to `##--` on non-UTF-8 terminals — no flag needed.
 
 ## Updating
 
-Once `ooda` itself is on your `PATH`, you can run:
+Once `ooda` itself is on your `PATH`, refresh stale binaries in place:
 
 ```sh
-ooda update
+ooda update --check   # report sha256 vs GitHub latest, no writes
+ooda update           # download only stale assets, verify, replace
+ooda update --bootstrap   # escape hatch: re-run install.sh
 ```
 
-`ooda update` will reinstall every component to its latest release, re-clone
-`std` if it has gone stale, and refresh the shell rc lines. (This subcommand
-is on the `ooda` roadmap but is not yet shipped — until then, re-run
-`install.sh`.)
+`ooda update` is a hash check, not the installer. Each GitHub repo is one
+component. Current hashes are skipped; stale hashes are fetched, SHA-256
+verified, and moved into `~/.openooda/bin`. `std` is `git pull --ff-only`
+when it is a clone. Shell rc is not rewritten. `--version` strings are not
+used for freshness (they are often hardcoded independently of the release
+tag).
+
+To relocate the prefix in a test or custom install, set `OODA_HOME`.
 
 ## Uninstalling
 

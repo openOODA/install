@@ -967,7 +967,8 @@ print_summary() {
     [[ ${#SKIPPED[@]} -gt 0 ]] && printf '  %s✓%s skipped:     %s\n' "$GREEN" "$RESET" "${SKIPPED[*]}"
     printf '  %s✓%s prefix:      %s\n' "$GREEN" "$RESET" "$OPENOODA_HOME"
     printf '  %s✓%s time:        %ss\n' "$GREEN" "$RESET" "$ELAPSED"
-    printf '\n  %sWelcome to openOODA. https://openooda.org%s\n\n' "$BOLD$MAGENTA" "$RESET"
+    printf '\n  %sWelcome to openOODA. https://openooda.org%s\n' "$BOLD$MAGENTA" "$RESET"
+    printf '  Later: ooda update   (hash-check; fetches only stale binaries)\n\n'
     return
   fi
   if [[ ${#INSTALLED[@]} -gt 0 ]]; then
@@ -985,7 +986,8 @@ print_summary() {
   printf '  %s✓%s prefix:      %s\n' "$GREEN" "$RESET" "$OPENOODA_HOME"
   printf '  %s✓%s time:        %ss\n' "$GREEN" "$RESET" "$ELAPSED"
   [[ "$DRY_RUN" != "1" ]] && printf '  %s✓%s shell rc:    bash updated (.bak.openooda backup)\n' "$GREEN" "$RESET"
-  printf '\n  %sWelcome to openOODA. https://openooda.org%s\n\n' "$BOLD$MAGENTA" "$RESET"
+  printf '\n  %sWelcome to openOODA. https://openooda.org%s\n' "$BOLD$MAGENTA" "$RESET"
+  printf '  Later: ooda update   (hash-check; fetches only stale binaries)\n\n'
 }
 
 # --- main --------------------------------------------------------------------
