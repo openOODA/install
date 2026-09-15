@@ -81,3 +81,11 @@ shim-creation step is idempotent.
 ## License
 
 Licensed under MIT. See [LICENSE](LICENSE).
+
+---
+
+<div align="center">
+
+[![Necrometer](necrometer.svg)](https://necrometer.dev/?u=openOODA)
+
+</div>
