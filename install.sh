@@ -280,9 +280,9 @@ pre_flight() {
       err "pre-flight: $bin not found in PATH (required)"; need_fail=1
     fi
   done
-  for bin in git python3; do
+  for bin in git python3 clang; do
     if ! command -v "$bin" >/dev/null 2>&1; then
-      warn "pre-flight: $bin not found (git/gcc are auto-installed when root; python3 only needed for harness wiring)"
+      warn "pre-flight: $bin not found (clang >= 15 recommended for sovereign LLVM compiler backend)"
     fi
   done
   if ! command -v sha256sum >/dev/null 2>&1 && ! command -v shasum >/dev/null 2>&1; then
@@ -587,6 +587,7 @@ setup_shell_rc() {
   local l4='export OODA_FS_READDIR="$HOME/.openooda:/etc:/usr"'
   local l5='export OODA_FS_WRITEDIR="$HOME"'
   local l6='export OODACODEX="$HOME/.openooda/northstar.oot"'
+  local l7='export OO_LIST_AMBIENT_QUOTA="8589934592"'
   for rc in "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.zshrc"; do
     [[ -f "$rc" || ( "$rc" == "$HOME/.bashrc" && ! -f "$HOME/.bash_profile" && ! -f "$HOME/.zshrc" ) ]] || continue
     [[ -e "$rc" ]] || : >> "$rc" 2>/dev/null || continue
@@ -598,7 +599,7 @@ setup_shell_rc() {
     if grep -Fqx "$l1" "$rc" 2>/dev/null; then
       info "$(basename "$rc") already has openOODA exports"
     else
-      printf '\n# openOODA\n%s\n%s\n%s\n%s\n%s\n%s\n' "$l1" "$l2" "$l3" "$l4" "$l5" "$l6" >> "$rc"
+      printf '\n# openOODA\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "$l1" "$l2" "$l3" "$l4" "$l5" "$l6" "$l7" >> "$rc"
       ok "$(basename "$rc") updated"
     fi
     # Merge jail dirs into an existing READDIR. Never clobber extra

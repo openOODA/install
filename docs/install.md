@@ -25,9 +25,9 @@ After it finishes, either restart your shell or run `source ~/.bashrc` (or
 │   ├── oodac        # compiler
 │   ├── liboodar.a   # runtime substrate (static lib)
 │   ├── opm          # package manager
-│   ├── ooda-lsp     # language server
-│   ├── ooda-mcp     # MCP server
-│   └── bb            # execution flight recorder & crash autopsy
+│   ├── lsp          # language server
+│   ├── mcp          # MCP server
+│   └── bb           # execution flight recorder & crash autopsy
 └── std/             # standard library (git clone)
 ```
 
@@ -46,9 +46,9 @@ installed.
 | `oodac`   | openOODA/oodac | `oodac`      | Compiler                                 |
 | `oodar`   | openOODA/oodar | `liboodar.a` | Runtime substrate (C static library)     |
 | `opm`     | openOODA/opm   | `opm`        | Package manager                          |
-| `lsp`     | openOODA/lsp   | `ooda-lsp`   | Language server                          |
-| `mcp`     | openOODA/mcp   | `ooda-mcp`   | MCP server                               |
-| `bb`| openOODA/bb | `bb` | Flight recorder & crash autopsy engine   |
+| `lsp`     | openOODA/lsp   | `lsp`        | Language server                          |
+| `mcp`     | openOODA/mcp   | `mcp`        | MCP server                               |
+| `bb`      | openOODA/bb    | `bb`         | Flight recorder & crash autopsy engine   |
 | `std`     | openOODA/std   | (clone)      | Standard library                         |
 
 ## Environment variables

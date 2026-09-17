@@ -33,7 +33,7 @@ Toolchain-only: the installer no longer scans for or wires LLM harnesses (remove
 
 `OPENOODA_DRY_RUN=1` previews without touching disk. Re-run is safe — the install is idempotent and `~/.bashrc` is backed up as `~/.bashrc.bak.openooda` before any edit.
 
-**Professional install (P0/P1):** `install.sh --help` (`--dry-run`/`--yes`/`--no-modify-shell`/`--uninstall`), pre-flight checks `curl`/`git`/`python3` + `df` >100 MB + `curl -Is raw.githubusercontent`, `~/.openooda/install.log` (1M rotate) + `trap` cleanup, post-flight verifies `ooda`/`oodac`/`ooda-lsp`/`ooda-mcp`/`bb` respond to `--help`.
+**Professional install (P0/P1):** `install.sh --help` (`--dry-run`/`--yes`/`--no-modify-shell`/`--uninstall`), pre-flight checks `curl`/`git`/`python3` + `df` >100 MB + `curl -Is raw.githubusercontent`, `~/.openooda/install.log` (1M rotate) + `trap` cleanup, post-flight verifies `ooda`/`cli`/`tui`/`oodac`/`lsp`/`mcp`/`opm`/`bb` respond to `--help`.
 
 ## Docs
 
