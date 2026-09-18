@@ -91,6 +91,8 @@ if grep -q 'BIN_DIR/ooda-mcp-grok\|BIN_DIR/ooda-lsp-grok\|bindir+"/ooda-lsp-grok
   echo "FAIL stale -grok shim command refs (never shipped)"; exit 1
 fi
 grep -q "northstar.oot" install.sh || { echo "FAIL no codex fetch"; exit 1; }
+grep -q "spec.oot" install.sh || { echo "FAIL no spec fetch"; exit 1; }
+grep -q "OODASPEC" install.sh || { echo "FAIL no OODASPEC env"; exit 1; }
 # Plan v28: assert_path_resolution must accept a binary present at $BIN_DIR
 # even when command -v cannot resolve it on the current PATH (case (c)).
 # This unblocks `ooda update` when the install subshell writes binaries

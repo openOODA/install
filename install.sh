@@ -34,9 +34,9 @@ XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 # for curl|bash invocations where the script is on stdin (no file).
 # Curl fallback fetches from GitHub (3s timeout) so curl|bash always shows
 # a real version; static fallback "0.1.34" if both fail.
-VERSION="$(cat "$(dirname "${BASH_SOURCE[0]:-$0}")/VERSION" 2>/dev/null || curl -sSL --max-time 3 "https://raw.githubusercontent.com/openOODA/install/main/VERSION" 2>/dev/null || echo "0.1.40")"
+VERSION="$(cat "$(dirname "${BASH_SOURCE[0]:-$0}")/VERSION" 2>/dev/null || curl -sSL --max-time 3 "https://raw.githubusercontent.com/openOODA/install/main/VERSION" 2>/dev/null || echo "0.1.41")"
 VERSION="$(printf '%s' "$VERSION" | tr -d '\r\n ' | head -c 20)"
-[[ -z "$VERSION" ]] && VERSION="0.1.34"
+[[ -z "$VERSION" ]] && VERSION="0.1.41"
 
 # --- arg parsing (curl | bash -s -- --help) ---------------------------------
 usage() {
@@ -243,6 +243,7 @@ print_preamble() {
   printf '    lsp      ~/.openooda/bin/lsp\n'
   printf '    mcp      ~/.openooda/bin/mcp\n'
   printf '    bb       ~/.openooda/bin/bb\n'
+  printf '    spec     ~/.openooda/spec.oot\n'
   printf '\n  %sEstimated time: 10-60 seconds. Press Ctrl-C to cancel.%s\n\n' "$DIM" "$RESET"
 }
 
@@ -588,6 +589,7 @@ setup_shell_rc() {
   local l5='export OODA_FS_WRITEDIR="$HOME"'
   local l6='export OODACODEX="$HOME/.openooda/northstar.oot"'
   local l7='export OO_LIST_AMBIENT_QUOTA="8589934592"'
+  local l8='export OODASPEC="$HOME/.openooda/spec.oot"'
   for rc in "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.zshrc"; do
     [[ -f "$rc" || ( "$rc" == "$HOME/.bashrc" && ! -f "$HOME/.bash_profile" && ! -f "$HOME/.zshrc" ) ]] || continue
     [[ -e "$rc" ]] || : >> "$rc" 2>/dev/null || continue
@@ -599,7 +601,7 @@ setup_shell_rc() {
     if grep -Fqx "$l1" "$rc" 2>/dev/null; then
       info "$(basename "$rc") already has openOODA exports"
     else
-      printf '\n# openOODA\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "$l1" "$l2" "$l3" "$l4" "$l5" "$l6" "$l7" >> "$rc"
+      printf '\n# openOODA\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "$l1" "$l2" "$l3" "$l4" "$l5" "$l6" "$l8" "$l7" >> "$rc"
       ok "$(basename "$rc") updated"
     fi
     # Merge jail dirs into an existing READDIR. Never clobber extra
@@ -607,6 +609,7 @@ setup_shell_rc() {
     merge_readdir_line "$rc"
     grep -Fqx "$l5" "$rc" 2>/dev/null || printf '%s\n' "$l5" >> "$rc"
     grep -q '^export OODACODEX=' "$rc" 2>/dev/null || printf '%s\n' "$l6" >> "$rc"
+    grep -q '^export OODASPEC=' "$rc" 2>/dev/null || printf '%s\n' "$l8" >> "$rc"
   done
 }
 
@@ -915,6 +918,27 @@ do_install() {
     fi
   fi
 
+  # step 3d: language specification (openOODA/spec.oot)
+  if [[ "$DRY_RUN" == "1" ]]; then
+    step_status "[dry-run] skipping spec fetch"
+    skip "[dry-run] skipping spec fetch"
+  else
+    # Download to .tmp then rename on success (same atomic pattern as
+    # fetch_and_verify): a failed refresh must never clobber a spec we
+    # already hold.
+    step_status "fetching language specification (openOODA/spec.oot)"
+    if curl -sSL --connect-timeout 10 --max-time 60 -o "$OPENOODA_HOME/spec.oot.tmp" "https://raw.githubusercontent.com/openOODA/openOODA/main/spec.oot" 2>/dev/null && [[ -s "$OPENOODA_HOME/spec.oot.tmp" ]]; then
+      mv -f "$OPENOODA_HOME/spec.oot.tmp" "$OPENOODA_HOME/spec.oot" 2>/dev/null || warn "spec rename failed; keeping previous spec.oot"
+    else
+      rm -f "$OPENOODA_HOME/spec.oot.tmp" 2>/dev/null || true
+      if [[ -s "$OPENOODA_HOME/spec.oot" ]]; then
+        warn "spec refresh failed; keeping existing spec.oot"
+      else
+        warn "spec fetch failed; cli spec and agent tooling need network to populate spec.oot"
+      fi
+    fi
+  fi
+
   # step 4: shell rc (bash only; zsh/fish users get a hint via warn_for_other_shells)
   step_status "setting up shell environment (~/.bashrc)"
   if [[ "$DRY_RUN" != "1" ]]; then setup_shell_rc; fi
@@ -1025,12 +1049,13 @@ if [[ $DO_UNINSTALL -eq 1 ]]; then
   for s in /usr/local/bin/ooda /usr/local/bin/oodac /usr/local/bin/opm /usr/local/bin/ooda-lsp /usr/local/bin/ooda-mcp /usr/local/bin/bb; do
     if [[ -L "$s" && "$(readlink "$s" 2>/dev/null)" == "$BIN_DIR/"* ]]; then rm -f "$s" 2>/dev/null || true; fi
   done
-  # remove binaries, std, and build sources (keep OPENOODA_HOME for logs)
-  rm -rf "$BIN_DIR" "$STD_DIR" "$OPENOODA_HOME/oodar" 2>/dev/null || true
+  # remove binaries, std, spec, and build sources (keep OPENOODA_HOME for logs)
+  rm -rf "$BIN_DIR" "$STD_DIR" "$OPENOODA_HOME/oodar" "$OPENOODA_HOME/spec.oot" "$OPENOODA_HOME/northstar.oot" 2>/dev/null || true
   # surgically remove the # openOODA section from shell rc files
   for rc in "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.zshrc"; do
     if [[ -f "$rc" ]] && grep -q '# openOODA' "$rc" 2>/dev/null; then
       sed -i '/# openOODA/,/export OODA_FS_WRITEDIR/d' "$rc" 2>/dev/null || true
+      sed -i '/^export OODACODEX=/d; /^export OODASPEC=/d; /^export OO_LIST_AMBIENT_QUOTA=/d; /^export OODA_FS_READDIR=/d' "$rc" 2>/dev/null || true
       ok "surgically removed openOODA section from $(basename "$rc")"
     fi
   done
