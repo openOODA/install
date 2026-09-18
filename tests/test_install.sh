@@ -93,6 +93,13 @@ fi
 grep -q "northstar.oot" install.sh || { echo "FAIL no codex fetch"; exit 1; }
 grep -q "spec.oot" install.sh || { echo "FAIL no spec fetch"; exit 1; }
 grep -q "OODASPEC" install.sh || { echo "FAIL no OODASPEC env"; exit 1; }
+grep -q "OODA_SPEC" install.sh || { echo "FAIL no OODA_SPEC env"; exit 1; }
+grep -q 'spec[[:space:]]\+~/.openooda/spec.oot' install.sh \
+  || { echo "FAIL no spec preamble"; exit 1; }
+grep -q 'rm -rf.*spec.oot' install.sh \
+  || { echo "FAIL no spec.oot uninstall removal"; exit 1; }
+grep -q 'sed -i.*OODASPEC' install.sh \
+  || { echo "FAIL no OODASPEC uninstall cleanup"; exit 1; }
 # Plan v28: assert_path_resolution must accept a binary present at $BIN_DIR
 # even when command -v cannot resolve it on the current PATH (case (c)).
 # This unblocks `ooda update` when the install subshell writes binaries

@@ -34,9 +34,9 @@ XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 # for curl|bash invocations where the script is on stdin (no file).
 # Curl fallback fetches from GitHub (3s timeout) so curl|bash always shows
 # a real version; static fallback "0.1.34" if both fail.
-VERSION="$(cat "$(dirname "${BASH_SOURCE[0]:-$0}")/VERSION" 2>/dev/null || curl -sSL --max-time 3 "https://raw.githubusercontent.com/openOODA/install/main/VERSION" 2>/dev/null || echo "0.1.42")"
+VERSION="$(cat "$(dirname "${BASH_SOURCE[0]:-$0}")/VERSION" 2>/dev/null || curl -sSL --max-time 3 "https://raw.githubusercontent.com/openOODA/install/main/VERSION" 2>/dev/null || echo "0.1.43")"
 VERSION="$(printf '%s' "$VERSION" | tr -d '\r\n ' | head -c 20)"
-[[ -z "$VERSION" ]] && VERSION="0.1.41"
+[[ -z "$VERSION" ]] && VERSION="0.1.43"
 
 # --- arg parsing (curl | bash -s -- --help) ---------------------------------
 usage() {
@@ -590,6 +590,7 @@ setup_shell_rc() {
   local l6='export OODACODEX="$HOME/.openooda/northstar.oot"'
   local l7='export OO_LIST_AMBIENT_QUOTA="8589934592"'
   local l8='export OODASPEC="$HOME/.openooda/spec.oot"'
+  local l9='export OODA_SPEC="$HOME/.openooda/spec.oot"'
   for rc in "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.zshrc"; do
     [[ -f "$rc" || ( "$rc" == "$HOME/.bashrc" && ! -f "$HOME/.bash_profile" && ! -f "$HOME/.zshrc" ) ]] || continue
     [[ -e "$rc" ]] || : >> "$rc" 2>/dev/null || continue
@@ -601,7 +602,7 @@ setup_shell_rc() {
     if grep -Fqx "$l1" "$rc" 2>/dev/null; then
       info "$(basename "$rc") already has openOODA exports"
     else
-      printf '\n# openOODA\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "$l1" "$l2" "$l3" "$l4" "$l5" "$l6" "$l8" "$l7" >> "$rc"
+      printf '\n# openOODA\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "$l1" "$l2" "$l3" "$l4" "$l5" "$l6" "$l8" "$l9" "$l7" >> "$rc"
       ok "$(basename "$rc") updated"
     fi
     # Merge jail dirs into an existing READDIR. Never clobber extra
@@ -610,6 +611,8 @@ setup_shell_rc() {
     grep -Fqx "$l5" "$rc" 2>/dev/null || printf '%s\n' "$l5" >> "$rc"
     grep -q '^export OODACODEX=' "$rc" 2>/dev/null || printf '%s\n' "$l6" >> "$rc"
     grep -q '^export OODASPEC=' "$rc" 2>/dev/null || printf '%s\n' "$l8" >> "$rc"
+    grep -q '^export OODA_SPEC=' "$rc" 2>/dev/null || printf '%s\n' "$l9" >> "$rc"
+    grep -q '^export OO_LIST_AMBIENT_QUOTA=' "$rc" 2>/dev/null || printf '%s\n' "$l7" >> "$rc"
   done
 }
 
@@ -1055,7 +1058,7 @@ if [[ $DO_UNINSTALL -eq 1 ]]; then
   for rc in "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.zshrc"; do
     if [[ -f "$rc" ]] && grep -q '# openOODA' "$rc" 2>/dev/null; then
       sed -i '/# openOODA/,/export OODA_FS_WRITEDIR/d' "$rc" 2>/dev/null || true
-      sed -i '/^export OODACODEX=/d; /^export OODASPEC=/d; /^export OO_LIST_AMBIENT_QUOTA=/d; /^export OODA_FS_READDIR=/d' "$rc" 2>/dev/null || true
+      sed -i '/^export OODACODEX=/d; /^export OODASPEC=/d; /^export OODA_SPEC=/d; /^export OO_LIST_AMBIENT_QUOTA=/d; /^export OODA_FS_READDIR=/d' "$rc" 2>/dev/null || true
       ok "surgically removed openOODA section from $(basename "$rc")"
     fi
   done
