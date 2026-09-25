@@ -8,8 +8,7 @@ if grep -q '\[\[ -n "$expected_hash" &&' install.sh; then
   echo "FAIL empty expected_hash still skip-opens"; exit 1
 fi
 bash install.sh --selftest-sha
-grep -q "blackbox" install.sh || { echo "FAIL no blackbox"; exit 1; }
-grep -q '\[bb\]=bb' install.sh || { echo "FAIL no bb binary mapping"; exit 1; }
+if grep -q '\[bb\]=bb' install.sh; then echo "FAIL bb mapping present (bb retired)"; exit 1; fi
 grep -q "OODA_COMPILER" install.sh || { echo "FAIL no OODA_COMPILER env"; exit 1; }
 grep -q "OODA_FS_READDIR" install.sh || { echo "FAIL no OODA_FS_READDIR"; exit 1; }
 grep -q "TOTAL=17" install.sh || { echo "FAIL TOTAL not 17 (sysdep/sources/shim/codex steps missing)"; exit 1; }
