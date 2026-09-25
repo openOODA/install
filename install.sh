@@ -84,10 +84,10 @@ else
 fi
 _log() { printf '[%s] %s\n' "$(date -Iseconds 2>/dev/null || date)" "$*" >&3 2>/dev/null || true; }
 
-declare -A REPOS=([ooda]=ooda [oodac]=oodac [oodar]=oodar [opm]=opm [lsp]=lsp [mcp]=mcp [bb]=bb [cli]=cli [tui]=tui)
+declare -A REPOS=([ooda]=ooda [oodac]=oodac [oodar]=oodar [opm]=opm [lsp]=lsp [mcp]=mcp [cli]=cli [tui]=tui)
 # Dest names match repo names. ASSETS is the GitHub release stem when it
 # still differs (lsp/mcp have not republished as lsp-linux-x86_64 yet).
-declare -A BINARIES=([ooda]=ooda [oodac]=oodac [oodar]=liboodar.a [opm]=opm [lsp]=lsp [mcp]=mcp [bb]=bb [cli]=cli [tui]=tui)
+declare -A BINARIES=([ooda]=ooda [oodac]=oodac [oodar]=liboodar.a [opm]=opm [lsp]=lsp [mcp]=mcp [cli]=cli [tui]=tui)
 declare -A ASSETS=([lsp]=ooda-lsp [mcp]=ooda-mcp)
 
 # --- color --------------------------------------------------------------------
@@ -242,7 +242,6 @@ print_preamble() {
   printf '    opm      ~/.openooda/bin/opm\n'
   printf '    lsp      ~/.openooda/bin/lsp\n'
   printf '    mcp      ~/.openooda/bin/mcp\n'
-  printf '    bb       ~/.openooda/bin/bb\n'
   printf '    spec     ~/.openooda/spec.oot\n'
   printf '\n  %sEstimated time: 10-60 seconds. Press Ctrl-C to cancel.%s\n\n' "$DIM" "$RESET"
 }
@@ -799,14 +798,6 @@ post_flight() {
   export OODA_FS_WRITEDIR="${OODA_FS_WRITEDIR:-$HOME}"
   local fail=0
   local bins=(ooda cli tui oodac lsp mcp opm)
-  if [[ -e "$BIN_DIR/bb" ]]; then
-    bins+=(bb)
-  elif [[ -e "$BIN_DIR/blackbox" ]]; then
-    bins+=(blackbox)
-  else
-    warn "verify: bb/blackbox not on disk"
-    fail=1
-  fi
   for bin in "${bins[@]}"; do
     # Verify by output, not exit code: some tools exit nonzero on --help
     # (opm) or under non-tty stdout (ooda), and a silent stub that exits 0
@@ -860,24 +851,10 @@ do_install() {
   # step 2: components
   step_status "loading version pins"
   load_pins
-  for key in ooda cli oodac oodar opm lsp mcp bb tui; do
+  for key in ooda cli oodac oodar opm lsp mcp tui; do
     step_status "installing $key"
     install_component "$key" || return 1
   done
-
-  # step 2b: bb back-compat name (copy, not a symlink)
-  if [[ "$DRY_RUN" == "1" ]]; then
-    step_status "[dry-run] skipping bb back-compat name"
-    skip "[dry-run] skipping bb back-compat name"
-  elif [[ -e "$BIN_DIR/bb" && ! -e "$BIN_DIR/blackbox" ]]; then
-    step_status "copying bb to blackbox (back-compat name)"
-    if cp -f "$BIN_DIR/bb" "$BIN_DIR/blackbox" 2>/dev/null; then
-      chmod +x "$BIN_DIR/blackbox" 2>/dev/null || true
-      ok "bb back-compat name -> ~/.openooda/bin/blackbox"
-    else
-      warn "could not copy bb to blackbox"
-    fi
-  fi
 
   # step 3: std (pinned when versions.toml pins it, else latest)
   if [[ "$DRY_RUN" == "1" ]]; then

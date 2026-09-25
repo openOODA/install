@@ -69,19 +69,7 @@ jobs:
         run: |
           test -x oodac/bin/oodac || chmod +x oodac/bin/oodac
           test -f oodar/core/blackbox/blackbox.c || { echo "missing oodar/core/blackbox/blackbox.c"; exit 1; }
-      - name: install bb (download prebuilt from GitHub release)
-        run: |
-          set -euo pipefail
-          mkdir -p "$HOME/.openooda/bin"
-          curl -fsSL -o "$HOME/.openooda/bin/bb" \
-            "https://github.com/openOODA/bb/releases/download/v0.0.15/bb-linux-x86_64"
-          curl -fsSL -o "$HOME/.openooda/bin/bb.sha256" \
-            "https://github.com/openOODA/bb/releases/download/v0.0.15/bb-linux-x86_64.sha256"
-          expected=$(cut -d' ' -f1 "$HOME/.openooda/bin/bb.sha256")
-          actual=$(sha256sum "$HOME/.openooda/bin/bb" | cut -d' ' -f1)
-          test "$expected" = "$actual" || { echo "[bb-gate FAIL] sha256 mismatch"; exit 1; }
-          chmod +x "$HOME/.openooda/bin/bb"
-      - name: bb double-run on qa/ probes (RULES §1.10)
+      - name: determinism double-run on qa/ probes (RULES §1.10)
         working-directory: ${{ github.workspace }}/install
         env:
           OODA_FS_READDIR: ${{ github.workspace }}
@@ -90,18 +78,18 @@ jobs:
           OODA_COMPILER: ${{ github.workspace }}/oodac/bin/oodac
         run: |
           set -euo pipefail
-          trap 'rm -f /tmp/*.diff[12] /tmp/flight.trace[12]' EXIT
+          trap 'rm -f /tmp/*.diff[12]' EXIT
           shopt -s nullglob
           count=0
           for f in qa/qa-*.oo qa/probe_*.oo; do
             test -f "$f" || continue
             count=$((count + 1))
             base=$(basename "$f" .oo)
-            ~/.openooda/bin/bb diff "$f" > "/tmp/${base}.diff1" 2>&1 || {
+            "$OODA_COMPILER" tokens "$f" > "/tmp/${base}.diff1" 2>&1 || {
               echo "[bb-gate FAIL] diff non-zero exit on $f"
               exit 1
             }
-            ~/.openooda/bin/bb diff "$f" > "/tmp/${base}.diff2" 2>&1 || {
+            "$OODA_COMPILER" tokens "$f" > "/tmp/${base}.diff2" 2>&1 || {
               echo "[bb-gate FAIL] second diff non-zero exit on $f"
               exit 1
             }
@@ -115,24 +103,8 @@ jobs:
             echo "[bb-gate SKIP] no qa/probe_*.oo in this repo"
             exit 0
           fi
-          if [ -s .blackbox/flight.json ]; then
-            ~/.openooda/bin/bb trace > /tmp/flight.trace1 2>&1 || {
-              echo "[bb-gate FAIL] unreadable flight log"
-              exit 1
-            }
-            ~/.openooda/bin/bb trace > /tmp/flight.trace2 2>&1 || {
-              echo "[bb-gate FAIL] unreadable flight log on second read"
-              exit 1
-            }
-            if ! diff -q /tmp/flight.trace1 /tmp/flight.trace2 >/dev/null; then
-              echo "[bb-gate FAIL] non-deterministic flight trace"
-              exit 1
-            fi
-            echo "[bb-gate OK] $count probes deterministic across double-run; flight log readable and deterministic"
-          else
-            echo "[bb-gate OK] $count probes deterministic across double-run; no flight log (no crashes recorded)"
-          fi
+          echo "[bb-gate OK] $count probes deterministic across double-run (oodac-native gate)"
 
   auto-release:
     needs: [bb-gate]
-    uses: openOODA/openOODA/.github/workflows/auto-release.yml@v2.10.23
+    uses: openOODA/openOODA/.github/workflows/auto-release.yml@v2.10.44
