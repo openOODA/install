@@ -34,7 +34,7 @@ XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 # for curl|bash invocations where the script is on stdin (no file).
 # Curl fallback fetches from GitHub (3s timeout) so curl|bash always shows
 # a real version; static fallback "0.1.34" if both fail.
-VERSION="$(cat "$(dirname "${BASH_SOURCE[0]:-$0}")/VERSION" 2>/dev/null || curl -sSL --max-time 3 "https://raw.githubusercontent.com/openOODA/install/main/VERSION" 2>/dev/null || echo "0.1.45")"
+VERSION="$(cat "$(dirname "${BASH_SOURCE[0]:-$0}")/VERSION" 2>/dev/null || curl -sSL --max-time 3 "https://raw.githubusercontent.com/openOODA/install/master/VERSION" 2>/dev/null || echo "0.1.45")"
 VERSION="$(printf '%s' "$VERSION" | tr -d '\r\n ' | head -c 20)"
 [[ -z "$VERSION" ]] && VERSION="0.1.43"
 
@@ -886,7 +886,7 @@ do_install() {
     # fetch_and_verify): a failed refresh must never clobber a codex we
     # already hold — MCP servers fail closed without OODACODEX.
     step_status "fetching orientation codex (openOODA/northstar.oot)"
-    if curl -sSL --connect-timeout 10 --max-time 60 -o "$OPENOODA_HOME/northstar.oot.tmp" "https://raw.githubusercontent.com/openOODA/openOODA/main/northstar.oot" 2>/dev/null && [[ -s "$OPENOODA_HOME/northstar.oot.tmp" ]]; then
+    if curl -sSL --connect-timeout 10 --max-time 60 -o "$OPENOODA_HOME/northstar.oot.tmp" "https://raw.githubusercontent.com/openOODA/openOODA/master/northstar.oot" 2>/dev/null && [[ -s "$OPENOODA_HOME/northstar.oot.tmp" ]]; then
       mv -f "$OPENOODA_HOME/northstar.oot.tmp" "$OPENOODA_HOME/northstar.oot" 2>/dev/null || warn "codex rename failed; keeping previous northstar.oot"
     else
       rm -f "$OPENOODA_HOME/northstar.oot.tmp" 2>/dev/null || true
@@ -907,7 +907,7 @@ do_install() {
     # fetch_and_verify): a failed refresh must never clobber a spec we
     # already hold.
     step_status "fetching language specification (openOODA/spec.oot)"
-    if curl -sSL --connect-timeout 10 --max-time 60 -o "$OPENOODA_HOME/spec.oot.tmp" "https://raw.githubusercontent.com/openOODA/openOODA/main/spec.oot" 2>/dev/null && [[ -s "$OPENOODA_HOME/spec.oot.tmp" ]]; then
+    if curl -sSL --connect-timeout 10 --max-time 60 -o "$OPENOODA_HOME/spec.oot.tmp" "https://raw.githubusercontent.com/openOODA/openOODA/master/spec.oot" 2>/dev/null && [[ -s "$OPENOODA_HOME/spec.oot.tmp" ]]; then
       mv -f "$OPENOODA_HOME/spec.oot.tmp" "$OPENOODA_HOME/spec.oot" 2>/dev/null || warn "spec rename failed; keeping previous spec.oot"
     else
       rm -f "$OPENOODA_HOME/spec.oot.tmp" 2>/dev/null || true

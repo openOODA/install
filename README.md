@@ -66,7 +66,7 @@ Fetch the script from a different mirror and pass it to `--installer`:
 
 ```bash
 # from a machine that can reach the internet:
-curl -O https://raw.githubusercontent.com/openOODA/install/main/install.sh
+curl -O https://raw.githubusercontent.com/openOODA/install/master/install.sh
 scp install.sh your-server:/tmp/
 # on the airgapped box:
 ooda update --installer /tmp/install.sh
