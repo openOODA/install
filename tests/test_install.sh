@@ -127,4 +127,21 @@ test -s "$TMPD/assert.sh" || { echo "FAIL could not extract assert_path_resoluti
 env -i PATH=/usr/bin:/bin HOME="$HOME" BIN_DIR="$HOME/.openooda/bin" RESULTS_FILE="$RESULTS_FILE" \
   bash "$TMPD/assert.sh" \
   || { echo "FAIL on-disk accept case (c) did not trigger under stripped PATH"; exit 1; }
-echo "PASS install 9.8 fail-closed sha256+blackbox+toolchain+bash-rc+no-shadow+no-state-loss+opm-nonzero+on-disk-accept"
+# Plan v29: --from-source builds from a local checkout instead of downloading.
+# Structural: flag + env + build map + bootstrap fail-closed + oodac keep-note
+# (unique_fns) + honest summary line (never "SHA-256 verified" for built bins).
+grep -q -- "--from-source" install.sh || { echo "FAIL no --from-source flag"; exit 1; }
+grep -q "OPENOODA_SOURCE" install.sh || { echo "FAIL no OPENOODA_SOURCE env"; exit 1; }
+grep -q "SOURCE_MAIN" install.sh || { echo "FAIL no SOURCE_MAIN build map"; exit 1; }
+grep -q "needs an installed oodac as bootstrap" install.sh || { echo "FAIL no bootstrap fail-closed"; exit 1; }
+grep -q "unique_fns" install.sh || { echo "FAIL no unique_fns oodac keep-note"; exit 1; }
+grep -q "built from source" install.sh || { echo "FAIL no built-from-source summary line"; exit 1; }
+grep -q "network skipped (from-source)" install.sh || { echo "FAIL no from-source network degrade"; exit 1; }
+grep -q 'chmod +x "$BIN_DIR/liboodar.a"' install.sh || { echo "FAIL from-source oodar not marked executable (breaks assert_path_resolution)"; exit 1; }
+# Runtime: bogus source dir must fail closed even in dry-run (no network needed).
+if OPENOODA_HOME="$TMPD/home" bash install.sh --from-source=/nonexistent-openooda-src --dry-run >/dev/null 2>&1; then
+  echo "FAIL --from-source bogus dir did not fail closed"; exit 1
+fi
+# Runtime: --help must advertise the flag.
+bash install.sh --help 2>&1 | grep -q -- "--from-source" || { echo "FAIL --help hides --from-source"; exit 1; }
+echo "PASS install 9.9 fail-closed sha256+blackbox+toolchain+bash-rc+no-shadow+no-state-loss+opm-nonzero+on-disk-accept+from-source"

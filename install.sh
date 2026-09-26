@@ -29,6 +29,8 @@ NO_MODIFY_SHELL=0
 KEEP_STALE=0
 DO_UNINSTALL=0
 SELFTEST_SHA=0
+FROM_SOURCE=0
+SOURCE_DIR=""
 XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 # VERSION: read from the VERSION file next to this script, with a fallback
 # for curl|bash invocations where the script is on stdin (no file).
@@ -51,9 +53,16 @@ Options:
   --keep-stale        don't remove stale openooda binaries in legacy shadow locations (~/.local/bin)
   --clean-stale       same as default — remove stale openooda binaries in legacy shadow locations
   --uninstall         remove binaries and std
+  --from-source[=DIR] build + install from a local checkout instead of
+                      downloading release binaries (also OPENOODA_SOURCE=DIR).
+                      Bare --from-source auto-detects the checkout when this
+                      script runs from <checkout>/install/install.sh.
+                      Needs an installed oodac as bootstrap; oodac itself is
+                      kept (the compiler cannot self-rebuild: unique_fns).
   NO_COLOR=1          disable color
   OPENOODA_DRY_RUN=1  same as --dry-run
   OPENOODA_YES=1      same as --yes
+  OPENOODA_SOURCE=DIR same as --from-source=DIR
 USAGE
 }
 for arg in "$@"; do
@@ -65,6 +74,8 @@ for arg in "$@"; do
     --keep-stale) KEEP_STALE=1;;
     --clean-stale) : ;;  # default behavior; flag accepted for explicitness
     --uninstall) DO_UNINSTALL=1;;
+    --from-source=*) FROM_SOURCE=1; SOURCE_DIR="${arg#--from-source=}";;
+    --from-source) FROM_SOURCE=1;;
     --selftest-sha) SELFTEST_SHA=1; OPENOODA_HOME="${TMPDIR:-/tmp}/openooda-selftest-sha.$$"; LOG_FILE="$OPENOODA_HOME/install.log";;
     --) break;;
     --*) err "unknown option $arg (see --help)"; exit 1;;
@@ -89,6 +100,10 @@ declare -A REPOS=([ooda]=ooda [oodac]=oodac [oodar]=oodar [opm]=opm [lsp]=lsp [m
 # still differs (lsp/mcp have not republished as lsp-linux-x86_64 yet).
 declare -A BINARIES=([ooda]=ooda [oodac]=oodac [oodar]=liboodar.a [opm]=opm [lsp]=lsp [mcp]=mcp [cli]=cli [tui]=tui)
 declare -A ASSETS=([lsp]=ooda-lsp [mcp]=ooda-mcp)
+# SOURCE_MAIN: repo-root-relative build entry per component, used only by
+# --from-source. oodac has no entry: `oodac build oodac/main.oo` refuses
+# (unique_fns), so from-source keeps the bootstrap compiler as the product.
+declare -A SOURCE_MAIN=([ooda]=ooda/main.oo [cli]=cli/main.oo [opm]=opm/cli/main.oo [lsp]=lsp/cli/main.oo [mcp]=mcp/cli/main.oo [tui]=tui/main.oo)
 
 # --- color --------------------------------------------------------------------
 
@@ -232,7 +247,11 @@ print_banner() {
 # names the SHA-256 verification step explicitly, and gives the user a
 # sense of time. Tells the user what is about to happen, in plain words.
 print_preamble() {
-  printf '  %sEach GitHub repo is one install. Fetch, SHA-256, place.%s\n\n' "$BOLD" "$RESET"
+  if [[ "${FROM_SOURCE:-0}" == "1" ]]; then
+    printf '  %sEach repo builds from your local checkout. No downloads.%s\n\n' "$BOLD" "$RESET"
+  else
+    printf '  %sEach GitHub repo is one install. Fetch, SHA-256, place.%s\n\n' "$BOLD" "$RESET"
+  fi
   printf '    ooda     ~/.openooda/bin/ooda\n'
   printf '    cli      ~/.openooda/bin/cli\n'
   printf '    tui      ~/.openooda/bin/tui  (also ooda-tui)\n'
@@ -243,7 +262,11 @@ print_preamble() {
   printf '    lsp      ~/.openooda/bin/lsp\n'
   printf '    mcp      ~/.openooda/bin/mcp\n'
   printf '    spec     ~/.openooda/spec.oot\n'
-  printf '\n  %sEstimated time: 10-60 seconds. Press Ctrl-C to cancel.%s\n\n' "$DIM" "$RESET"
+  if [[ "${FROM_SOURCE:-0}" == "1" ]]; then
+    printf '\n  %sEstimated time: 3-8 minutes (local builds). Press Ctrl-C to cancel.%s\n\n' "$DIM" "$RESET"
+  else
+    printf '\n  %sEstimated time: 10-60 seconds. Press Ctrl-C to cancel.%s\n\n' "$DIM" "$RESET"
+  fi
 }
 
 ensure_sysdep() {
@@ -295,10 +318,18 @@ pre_flight() {
     err "pre-flight: <100 MB free in $HOME (${avail_kb}KB) — need room for the toolchain"
     need_fail=1
   fi
-  # network: quick HEAD to raw.githubusercontent (3s)
+  # network: quick HEAD to raw.githubusercontent (3s). In --from-source
+  # mode every artifact comes from the local checkout, so a dead network
+  # degrades to a warning instead of failing the install.
+  local net_note="network OK"
   if ! curl -Is --max-time 3 "https://raw.githubusercontent.com" >/dev/null 2>&1; then
-    err "pre-flight: no network to raw.githubusercontent.com (check proxy/firewall)"
-    need_fail=1
+    if [[ "${FROM_SOURCE:-0}" == "1" ]]; then
+      warn "pre-flight: no network (from-source mode: continuing with local sources only)"
+      net_note="network skipped (from-source)"
+    else
+      err "pre-flight: no network to raw.githubusercontent.com (check proxy/firewall)"
+      need_fail=1
+    fi
   fi
   if [[ $need_fail -eq 1 ]]; then
     err "pre-flight failed — see $LOG_FILE"
@@ -307,7 +338,7 @@ pre_flight() {
   # Printed unconditionally (not via `info`) so QUIET=1 doesn't suppress the
   # success line. This is the only output between the banner and the spinner,
   # so the user always sees something happen.
-  printf '  %s✓%s pre-flight: curl/sha256, disk, network OK\n' "$GREEN" "$RESET"
+  printf '  %s✓%s pre-flight: curl/sha256, disk, %s\n' "$GREEN" "$RESET" "$net_note"
 }
 
 ask_confirm() {
@@ -573,6 +604,176 @@ install_component() {
   fi
 }
 
+# --- from-source install -------------------------------------------------------
+# --from-source[=DIR] builds every component from a local checkout with the
+# already-installed oodac as bootstrap, instead of downloading release
+# binaries. This is how a checkout newer than the release channel (or
+# carrying local fixes) gets onto disk. Sets SRC_DIR + BOOT_OODAC globals.
+
+resolve_source_dir() {
+  local d="${SOURCE_DIR:-${OPENOODA_SOURCE:-}}"
+  if [[ -z "$d" ]]; then
+    local self="${BASH_SOURCE[0]:-$0}"
+    if [[ -f "$self" ]]; then
+      d="$(cd "$(dirname "$self")/.." 2>/dev/null && pwd || true)"
+    fi
+  fi
+  if [[ -z "$d" ]]; then
+    err "from-source: no source dir (pass --from-source=DIR or set OPENOODA_SOURCE=DIR)"
+    err "  bare --from-source only auto-detects when run as <checkout>/install/install.sh"
+    return 1
+  fi
+  if [[ ! -d "$d" ]]; then
+    err "from-source: not a directory: $d"
+    return 1
+  fi
+  d="$(cd "$d" 2>/dev/null && pwd || true)"
+  [[ -n "$d" ]] || { err "from-source: cannot resolve dir: $SOURCE_DIR"; return 1; }
+  local missing=()
+  local s
+  for s in ooda/main.oo cli/main.oo tui/main.oo opm/cli/main.oo lsp/cli/main.oo mcp/cli/main.oo oodar/scripts/Makefile openOODA/northstar.oot openOODA/spec.oot; do
+    [[ -f "$d/$s" ]] || missing+=("$s")
+  done
+  [[ -f "$d/std/anchor.oo" || -f "$d/std/ANCHOR.oo" ]] || missing+=("std/anchor.oo")
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    err "from-source: $d is not an openOODA checkout (missing: ${missing[*]})"
+    return 1
+  fi
+  local boot=""
+  if [[ -x "$BIN_DIR/oodac" ]]; then
+    boot="$BIN_DIR/oodac"
+  elif command -v oodac >/dev/null 2>&1; then
+    boot="$(command -v oodac)"
+    if command -v readlink >/dev/null 2>&1; then
+      boot="$(readlink -f "$boot" 2>/dev/null || printf '%s' "$boot")"
+    fi
+  fi
+  if [[ -z "$boot" || ! -x "$boot" ]]; then
+    err "from-source needs an installed oodac as bootstrap; run a normal install first"
+    return 1
+  fi
+  SRC_DIR="$d"
+  BOOT_OODAC="$boot"
+  info "from-source: checkout $SRC_DIR (bootstrap $BOOT_OODAC)"
+  return 0
+}
+
+build_component_from_source() {
+  local key="$1" dest="$BIN_DIR/${BINARIES[$1]}" main="${SOURCE_MAIN[$1]}"
+  printf '  %s%s%s (from source)\n' "$BOLD" "$key" "$RESET"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    ok "[dry-run] would build $(basename "$dest") from $main"
+    INSTALLED+=("$key")
+    return 0
+  fi
+  step_status "building $key from source"
+  local log="$OPENOODA_HOME/build-$key.log"
+  if ( cd "$SRC_DIR" && OODA_COMPILER="$BOOT_OODAC" OO_LIST_AMBIENT_QUOTA="34359738368" \
+      "$BOOT_OODAC" build "$main" -o "$dest.tmp" >"$log" 2>&1 ); then
+    mv -f "$dest.tmp" "$dest" 2>/dev/null && chmod +x "$dest" 2>/dev/null
+    local size; size=$(wc -c < "$dest" 2>/dev/null || echo 0)
+    local mb; mb=$(awk -v s="$size" 'BEGIN{printf "%.1f", s/1048576}')
+    ok "built $(basename "$dest") from source (${mb} MB)"; INSTALLED+=("$key")
+    BYTES=$((BYTES + size))
+    # ooda/cli spawn and `cli update --check` look for ooda-tui.
+    if [[ "$key" == "tui" ]]; then
+      if cp -f "$dest" "$BIN_DIR/ooda-tui" 2>/dev/null; then
+        chmod +x "$BIN_DIR/ooda-tui" 2>/dev/null || true
+        ok "tui also installed as ~/.openooda/bin/ooda-tui"
+      fi
+    fi
+  else
+    rm -f "$dest.tmp"
+    err "$key: source build failed — last 10 lines of $log:"
+    tail -n 10 "$log" >&2 2>/dev/null || true
+    return 1
+  fi
+}
+
+install_oodac_from_source() {
+  printf '  %s%s%s (from source)\n' "$BOLD" "oodac" "$RESET"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    ok "[dry-run] would keep oodac (compiler cannot self-rebuild: unique_fns)"
+    INSTALLED+=("oodac")
+    return 0
+  fi
+  if [[ -x "$BIN_DIR/oodac" ]]; then
+    ok "oodac kept: compiler cannot self-rebuild (unique_fns) — bootstrap stays as product"
+    INSTALLED+=("oodac")
+    return 0
+  fi
+  # Bootstrap came from PATH (no installed oodac yet): adopt it so the
+  # prefix is complete and later builds resolve OODA_COMPILER locally.
+  if cp -f "$BOOT_OODAC" "$BIN_DIR/oodac" 2>/dev/null; then
+    chmod +x "$BIN_DIR/oodac" 2>/dev/null || true
+    ok "oodac adopted from PATH ($BOOT_OODAC)"
+    INSTALLED+=("oodac")
+    return 0
+  fi
+  err "oodac: cannot place bootstrap compiler in $BIN_DIR"
+  return 1
+}
+
+install_oodar_from_source() {
+  printf '  %s%s%s (from source)\n' "$BOLD" "oodar" "$RESET"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    ok "[dry-run] would build liboodar.a via make"
+    INSTALLED+=("oodar")
+    return 0
+  fi
+  step_status "building liboodar.a from source"
+  local log="$OPENOODA_HOME/build-oodar.log" jobs
+  jobs=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
+  if ( cd "$SRC_DIR/oodar/scripts" && make -j"$jobs" all >"$log" 2>&1 ); then
+    [[ -s "$SRC_DIR/oodar/scripts/lib/liboodar.a" ]] || { err "oodar: make succeeded but liboodar.a is missing"; return 1; }
+    cp -f "$SRC_DIR/oodar/scripts/lib/liboodar.a" "$BIN_DIR/liboodar.a.tmp" 2>/dev/null \
+      && mv -f "$BIN_DIR/liboodar.a.tmp" "$BIN_DIR/liboodar.a" 2>/dev/null \
+      && chmod +x "$BIN_DIR/liboodar.a" 2>/dev/null
+    local size; size=$(wc -c < "$BIN_DIR/liboodar.a" 2>/dev/null || echo 0)
+    local mb; mb=$(awk -v s="$size" 'BEGIN{printf "%.1f", s/1048576}')
+    ok "built liboodar.a from source (${mb} MB)"; INSTALLED+=("oodar")
+    BYTES=$((BYTES + size))
+  else
+    err "oodar: make failed — last 10 lines of $log:"
+    tail -n 10 "$log" >&2 2>/dev/null || true
+    return 1
+  fi
+}
+
+install_std_from_source() {
+  if [[ "$DRY_RUN" == "1" ]]; then
+    ok "[dry-run] would sync std from source"
+    return 0
+  fi
+  rm -rf "$STD_DIR.new" 2>/dev/null || true
+  cp -a "$SRC_DIR/std" "$STD_DIR.new" 2>/dev/null || { err "std sync failed (copy)"; return 1; }
+  if [[ ! -f "$STD_DIR.new/anchor.oo" && ! -f "$STD_DIR.new/ANCHOR.oo" ]]; then
+    rm -rf "$STD_DIR.new" 2>/dev/null || true
+    err "std sync failed (no anchor.oo in source std)"
+    return 1
+  fi
+  rm -rf "$STD_DIR" 2>/dev/null || true
+  mv -f "$STD_DIR.new" "$STD_DIR" 2>/dev/null || { err "std sync failed (rename)"; return 1; }
+  ok "std synced from source"
+}
+
+install_file_from_source() {
+  local rel="$1" dest="$2" what="$3"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    ok "[dry-run] would copy $what from source"
+    return 0
+  fi
+  if [[ -s "$SRC_DIR/$rel" ]]; then
+    cp -f "$SRC_DIR/$rel" "$dest.tmp" 2>/dev/null \
+      && mv -f "$dest.tmp" "$dest" 2>/dev/null \
+      && ok "$what copied from source" || { rm -f "$dest.tmp" 2>/dev/null || true; warn "$what copy failed; keeping existing"; }
+  elif [[ -s "$dest" ]]; then
+    warn "$what missing in source; keeping existing"
+  else
+    warn "$what missing in source and no existing copy"
+  fi
+}
+
 # --- shell rc ----------------------------------------------------------------
 
 setup_shell_rc() {
@@ -738,7 +939,11 @@ assert_path_resolution() {
     if [[ "$resolved" == "$dest" || "$resolved" == "$home_install" ]]; then
       : # OK — case (a) or (b)
     elif [[ -x "$dest" && -z "$resolved" ]]; then
-      info "PATH shadow: '$bin_name' not on current PATH but present at $dest (post_flight SHA-verified); accepting"
+      if [[ "${FROM_SOURCE:-0}" == "1" ]]; then
+        info "PATH shadow: '$bin_name' not on current PATH but present at $dest (post_flight verified); accepting"
+      else
+        info "PATH shadow: '$bin_name' not on current PATH but present at $dest (post_flight SHA-verified); accepting"
+      fi
       : # OK — case (c)
     else
       err "PATH shadow: '$bin_name' resolves to '$resolved' (expected '$dest')"
@@ -842,6 +1047,11 @@ do_install() {
   if [[ "$DRY_RUN" == "1" ]]; then
     step_status "[dry-run] skipping sysdep ensure (gcc, git)"
     skip "[dry-run] skipping sysdep ensure (gcc, git)"
+  elif [[ "$FROM_SOURCE" == "1" ]]; then
+    step_status "ensuring make + cc + clang are installed (from-source builds)"
+    ensure_sysdep make make || return 1
+    ensure_sysdep cc gcc || return 1
+    ensure_sysdep clang clang || return 1
   else
     step_status "ensuring gcc + git are installed"
     ensure_sysdep gcc gcc || return 1
@@ -849,17 +1059,34 @@ do_install() {
   fi
 
   # step 2: components
-  step_status "loading version pins"
-  load_pins
-  for key in ooda cli oodac oodar opm lsp mcp tui; do
-    step_status "installing $key"
-    install_component "$key" || return 1
-  done
+  if [[ "$FROM_SOURCE" == "1" ]]; then
+    step_status "resolving source checkout"
+    resolve_source_dir || return 1
+    for key in ooda cli oodac oodar opm lsp mcp tui; do
+      step_status "installing $key from source"
+      case "$key" in
+        oodac) install_oodac_from_source || return 1;;
+        oodar) install_oodar_from_source || return 1;;
+        *) build_component_from_source "$key" || return 1;;
+      esac
+    done
+  else
+    step_status "loading version pins"
+    load_pins
+    for key in ooda cli oodac oodar opm lsp mcp tui; do
+      step_status "installing $key"
+      install_component "$key" || return 1
+    done
+  fi
 
-  # step 3: std (pinned when versions.toml pins it, else latest)
+  # step 3: std (pinned when versions.toml pins it, else latest; synced from
+  # the checkout under --from-source so the tree matches the binaries)
   if [[ "$DRY_RUN" == "1" ]]; then
     step_status "[dry-run] skipping std clone"
     skip "[dry-run] skipping std clone"
+  elif [[ "$FROM_SOURCE" == "1" ]]; then
+    step_status "syncing std from source"
+    install_std_from_source || return 1
   elif [[ ! -f "$STD_DIR/anchor.oo" && ! -f "$STD_DIR/ANCHOR.oo" ]]; then
     step_status "installing std"
     local wd; wd=$(mktemp -d 2>/dev/null || echo "/tmp/openooda-std-$$")
@@ -881,6 +1108,9 @@ do_install() {
   if [[ "$DRY_RUN" == "1" ]]; then
     step_status "[dry-run] skipping codex fetch"
     skip "[dry-run] skipping codex fetch"
+  elif [[ "$FROM_SOURCE" == "1" ]]; then
+    step_status "copying orientation codex from source"
+    install_file_from_source "openOODA/northstar.oot" "$OPENOODA_HOME/northstar.oot" "codex"
   else
     # Download to .tmp then rename on success (same atomic pattern as
     # fetch_and_verify): a failed refresh must never clobber a codex we
@@ -902,6 +1132,9 @@ do_install() {
   if [[ "$DRY_RUN" == "1" ]]; then
     step_status "[dry-run] skipping spec fetch"
     skip "[dry-run] skipping spec fetch"
+  elif [[ "$FROM_SOURCE" == "1" ]]; then
+    step_status "copying language specification from source"
+    install_file_from_source "openOODA/spec.oot" "$OPENOODA_HOME/spec.oot" "spec"
   else
     # Download to .tmp then rename on success (same atomic pattern as
     # fetch_and_verify): a failed refresh must never clobber a spec we
@@ -978,7 +1211,11 @@ print_summary() {
   fi
   if [[ ${#INSTALLED[@]} -gt 0 ]]; then
     printf '  %s✓%s installed:   %s\n' "$GREEN" "$RESET" "${INSTALLED[*]}"
-    printf '  %s✓%s SHA-256 verified: %s\n' "$GREEN" "$RESET" "${INSTALLED[*]}"
+    if [[ "${FROM_SOURCE:-0}" == "1" ]]; then
+      printf '  %s✓%s built from source: %s\n' "$GREEN" "$RESET" "${INSTALLED[*]}"
+    else
+      printf '  %s✓%s SHA-256 verified: %s\n' "$GREEN" "$RESET" "${INSTALLED[*]}"
+    fi
   else
     # Reached only when the install subshell failed (e.g. release asset 404).
     # The previous copy promised future releases; replaced with the
@@ -987,7 +1224,11 @@ print_summary() {
     printf '  %s!%s no components installed\n' "$YELLOW" "$RESET"
   fi
   [[ ${#SKIPPED[@]} -gt 0 ]] && printf '  %s✓%s skipped:     %s\n' "$GREEN" "$RESET" "${SKIPPED[*]}"
-  [[ $BYTES -gt 0 ]] && printf '  %s✓%s downloaded:  %s\n' "$GREEN" "$RESET" "$(awk -v b="$BYTES" 'BEGIN{printf "%.1f MB", b/1048576}')"
+  if [[ "${FROM_SOURCE:-0}" == "1" ]]; then
+    [[ $BYTES -gt 0 ]] && printf '  %s✓%s built:        %s\n' "$GREEN" "$RESET" "$(awk -v b="$BYTES" 'BEGIN{printf "%.1f MB", b/1048576}')"
+  else
+    [[ $BYTES -gt 0 ]] && printf '  %s✓%s downloaded:  %s\n' "$GREEN" "$RESET" "$(awk -v b="$BYTES" 'BEGIN{printf "%.1f MB", b/1048576}')"
+  fi
   printf '  %s✓%s prefix:      %s\n' "$GREEN" "$RESET" "$OPENOODA_HOME"
   printf '  %s✓%s time:        %ss\n' "$GREEN" "$RESET" "$ELAPSED"
   [[ "$DRY_RUN" != "1" ]] && printf '  %s✓%s shell rc:    bash updated (.bak.openooda backup)\n' "$GREEN" "$RESET"
