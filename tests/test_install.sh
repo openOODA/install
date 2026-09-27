@@ -153,4 +153,10 @@ for f in ooda/main.oo cli/main.oo tui/main.oo opm/cli/main.oo lsp/cli/main.oo mc
 if ! env -i PATH=/usr/bin:/bin HOME="$HOME" OPENOODA_HOME="$TMPD/home2" bash install.sh --from-source="$TMPD/fakesrc" --dry-run >/dev/null 2>&1; then
   echo "FAIL --from-source dry-run demanded a bootstrap oodac"; exit 1
 fi
-echo "PASS install 9.9 fail-closed sha256+blackbox+toolchain+bash-rc+no-shadow+no-state-loss+opm-nonzero+on-disk-accept+from-source+from-source-dryrun-no-bootstrap"
+# The ooda-tui double-install is retired: one binary named tui. The
+# preamble must list it plainly, no path may copy it to a second name,
+# and the stale alias left by older installers must be removed.
+if grep -q '(also ooda-tui)' install.sh; then echo "FAIL preamble still apologizes for ooda-tui"; exit 1; fi
+if grep -q 'cp -f "$dest" "$BIN_DIR/ooda-tui"' install.sh; then echo "FAIL double-install copy remains"; exit 1; fi
+grep -q 'rm -f "$BIN_DIR/ooda-tui"' install.sh || { echo "FAIL no stale-alias removal"; exit 1; }
+echo "PASS install 9.9 fail-closed sha256+blackbox+toolchain+bash-rc+no-shadow+no-state-loss+opm-nonzero+on-disk-accept+from-source+from-source-dryrun-no-bootstrap+no-double-tui"

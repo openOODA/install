@@ -254,7 +254,7 @@ print_preamble() {
   fi
   printf '    ooda     ~/.openooda/bin/ooda\n'
   printf '    cli      ~/.openooda/bin/cli\n'
-  printf '    tui      ~/.openooda/bin/tui  (also ooda-tui)\n'
+  printf '    tui      ~/.openooda/bin/tui\n'
   printf '    oodac    ~/.openooda/bin/oodac\n'
   printf '    oodar    ~/.openooda/bin/liboodar.a\n'
   printf '    std      ~/.openooda/std\n'
@@ -572,12 +572,11 @@ install_component() {
     info "$key: SHA-256 verified ($vhash...)"
     ok "installed $(basename "$dest") (${mb} MB)"; INSTALLED+=("$key")
     BYTES=$((BYTES + size))
-    # ooda/cli spawn and `cli update --check` look for ooda-tui.
-    if [[ "$key" == "tui" ]]; then
-      if cp -f "$dest" "$BIN_DIR/ooda-tui" 2>/dev/null; then
-        chmod +x "$BIN_DIR/ooda-tui" 2>/dev/null || true
-        ok "tui also installed as ~/.openooda/bin/ooda-tui"
-      fi
+    # The ooda-tui double-install is retired: one binary named tui.
+    # Remove the ghost alias left by older installers, if present.
+    if [[ "$key" == "tui" && -e "$BIN_DIR/ooda-tui" ]]; then
+      rm -f "$BIN_DIR/ooda-tui" 2>/dev/null || true
+      ok "removed stale ~/.openooda/bin/ooda-tui alias"
     fi
   elif [[ "$dl" != "200" ]]; then
     rm -f "$dest.tmp" "$dest.tmp.sha256"
@@ -683,12 +682,11 @@ build_component_from_source() {
     local mb; mb=$(awk -v s="$size" 'BEGIN{printf "%.1f", s/1048576}')
     ok "built $(basename "$dest") from source (${mb} MB)"; INSTALLED+=("$key")
     BYTES=$((BYTES + size))
-    # ooda/cli spawn and `cli update --check` look for ooda-tui.
-    if [[ "$key" == "tui" ]]; then
-      if cp -f "$dest" "$BIN_DIR/ooda-tui" 2>/dev/null; then
-        chmod +x "$BIN_DIR/ooda-tui" 2>/dev/null || true
-        ok "tui also installed as ~/.openooda/bin/ooda-tui"
-      fi
+    # The ooda-tui double-install is retired: one binary named tui.
+    # Remove the ghost alias left by older installers, if present.
+    if [[ "$key" == "tui" && -e "$BIN_DIR/ooda-tui" ]]; then
+      rm -f "$BIN_DIR/ooda-tui" 2>/dev/null || true
+      ok "removed stale ~/.openooda/bin/ooda-tui alias"
     fi
   else
     rm -f "$dest.tmp"
@@ -1026,7 +1024,7 @@ post_flight() {
     # still keys off the captured banner, so a silent stub or a binary
     # with no banner still fails verification.
     helpline=$("$BIN_DIR/$bin" --help 2>&1 | head -n 1 || true)
-    if [[ -x "$BIN_DIR/$bin" ]] && printf '%s' "$helpline" | grep -qiE 'openooda|usage|ooda-tui|^tui|flags' 2>/dev/null; then
+    if [[ -x "$BIN_DIR/$bin" ]] && printf '%s' "$helpline" | grep -qiE 'openooda|usage|tui|flags' 2>/dev/null; then
       ok "verified: $bin --help"
     elif [[ -x "$BIN_DIR/$bin" && -n "$helpline" ]]; then
       warn "verify: $bin ran but --help banner unrecognized: ${helpline:0:60}"
