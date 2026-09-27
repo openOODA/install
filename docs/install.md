@@ -21,13 +21,14 @@ After it finishes, either restart your shell or run `source ~/.bashrc` (or
 ```
 ~/.openooda/
 ├── bin/
-│   ├── ooda         # workflow driver
+│   ├── ooda         # workflow driver (routes language verbs to cli)
+│   ├── cli          # language commands: build, run, test, fmt, fix
+│   ├── tui          # work screen harness
 │   ├── oodac        # compiler
 │   ├── liboodar.a   # runtime substrate (static lib)
 │   ├── opm          # package manager
-│   ├── lsp          # language server
-│   ├── mcp          # MCP server
-│   └── bb           # execution flight recorder & crash autopsy
+│   ├── lsp          # writing helper (language server)
+│   └── mcp          # AI helper (MCP server)
 └── std/             # standard library (git clone)
 ```
 
@@ -38,17 +39,18 @@ sidecar, empty hash, hasher absent, and hash mismatch all fail
 closed. The temp download is deleted and that component is not
 installed.
 
-## The 7 binary components + standard library
+## The 8 binary components + standard library
 
 | Component | Repo           | Binary       | Purpose                                  |
 |-----------|----------------|--------------|------------------------------------------|
-| `ooda`    | openOODA/ooda  | `ooda`       | Workflow driver                          |
+| `ooda`    | openOODA/ooda  | `ooda`       | Workflow driver (routes to cli)          |
+| `cli`     | openOODA/cli   | `cli`        | Language commands                        |
+| `tui`     | openOODA/tui   | `tui`        | Work screen harness                      |
 | `oodac`   | openOODA/oodac | `oodac`      | Compiler                                 |
 | `oodar`   | openOODA/oodar | `liboodar.a` | Runtime substrate (C static library)     |
 | `opm`     | openOODA/opm   | `opm`        | Package manager                          |
 | `lsp`     | openOODA/lsp   | `lsp`        | Language server                          |
 | `mcp`     | openOODA/mcp   | `mcp`        | MCP server                               |
-| `bb`      | openOODA/bb    | `bb`         | Flight recorder & crash autopsy engine   |
 | `std`     | openOODA/std   | (clone)      | Standard library                         |
 
 ## Environment variables

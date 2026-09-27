@@ -144,4 +144,13 @@ if OPENOODA_HOME="$TMPD/home" bash install.sh --from-source=/nonexistent-openood
 fi
 # Runtime: --help must advertise the flag.
 bash install.sh --help 2>&1 | grep -q -- "--from-source" || { echo "FAIL --help hides --from-source"; exit 1; }
-echo "PASS install 9.9 fail-closed sha256+blackbox+toolchain+bash-rc+no-shadow+no-state-loss+opm-nonzero+on-disk-accept+from-source"
+# Runtime: valid-dir dry-run must NOT demand a bootstrap oodac (regression:
+# dry-run failed closed requiring a compiler it never invokes). Fixture
+# checkout is empty marker files (resolve only checks existence); stripped
+# PATH proves no oodac is consulted.
+mkdir -p "$TMPD/fakesrc/std" "$TMPD/fakesrc/opm/cli" "$TMPD/fakesrc/lsp/cli" "$TMPD/fakesrc/mcp/cli" "$TMPD/fakesrc/oodar/scripts" "$TMPD/fakesrc/openOODA" "$TMPD/fakesrc/ooda" "$TMPD/fakesrc/cli" "$TMPD/fakesrc/tui"
+for f in ooda/main.oo cli/main.oo tui/main.oo opm/cli/main.oo lsp/cli/main.oo mcp/cli/main.oo oodar/scripts/Makefile openOODA/northstar.oot openOODA/spec.oot std/anchor.oo; do : > "$TMPD/fakesrc/$f"; done
+if ! env -i PATH=/usr/bin:/bin HOME="$HOME" OPENOODA_HOME="$TMPD/home2" bash install.sh --from-source="$TMPD/fakesrc" --dry-run >/dev/null 2>&1; then
+  echo "FAIL --from-source dry-run demanded a bootstrap oodac"; exit 1
+fi
+echo "PASS install 9.9 fail-closed sha256+blackbox+toolchain+bash-rc+no-shadow+no-state-loss+opm-nonzero+on-disk-accept+from-source+from-source-dryrun-no-bootstrap"

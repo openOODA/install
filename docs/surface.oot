@@ -9,7 +9,7 @@ This repo is `openOODA/install`. It is not the
 `ooda install` subcommand.
 
 The public URL `https://openooda.org/install.sh` redirects
-to this repo's `install.sh` on GitHub `main`.
+to this repo's `install.sh` on GitHub `master`.
 
 Installs to `~/.openooda/`. Adds `~/.openooda/bin` to PATH.
 
@@ -30,5 +30,5 @@ Each GitHub release asset `{bin}-{os}-{arch}` must ship a
 sibling `{bin}-{os}-{arch}.sha256`. `install.sh` refuses
 a missing sidecar the same way it refuses a hash mismatch.
 
-Binaries: ooda, oodac, liboodar.a, opm, lsp, mcp,
-bb. std is a git clone under `~/.openooda/std`.
+Binaries: ooda, cli, tui, oodac, liboodar.a, opm, lsp, mcp.
+std is a git clone under `~/.openooda/std`.

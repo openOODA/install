@@ -639,6 +639,14 @@ resolve_source_dir() {
     err "from-source: $d is not an openOODA checkout (missing: ${missing[*]})"
     return 1
   fi
+  # Dry-run simulates without building, so no bootstrap compiler is needed;
+  # the checkout validation above still fails closed on a bogus dir.
+  if [[ "$DRY_RUN" == "1" ]]; then
+    SRC_DIR="$d"
+    BOOT_OODAC=""
+    info "from-source: checkout $SRC_DIR (dry-run: no bootstrap needed)"
+    return 0
+  fi
   local boot=""
   if [[ -x "$BIN_DIR/oodac" ]]; then
     boot="$BIN_DIR/oodac"
