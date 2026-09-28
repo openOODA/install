@@ -1237,7 +1237,13 @@ print_summary() {
   fi
   printf '  %s✓%s prefix:      %s\n' "$GREEN" "$RESET" "$OPENOODA_HOME"
   printf '  %s✓%s time:        %ss\n' "$GREEN" "$RESET" "$ELAPSED"
-  [[ "$DRY_RUN" != "1" ]] && printf '  %s✓%s shell rc:    bash updated (.bak.openooda backup)\n' "$GREEN" "$RESET"
+  if [[ "$DRY_RUN" != "1" ]]; then
+    if [[ "${NO_MODIFY_SHELL:-0}" -eq 1 ]]; then
+      printf '  %s✓%s shell rc:    skipped (--no-modify-shell)\n' "$GREEN" "$RESET"
+    else
+      printf '  %s✓%s shell rc:    bash updated (.bak.openooda backup)\n' "$GREEN" "$RESET"
+    fi
+  fi
   printf '\n  %sWelcome to openOODA. https://openooda.org%s\n' "$BOLD$MAGENTA" "$RESET"
   printf '  Later: ooda update   (hash-check; fetches only stale binaries)\n\n'
 }

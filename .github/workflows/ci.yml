@@ -41,6 +41,15 @@ jobs:
             && { echo "command list still suggests std install (it is auto-cloned)"; exit 1; } \
             || true
 
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: e2e install into temp HOME
+        env:
+          NO_COLOR: '1'
+        run: bash tests/test_e2e_install.sh
+
   bb-gate:
     needs: [smoke]
     if: always()
@@ -106,5 +115,5 @@ jobs:
           echo "[bb-gate OK] $count probes deterministic across double-run (oodac-native gate)"
 
   auto-release:
-    needs: [bb-gate]
+    needs: [bb-gate, e2e]
     uses: openOODA/openOODA/.github/workflows/auto-release.yml@v2.10.44
