@@ -81,11 +81,3 @@ shim-creation step is idempotent.
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE) for full text.
-
----
-
-<div align="center">
-
-[![Necrometer](necrometer.svg)](https://necrometer.dev/?u=openOODA)
-
-</div>
