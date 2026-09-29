@@ -19,10 +19,12 @@ snapshot() {
   sha256sum liboodar.a) > "$THOME/$1"
 }
 run_install install1.log
-test "$?" -eq 0 || { echo "FAIL first install exit=$?"; tail -5 "$THOME/install1.log"; exit 1; }
+rc1=$?
+test "$rc1" -eq 0 || { echo "FAIL first install exit=$rc1"; tail -5 "$THOME/install1.log"; exit 1; }
 snapshot snap1.txt || exit 1
 run_install install2.log
-test "$?" -eq 0 || { echo "FAIL second install exit=$?"; tail -5 "$THOME/install2.log"; exit 1; }
+rc2=$?
+test "$rc2" -eq 0 || { echo "FAIL second install exit=$rc2"; tail -5 "$THOME/install2.log"; exit 1; }
 snapshot snap2.txt || exit 1
 diff -u "$THOME/snap1.txt" "$THOME/snap2.txt" || { echo "FAIL reinstall changed installed binaries"; exit 1; }
 echo "PASS install idempotent (two runs, identical binaries)"
