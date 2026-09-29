@@ -12,14 +12,16 @@ set -euo pipefail
 
 # Child shells spawned by `ooda update` sometimes get HOME=~ (literal).
 HOME="${HOME:-/home/$(id -un)}"
-if [[ "$HOME" == "~" || "$HOME" == "~/"* ]]; then
+case "$HOME" in \~|\~/*)
   HOME="$(getent passwd "$(id -un)" | cut -d: -f6)"
   HOME="${HOME:-/home/$(id -un)}"
-fi
+  ;;
+esac
 OPENOODA_HOME="${OPENOODA_HOME:-$HOME/.openooda}"
-if [[ "$OPENOODA_HOME" == "~" || "$OPENOODA_HOME" == "~/"* ]]; then
+case "$OPENOODA_HOME" in \~|\~/*)
   OPENOODA_HOME="$HOME/${OPENOODA_HOME#\~/}"
-fi
+  ;;
+esac
 BIN_DIR="$OPENOODA_HOME/bin"
 STD_DIR="$OPENOODA_HOME/std"
 RELEASES="https://github.com/openOODA"
@@ -298,11 +300,9 @@ ensure_sysdep() {
 
 pre_flight() {
   local need_fail=0
-  for bin in curl; do
-    if ! command -v "$bin" >/dev/null 2>&1; then
-      err "pre-flight: $bin not found in PATH (required)"; need_fail=1
-    fi
-  done
+  if ! command -v curl >/dev/null 2>&1; then
+    err "pre-flight: curl not found in PATH (required)"; need_fail=1
+  fi
   for bin in git python3 clang; do
     if ! command -v "$bin" >/dev/null 2>&1; then
       warn "pre-flight: $bin not found (clang >= 15 recommended for sovereign LLVM compiler backend)"
@@ -918,6 +918,7 @@ clean_stale_shadow_binaries() {
 assert_path_resolution() {
   [[ "${DRY_RUN:-0}" == "1" ]] && { ok "[dry-run] would assert command -v == \$BIN_DIR"; return 0; }
   [[ -r "${RESULTS_FILE:-}" ]] || { warn "assert_path_resolution: RESULTS_FILE missing, skipping"; return 0; }
+  # shellcheck source=/dev/null
   . "$RESULTS_FILE" 2>/dev/null || true
   local fail=0 checked=0
   for key in "${INSTALLED[@]:-}"; do
@@ -1356,6 +1357,7 @@ if [[ ! -r "$RESULTS_FILE" ]]; then
   err "this is an internal error; please report it with the install log attached"
   exit 1
 fi
+# shellcheck source=/dev/null
 if ! . "$RESULTS_FILE" 2>/dev/null; then
   err "install state file has bad syntax: $RESULTS_FILE"
   err "this is an internal error; please report it with the install log attached"
@@ -1389,5 +1391,6 @@ if [[ $INSTALL_RC -ne 0 || $ASSERT_RC -ne 0 ]]; then
   exit 1
 fi
 
-# Marker kept for tests/test_install.sh line 21 which greps for this literal.
+# Step-count contract: tests/test_install.sh greps for this literal.
+# shellcheck disable=SC2034
 TOTAL=17

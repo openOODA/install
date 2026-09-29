@@ -19,7 +19,7 @@ cleanup() {
   [[ -n "$STAGE" ]] && rm -rf "$STAGE"
 }
 trap cleanup EXIT
-cd "$(dirname "$0")"
+cd "$(dirname "$0")" || exit 1
 RT=""
 command -v podman >/dev/null 2>&1 && RT=podman
 [[ -z "$RT" ]] && command -v docker >/dev/null 2>&1 && RT=docker

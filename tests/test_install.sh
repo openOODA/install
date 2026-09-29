@@ -111,7 +111,7 @@ grep -q "command -v or on-disk" install.sh \
 # Runtime check: load install.sh, exercise assert_path_resolution with
 # PATH stripped to /usr/bin:/bin only, with a real binary at $BIN_DIR.
 # Must succeed (case c) where it previously failed.
-TMPD=$(mktemp -d); trap "rm -rf $TMPD" EXIT
+TMPD=$(mktemp -d); trap 'rm -rf "$TMPD"' EXIT
 RESULTS_FILE="$TMPD/r.sh"
 cat > "$RESULTS_FILE" <<EOF
 INSTALLED=("ooda")
