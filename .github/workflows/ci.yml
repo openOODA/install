@@ -49,6 +49,10 @@ jobs:
         env:
           NO_COLOR: '1'
         run: bash tests/test_e2e_install.sh
+      - name: idempotency (install twice, identical binaries)
+        env:
+          NO_COLOR: '1'
+        run: bash tests/test_idempotent.sh
 
   bb-gate:
     needs: [lint, smoke, e2e]
