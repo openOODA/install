@@ -80,7 +80,7 @@ shim-creation step is idempotent.
 
 ## License
 
-Licensed under MIT. See [LICENSE](LICENSE).
+Apache-2.0. See [LICENSE](LICENSE) for full text.
 
 ---
 
