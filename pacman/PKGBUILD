@@ -1,7 +1,7 @@
 pkgname=openooda
 pkgver=0.1.30
 pkgrel=1
-pkgdesc="openOODA — Primary Systems Language for the AI Era (including blackbox)"
+pkgdesc="openOODA — Primary Systems Language for the AI Era"
 arch=('x86_64' 'aarch64')
 url="https://openooda.org"
 license=('MIT')

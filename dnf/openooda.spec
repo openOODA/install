@@ -13,7 +13,7 @@ Requires:       glibc
 openOODA — Primary Systems Language for the AI Era.
 
 The openOODA toolchain: driver, compiler, runtime, standard library,
-package manager, language server, MCP server, and flight recorder (blackbox).
+package manager, language server, MCP server, and terminal UI.
 
 %install
 mkdir -p %{buildroot}/usr/bin

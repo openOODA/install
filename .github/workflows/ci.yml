@@ -54,7 +54,7 @@ jobs:
           NO_COLOR: '1'
         run: bash tests/test_idempotent.sh
 
-  bb-gate:
+  determinism-gate:
     needs: [lint, smoke, e2e]
     if: always()
     runs-on: ubuntu-latest
@@ -125,5 +125,5 @@ jobs:
           done
 
   auto-release:
-    needs: [bb-gate, e2e]
+    needs: [determinism-gate, e2e]
     uses: openOODA/openOODA/.github/workflows/auto-release.yml@v2.10.44
