@@ -14,8 +14,13 @@
 //   3. Compare — fail with both lists on any mismatch.
 
 fn install_root(env: &EnvCap) -> String {
-  let r: Result[String, String] = env_get(env, "INSTALL_ROOT");
-  return match r { Ok(s) => s, Err(_) => "/home/jeryd/Projects/openOODA/install" };
+  let r1: Result[String, String] = env_get(env, "OODA_INSTALL_ROOT");
+  let s1: String = match r1 { Ok(s) => s, Err(_) => "" };
+  if s1 != "" { return s1; }
+  let r2: Result[String, String] = env_get(env, "INSTALL_ROOT");
+  let s2: String = match r2 { Ok(s) => s, Err(_) => "" };
+  if s2 != "" { return s2; }
+  return ".";
 }
 
 fn extract_from_sh(p: &ProcessCap, root: String) -> String {
@@ -27,7 +32,7 @@ fn extract_from_sh(p: &ProcessCap, root: String) -> String {
 
 fn extract_from_oot(p: &ProcessCap, root: String) -> String {
   // Extract binaries from docs/surface.oot multi-line block
-  let cmd: String = "sed -n '/^Binaries:/,/\\. std/p' " + root + "/docs/surface.oot | sed 's/^Binaries: //;s/\\. std.*//' | tr ',' '\\n' | sed 's/^ *//;s/ *$//' | grep -v '^$' | sort -u | tr '\\n' ',' | sed 's/,$//'";
+  let cmd: String = "grep '^Binaries: ' " + root + "/docs/surface.oot | sed 's/^Binaries: //;s/\\.$//' | tr ',' '\\n' | sed 's/^ *//;s/ *$//' | grep -v '^$' | sort -u | tr '\\n' ',' | sed 's/,$//'";
   let r: Result[String, String] = sys_exec(p, "bash", "-c", cmd);
   return match r { Ok(s) => s, Err(_) => "" };
 }
