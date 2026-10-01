@@ -40,7 +40,7 @@ XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 # fallback below is this script's own version at authoring time, kept in
 # sync by the bump bot (see bump-version.yml), so offline curl|bash shows
 # the right version. Display-only: downloads always use releases/latest.
-VERSION="$(cat "$(dirname "${BASH_SOURCE[0]:-$0}")/VERSION" 2>/dev/null || curl -sSL --max-time 3 "https://raw.githubusercontent.com/openOODA/install/master/VERSION" 2>/dev/null || echo "0.1.55")"
+VERSION="$(cat "$(dirname "${BASH_SOURCE[0]:-$0}")/VERSION" 2>/dev/null || curl -sSL --max-time 3 "https://raw.githubusercontent.com/openOODA/install/master/VERSION" 2>/dev/null || echo "0.1.56")"
 VERSION="$(printf '%s' "$VERSION" | tr -d '\r\n ' | head -c 20)"
 [[ -z "$VERSION" ]] && VERSION="?"
 
