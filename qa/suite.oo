@@ -1,10 +1,8 @@
 // # install QA Suite — Unified Entry
 //
-// Logline: Run all install/ probes twice in sequence, report pass/fail.
-//          Fails closed on the first probe that fails typecheck or execution.
+// Logline: Run all install/ probes twice in sequence, report pass/fail. Fails closed on the first probe that fails typecheck or execution.
 //
-// Setup: OODA_COMPILER must point at oodac.
-//        INSTALL_ROOT env var defaults to /home/jeryd/Projects/openOODA/install.
+// Setup: OODA_COMPILER must point at oodac. INSTALL_ROOT env var defaults to /home/jeryd/Projects/openOODA/install.
 //
 // Beats:
 //   1. Resolve oodac and ooda from environment.
@@ -23,6 +21,9 @@ fn find_oodac(fs: &FsReadCap, env: &EnvCap) -> String {
   if path_exists(fs, default_c) {
     return default_c;
   }
+  if path_exists(fs, "/home/ubermetroid/.openooda/bin/oodac") {
+    return "/home/ubermetroid/.openooda/bin/oodac";
+  }
   return "oodac";
 }
 
@@ -37,6 +38,9 @@ fn find_ooda(fs: &FsReadCap, env: &EnvCap) -> String {
   let default_ooda: String = h + "/.openooda/bin/ooda";
   if path_exists(fs, default_ooda) {
     return default_ooda;
+  }
+  if path_exists(fs, "/home/ubermetroid/.openooda/bin/ooda") {
+    return "/home/ubermetroid/.openooda/bin/ooda";
   }
   return "ooda";
 }
@@ -78,6 +82,10 @@ fn run_probe_twice(p: &ProcessCap, ooda: String, path: String) -> Bool {
 
   if out1 != out2 {
     println("ERR\tdouble-run nondeterminism: run1 != run2 on " + path);
+    println("--- out1 ---");
+    println(out1);
+    println("--- out2 ---");
+    println(out2);
     return false;
   }
   println("  double-run verified (Run_1 == Run_2 = 0)");

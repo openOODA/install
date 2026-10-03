@@ -1,11 +1,8 @@
 // # install/docs — Package Manual
 //
-// Logline: Per-package docs for how the toolchain lands on a
-//          machine. apt, dnf, pacman, and install.sh.
+// Logline: Per-package docs for how the toolchain lands on a machine. apt, dnf, pacman, and install.sh.
 //
-// Setup: RFC-0005. Website Source: openOODA/install/docs/.
-//        INSTALL.md is host residual. New docs are .oot.
-//        This repo is not `ooda install`.
+// Setup: RFC-0005. Website Source: openOODA/install/docs/. INSTALL.md is host residual. New docs are .oot. This repo is not `ooda install`.
 //
 // Beats:
 //   1. surface.oot — distro surface and public install URL.

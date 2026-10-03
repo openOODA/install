@@ -1,11 +1,8 @@
 // # qa-01-line_caps.oo — 256-line cap & lowercase canonical probe
 //
-// Logline: Fail closed if any .oo/.oot file in install/ exceeds 256 lines or violates lowercase canonical naming.
-//          Re-verifies the RULES §1.8 and §1.19 invariants for this repo.
+// Logline: Fail closed if any .oo/.oot file in install/ exceeds 256 lines or violates lowercase canonical naming. Re-verifies the RULES §1.8 and §1.19 invariants for this repo.
 //
-// Setup: Uses ProcessCap to shell out to find + wc.
-//        INSTALL_ROOT env var must point at the install/ tree.
-//        Read-only; no network, no writes.
+// Setup: Uses ProcessCap to shell out to find + wc. INSTALL_ROOT env var must point at the install/ tree. Read-only; no network, no writes.
 //
 // Beats:
 //   1. Discover .oo/.oot files under install/ (excluding .git/).

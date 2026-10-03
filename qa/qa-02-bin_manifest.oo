@@ -1,12 +1,8 @@
 // # qa-02-bin_manifest.oo — binary manifest probe
 //
-// Logline: Fail closed if install.sh BINARIES map and docs/surface.oot disagree
-//          on the 7 release binaries. Re-verifies the install/ ↔ docs surface
-//          consistency invariant.
+// Logline: Fail closed if install.sh BINARIES map and docs/surface.oot disagree on the 7 release binaries. Re-verifies the install/ ↔ docs surface consistency invariant.
 //
-// Setup: Uses ProcessCap to extract + compare the two sources.
-//        INSTALL_ROOT env var must point at the install/ tree.
-//        Read-only; no network, no writes.
+// Setup: Uses ProcessCap to extract + compare the two sources. INSTALL_ROOT env var must point at the install/ tree. Read-only; no network, no writes.
 //
 // Beats:
 //   1. Extract binary list from install.sh BINARIES map (sorted, comma-joined).

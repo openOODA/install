@@ -1,7 +1,6 @@
 // # Install Subsystem — Anchor for Agents
 //
-// Logline: How the toolchain lands on a machine. Bash bootstrap for curl | bash portability.
-//          Toolchain-only — LLM-harness scanning/wiring removed 2026-09-11 (020693a).
+// Logline: How the toolchain lands on a machine. Bash bootstrap for curl | bash portability. Toolchain-only — LLM-harness scanning/wiring removed 2026-09-11 (020693a).
 //
 // Setup: Pure structural file. VERSION must match the current git tag (rules.oot §1.24 exception).
 //
