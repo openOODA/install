@@ -1099,7 +1099,7 @@ do_install() {
   elif [[ ! -f "$STD_DIR/anchor.oo" && ! -f "$STD_DIR/ANCHOR.oo" ]]; then
     step_status "installing std"
     local wd; wd=$(mktemp -d 2>/dev/null || echo "/tmp/openooda-std-$$")
-    ( fetch_repo "https://github.com/openOODA/std" "$STD_DIR" "anchor.oo" "${PINS[std]:-}" "$wd" ) &
+    ( fetch_repo "https://github.com/openOODA-core/std" "$STD_DIR" "anchor.oo" "${PINS[std]:-}" "$wd" ) &
     spinner $!
     wait $! 2>/dev/null || true
     local status; status=$(cat "$wd/status" 2>/dev/null || echo "fail")

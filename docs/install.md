@@ -43,15 +43,15 @@ installed.
 
 | Component | Repo           | Binary       | Purpose                                  |
 |-----------|----------------|--------------|------------------------------------------|
-| `ooda`    | openOODA/ooda  | `ooda`       | Workflow driver (routes to cli)          |
-| `cli`     | openOODA/cli   | `cli`        | Language commands                        |
-| `tui`     | openOODA/tui   | `tui`        | Work screen harness                      |
-| `oodac`   | openOODA/oodac | `oodac`      | Compiler                                 |
-| `oodar`   | openOODA/oodar | `liboodar.a` | Runtime substrate (C static library)     |
-| `opm`     | openOODA/opm   | `opm`        | Package manager                          |
-| `lsp`     | openOODA/lsp   | `lsp`        | Language server                          |
-| `mcp`     | openOODA/mcp   | `mcp`        | MCP server                               |
-| `std`     | openOODA/std   | (clone)      | Standard library                         |
+| `ooda`    | openOODA-core/ooda  | `ooda`       | Workflow driver (routes to cli)          |
+| `cli`     | openOODA-core/cli   | `cli`        | Language commands                        |
+| `tui`     | openOODA-core/tui   | `tui`        | Work screen harness                      |
+| `oodac`   | openOODA-core/oodac | `oodac`      | Compiler                                 |
+| `oodar`   | openOODA-core/oodar | `liboodar.a` | Runtime substrate (C static library)     |
+| `opm`     | openOODA-core/opm   | `opm`        | Package manager                          |
+| `lsp`     | openOODA-core/lsp   | `lsp`        | Language server                          |
+| `mcp`     | openOODA-core/mcp   | `mcp`        | MCP server                               |
+| `std`     | openOODA-core/std   | (clone)      | Standard library                         |
 
 ## Environment variables
 
@@ -194,7 +194,7 @@ The standard library is cloned via `git`. If `git` is missing, `install.sh`
 skips the `std` clone and prints the manual command. Install `git` and run:
 
 ```sh
-git clone --depth 1 https://github.com/openOODA/std ~/.openooda/std
+git clone --depth 1 https://github.com/openOODA-core/std ~/.openooda/std
 ```
 
 ### `permission denied` when running installed binaries

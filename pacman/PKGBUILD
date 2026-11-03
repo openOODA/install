@@ -24,7 +24,7 @@ package() {
                 install -m 0755 "$f" "${pkgdir}/usr/bin/$b" ;;
         esac
     done
-    git clone --depth 1 https://github.com/openOODA/std "${pkgdir}/usr/lib/openooda/std"
+    git clone --depth 1 https://github.com/openOODA-core/std "${pkgdir}/usr/lib/openooda/std"
     rm -rf "${pkgdir}/usr/lib/openooda/std/.git"
     install -m 0644 "${srcdir}/profile.d.sh" "${pkgdir}/etc/profile.d/openooda.sh"
 }

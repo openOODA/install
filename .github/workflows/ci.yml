@@ -37,7 +37,7 @@ jobs:
             "prefix:"; do
             echo "$output" | grep -qF -- "$needle" || { echo "missing: $needle"; exit 1; }
           done
-          echo "$output" | grep -qF 'ooda install openOODA/std' \
+          echo "$output" | grep -qF 'ooda install openOODA-core/std' \
             && { echo "command list still suggests std install (it is auto-cloned)"; exit 1; } \
             || true
 
@@ -66,17 +66,17 @@ jobs:
       - name: checkout std
         uses: actions/checkout@v4
         with:
-          repository: openOODA/std
+          repository: openOODA-core/std
           path: std
       - name: checkout oodac
         uses: actions/checkout@v4
         with:
-          repository: openOODA/oodac
+          repository: openOODA-core/oodac
           path: oodac
       - name: checkout oodar
         uses: actions/checkout@v4
         with:
-          repository: openOODA/oodar
+          repository: openOODA-core/oodar
           path: oodar
       - name: require compiler
         run: |

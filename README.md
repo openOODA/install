@@ -44,17 +44,17 @@ All design, RFCs, practices, and onboarding live in [openOODA/openOODA](https://
 | Repo | Purpose |
 |------|---------|
 | [openOODA/openOODA](https://github.com/openOODA/openOODA) | Governance, RFCs, laws |
-| [openOODA/oodar](https://github.com/openOODA/oodar) | Runtime substrate |
-| [openOODA/oodac](https://github.com/openOODA/oodac) | Compiler |
-| [openOODA/std](https://github.com/openOODA/std) | Standard library |
-| [openOODA/ooda](https://github.com/openOODA/ooda) | `ooda` workflow driver |
+| [openOODA-core/oodar](https://github.com/openOODA-core/oodar) | Runtime substrate |
+| [openOODA-core/oodac](https://github.com/openOODA-core/oodac) | Compiler |
+| [openOODA-core/std](https://github.com/openOODA-core/std) | Standard library |
+| [openOODA-core/ooda](https://github.com/openOODA-core/ooda) | `ooda` workflow driver |
 | [openOODA/install](https://github.com/openOODA/install) | How the toolchain lands (install.sh, apt, dnf, pacman) |
-| [openOODA/opm](https://github.com/openOODA/opm) | Package manager |
+| [openOODA-core/opm](https://github.com/openOODA-core/opm) | Package manager |
 | [openOODA/catalog](https://github.com/openOODA/catalog) | Public package catalog |
-| [openOODA/lsp](https://github.com/openOODA/lsp) | Language Server Protocol daemon |
-| [openOODA/cli](https://github.com/openOODA/cli) | Sovereign developer driver (build, test, fmt, qa) |
-| [openOODA/mcp](https://github.com/openOODA/mcp) | MCP server, flight recording, and telemetry engine |
-| [openOODA/tui](https://github.com/openOODA/tui) | Interactive terminal UI and coding harness |
+| [openOODA-core/lsp](https://github.com/openOODA-core/lsp) | Language Server Protocol daemon |
+| [openOODA-core/cli](https://github.com/openOODA-core/cli) | Sovereign developer driver (build, test, fmt, qa) |
+| [openOODA-core/mcp](https://github.com/openOODA-core/mcp) | MCP server, flight recording, and telemetry engine |
+| [openOODA-core/tui](https://github.com/openOODA-core/tui) | Interactive terminal UI and coding harness |
 | [openOODA/website](https://github.com/openOODA/website) | Website source |
 | [openOODA/.github](https://github.com/openOODA/.github) | Org profile, shared community files, workflows |
 
