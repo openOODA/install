@@ -8,76 +8,25 @@
       /_/                   \___/ \___/|____/_/   \_\
 </pre>
 
-### openOODA — Primary Systems Language for the AI Era
+### openOODA — Capability-Secure Computing Stack for the AI Era (Stealth Pre-Release)
 
-[openooda.org](https://openooda.org)
+[openooda.org](https://openooda.org) • [@openOODA](https://github.com/openOODA)
 
 </div>
 
 ---
 
-## This repo: install
+> **Status: Stealth Mode (Private Pre-Release Development)**
+>
+> `openOODA` is currently in private pre-release development across Layers 0 through 7 and is not publicly released yet. Keep an eye on [openooda.org](https://openooda.org) and [@openOODA](https://github.com/openOODA) for our upcoming public launch.
 
-How the toolchain lands on a machine: `install.sh`, apt, dnf,
-pacman (winget deferred). Not the `ooda install` subcommand.
+## This Repository (`install`)
 
-## Install
+Bootstrap distribution endpoint for `openOODA` (`install.sh` and system package hooks). While `openOODA` is in private stealth development, public binary artifacts across `L0`–`L7` remain gated until the official public launch.
 
 ```sh
 curl -fsSL https://openooda.org/install.sh | bash
 ```
-
-Right after launch the installer asks `Install openOODA? [Y/n]` (auto-yes for `curl | bash` with no tty, `CI`, `OPENOODA_YES=1`, or `OPENOODA_DRY_RUN=1`). Use `OPENOODA_YES=1` or `printf "y\n" | bash install.sh` for non-interactive.
-
-Toolchain-only: the installer no longer scans for or wires LLM harnesses (removed 2026-09-11). Binaries land in `~/.openooda/bin`, the std tree in `~/.openooda/std`, and `~/.bashrc` gets the `PATH`/`OODA_*` exports (bash only; zsh/fish users export the same lines manually).
-
-`OPENOODA_DRY_RUN=1` previews without touching disk. Re-run is safe — the install is idempotent and `~/.bashrc` is backed up as `~/.bashrc.bak.openooda` before any edit.
-
-**Professional install (P0/P1):** `install.sh --help` (`--dry-run`/`--yes`/`--no-modify-shell`/`--uninstall`), pre-flight checks `curl`/`git`/`python3` + `df` >100 MB + `curl -Is raw.githubusercontent`, `~/.openooda/install.log` (1M rotate) + `trap` cleanup, post-flight verifies `ooda`/`cli`/`tui`/`oodac`/`lsp`/`mcp`/`opm` respond to `--help`. Post-install toolchain verification can be executed via `cli qa` to run local package suites or `cli qa --all` across installed components.
-
-## Docs
-
-All design, RFCs, practices, and onboarding live in [openOODA/openOODA](https://github.com/openOODA/openOODA) or at [openooda.org](https://openooda.org).
-
-## The Polyrepo
-
-| Repo | Purpose |
-|------|---------|
-| [openOODA/openOODA](https://github.com/openOODA/openOODA) | Governance, RFCs, laws |
-| [openOODA-core/oodar](https://github.com/openOODA-core/oodar) | Runtime substrate |
-| [openOODA-core/oodac](https://github.com/openOODA-core/oodac) | Compiler |
-| [openOODA-core/std](https://github.com/openOODA-core/std) | Standard library |
-| [openOODA-core/ooda](https://github.com/openOODA-core/ooda) | `ooda` workflow driver |
-| [openOODA/install](https://github.com/openOODA/install) | How the toolchain lands (install.sh, apt, dnf, pacman) |
-| [openOODA-core/opm](https://github.com/openOODA-core/opm) | Package manager |
-| [openOODA/catalog](https://github.com/openOODA/catalog) | Public package catalog |
-| [openOODA-core/lsp](https://github.com/openOODA-core/lsp) | Language Server Protocol daemon |
-| [openOODA-core/cli](https://github.com/openOODA-core/cli) | Sovereign developer driver (build, test, fmt, qa) |
-| [openOODA-core/mcp](https://github.com/openOODA-core/mcp) | MCP server, flight recording, and telemetry engine |
-| [openOODA-core/tui](https://github.com/openOODA-core/tui) | Interactive terminal UI and coding harness |
-| [openOODA/website](https://github.com/openOODA/website) | Website source |
-| [openOODA/.github](https://github.com/openOODA/.github) | Org profile, shared community files, workflows |
-
-## Troubleshooting
-
-**`openooda.org` is unreachable from your network (corporate proxy,
-firewall, airgap)**
-
-Fetch the script from a different mirror and pass it to `--installer`:
-
-```bash
-# from a machine that can reach the internet:
-curl -O https://raw.githubusercontent.com/openOODA/install/master/install.sh
-scp install.sh your-server:/tmp/
-# on the airgapped box:
-ooda update --installer /tmp/install.sh
-```
-
-**`bash: $BIN_DIR/ooda: cannot execute: required file not found` after install**
-
-The install's `/usr/local/bin` shim may have been removed by the OS
-package manager. Re-run the installer without uninstalling; the
-shim-creation step is idempotent.
 
 ## License
 
