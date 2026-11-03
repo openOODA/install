@@ -1,0 +1,9 @@
+name=install
+version=0.2.3
+caps=FsRead,FsWrite,Process,Env
+deps=std
+license=Apache-2.0
+payload=install/anchor.oo
+commit=
+sha256=
+sig=
