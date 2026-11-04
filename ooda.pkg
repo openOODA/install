@@ -1,5 +1,5 @@
 name=install
-version=0.2.3
+version=0.2.6
 caps=FsRead,FsWrite,Process,Env
 deps=std
 license=Apache-2.0
