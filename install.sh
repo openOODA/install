@@ -102,7 +102,7 @@ _log() { printf '[%s] %s\n' "$(date -Iseconds 2>/dev/null || date)" "$*" >&3 2>/
 declare -A REPOS=([ooda]=ooda [oodac]=oodac [oodar]=oodar [opm]=opm [lsp]=lsp [mcp]=mcp [cli]=cli [tui]=tui)
 # Dest names match repo names. ASSETS is the GitHub release stem when it
 # still differs (lsp/mcp have not republished as lsp-linux-x86_64 yet).
-declare -A BINARIES=([ooda]=ooda [oodac]=oodac [oodar]=liboodar.a [opm]=opm [lsp]=lsp [mcp]=mcp [cli]=cli [tui]=tui)
+declare -A BINARIES=([ooda]=ooda [oodac]=oodac [oodar]=liboodar.a [opm]=opm [lsp]=ooda-lsp [mcp]=ooda-mcp [cli]=cli [tui]=tui)
 declare -A ASSETS=([lsp]=ooda-lsp [mcp]=ooda-mcp)
 # SOURCE_MAIN: repo-root-relative build entry per component, used only by
 # --from-source. oodac has no entry: `oodac build oodac/main.oo` refuses
@@ -263,8 +263,8 @@ print_preamble() {
   printf '    oodar    ~/.openooda/bin/liboodar.a\n'
   printf '    std      ~/.openooda/std\n'
   printf '    opm      ~/.openooda/bin/opm\n'
-  printf '    lsp      ~/.openooda/bin/lsp\n'
-  printf '    mcp      ~/.openooda/bin/mcp\n'
+  printf '    ooda-lsp ~/.openooda/bin/ooda-lsp\n'
+  printf '    ooda-mcp ~/.openooda/bin/ooda-mcp\n'
   printf '    spec     ~/.openooda/spec.oot\n'
   if [[ "${FROM_SOURCE:-0}" == "1" ]]; then
     printf '\n  %sEstimated time: 3-8 minutes (local builds). Press Ctrl-C to cancel.%s\n\n' "$DIM" "$RESET"
@@ -1011,7 +1011,7 @@ post_flight() {
   export OODA_FS_READDIR="${OODA_FS_READDIR:-$HOME/.openooda:/etc:/usr}"
   export OODA_FS_WRITEDIR="${OODA_FS_WRITEDIR:-$HOME}"
   local fail=0
-  local bins=(ooda cli tui oodac lsp mcp opm)
+  local bins=(ooda cli tui oodac ooda-lsp ooda-mcp opm)
   for bin in "${bins[@]}"; do
     # Verify by output, not exit code: some tools exit nonzero on --help
     # (opm) or under non-tty stdout (ooda), and a silent stub that exits 0
