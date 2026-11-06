@@ -1,0 +1,35 @@
+// # install Verification Suite
+//
+// Logline: Positive and negative-trust assertions over the QA seal and the repo's canonical invariants.
+//
+// Setup: Pure functions over integers. No IO beyond the read capability.
+//
+// Beats:
+//   1. Assert the seal round is deterministic and positive.
+//   2. Assert a tampered nonce changes the seal.
+//   3. Assert a forged digest fails closed.
+
+import "std/sec/pqc.oo";
+
+fn expect(cond: Bool, label: String) -> Bool {
+    if cond {
+        println("ok " + label);
+        return true;
+    }
+    println("FAIL " + label);
+    return false;
+}
+
+pub fn main(
+    fs_r: &FsReadCap,
+    args: List[String]
+) -> Result[Int, String] {
+    let mut p: Int = 0;
+    if expect(oo_pqc_sha3_round(41, 7) == oo_pqc_sha3_round(41, 7), "01 seal round is deterministic") { p = p + 1; }
+    if expect(oo_pqc_sha3_round(41, 7) > 0, "02 seal stays in the positive field") { p = p + 1; }
+    if expect(oo_pqc_sha3_round(41, 7) != oo_pqc_sha3_round(41, 8), "03 tampered nonce yields a different seal") { p = p + 1; }
+    if expect(oo_pqc_sha3_round(0, 7) != oo_pqc_sha3_round(41, 7), "04 forged digest yields a different seal") { p = p + 1; }
+    if p == 4 { println("install tests: 4/4 passed"); return Ok(0); }
+    println("install tests: FAILED (" + to_string(p) + "/4)");
+    return Ok(1);
+}

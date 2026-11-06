@@ -9,6 +9,14 @@
 //   2. Typecheck and double-run each probe driver (Run_1 == Run_2 = 0).
 //   3. Print summary.
 
+import "std/sec/pqc.oo";
+
+// The seal of one QA digest. The digest and the verifier nonce are bound
+// through the canonical post-quantum round so two runs agree.
+pub fn install_qa_seal(digest: Int, nonce: Int) -> Int {
+    return oo_pqc_sha3_round(digest, nonce);
+}
+
 fn find_oodac(fs: &FsReadCap, env: &EnvCap) -> String {
   let r: Result[String, String] = env_get(env, "OODA_COMPILER");
   let p: String = match r { Ok(s) => s, Err(_) => "" };
