@@ -2,7 +2,7 @@
 # openOODA one-line installer
 #   curl -fsSL https://openooda.org/install.sh | bash
 #
-# Each GitHub repo is one install (fetch, SHA-256, place). Re-run is safe.
+# One release hub, one asset per component (fetch, SHA-256, place). Re-run is safe.
 #
 # Set NO_COLOR=1 to disable color.
 # Set OPENOODA_DRY_RUN=1 to preview without downloading.
@@ -99,7 +99,10 @@ else
 fi
 _log() { printf '[%s] %s\n' "$(date -Iseconds 2>/dev/null || date)" "$*" >&3 2>/dev/null || true; }
 
-declare -A REPOS=([ooda]=ooda [oodac]=oodac [oodar]=oodar [opm]=opm [lsp]=lsp [mcp]=mcp [cli]=cli [tui]=tui)
+# Every component's binary publishes as an asset on the openOODA/openOODA
+# umbrella release (auto-release.yml attaches release-assets-* there); the
+# per-component-repo release model was retired — pointing at it 404s.
+declare -A REPOS=([ooda]=openOODA [oodac]=openOODA [oodar]=openOODA [opm]=openOODA [lsp]=openOODA [mcp]=openOODA [cli]=openOODA [tui]=openOODA)
 # Dest names match repo names. ASSETS is the GitHub release stem when it
 # still differs (lsp/mcp have not republished as lsp-linux-x86_64 yet).
 declare -A BINARIES=([ooda]=ooda [oodac]=oodac [oodar]=liboodar.a [opm]=opm [lsp]=ooda-lsp [mcp]=ooda-mcp [cli]=cli [tui]=tui)
@@ -254,7 +257,7 @@ print_preamble() {
   if [[ "${FROM_SOURCE:-0}" == "1" ]]; then
     printf '  %sEach repo builds from your local checkout. No downloads.%s\n\n' "$BOLD" "$RESET"
   else
-    printf '  %sEach GitHub repo is one install. Fetch, SHA-256, place.%s\n\n' "$BOLD" "$RESET"
+    printf '  %sOne release hub, one asset per component. Fetch, SHA-256, place.%s\n\n' "$BOLD" "$RESET"
   fi
   printf '    ooda     ~/.openooda/bin/ooda\n'
   printf '    cli      ~/.openooda/bin/cli\n'

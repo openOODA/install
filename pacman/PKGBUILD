@@ -1,10 +1,10 @@
 pkgname=openooda
-pkgver=0.1.30
+pkgver=0.2.6
 pkgrel=1
 pkgdesc="openOODA — Primary Systems Language for the AI Era"
 arch=('x86_64' 'aarch64')
 url="https://openooda.org"
-license=('MIT')
+license=('Apache-2.0')
 depends=('glibc')
 makedepends=('git')
 source=("https://github.com/openOODA/install/archive/v${pkgver}.tar.gz")

@@ -1,12 +1,10 @@
 # openOODA version overrides for install.sh.
-# Default: install.sh uses the latest release of each component.
-# Override per-component by uncommenting and pinning:
-# ooda = "v0.2.6"
-# oodac = "v0.1.10"
-# oodar = "v2.0.3"
-# opm = "v0.8.6"
-# lsp = "v0.6.7"
-# mcp = "v0.6.6"
-# cli = "v0.1.9"
-# tui = "v0.3.6"
-# std = "v1.0.7"
+#
+# All component binaries publish as assets on the openOODA/openOODA
+# umbrella release (auto-release.yml). A pin value is a tag on that
+# release — NOT a per-component version. Default: latest release.
+# Pin a component to an older umbrella tag by uncommenting, e.g.:
+# oodac = "v2.11.127"
+# ooda = "v2.11.126"
+# std clones openOODA-core/std; its pin is a git ref on that repo:
+# std = "v1.0.88"
