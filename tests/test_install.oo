@@ -10,6 +10,8 @@
 //   3. Assert a forged digest fails closed.
 //   4. Assert the nonce sweep stays distinct, positive, and reproducible.
 
+import "std/core/primitives/str.oo";
+import "std/fs/os/fs.oo";
 import "std/sec/pqc.oo";
 
 fn expect(cond: Bool, label: String) -> Bool {
@@ -19,6 +21,54 @@ fn expect(cond: Bool, label: String) -> Bool {
     }
     println("FAIL " + label);
     return false;
+}
+
+fn cap_known(tok: String) -> Bool {
+    let vocab: String = " Agent Alloc Bind Env Ffi FsRead FsReadCap FsWrite Mcp " +
+        "Net NetCap Proc Process ProcessCap Sec Stream Sys SysInfo Term Thread Time Tls ";
+    return str_contains(vocab, " " + tok + " ");
+}
+
+fn caps_field_ok(pkg: String) -> Bool {
+    let lines: List[String] = str_split(pkg, "\n");
+    let mut i: Int = 0;
+    while i < list_len(lines) {
+        let ln: String = list_get(lines, i);
+        i = i + 1;
+        if str_index_of(ln, "caps=") == 0 {
+            let val: String = byte_slice(ln, 5, bytes_len(ln));
+            if bytes_len(val) == 0 { return false; }
+            let toks: List[String] = str_split(val, ",");
+            let mut j: Int = 0;
+            while j < list_len(toks) {
+                if !cap_known(list_get(toks, j)) { return false; }
+                j = j + 1;
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
+fn sec_gates(fs: &FsReadCap, p: Int) -> Int {
+    let mut np: Int = p;
+    let pkg: Result[String, String] = fs_read_file(fs, "ooda.pkg");
+    let ps: String = if pkg.is_ok() { pkg.val } else { "" };
+    if expect(caps_field_ok(ps), "15 manifest caps stay inside the known capability vocabulary") { np = np + 1; }
+    let sh: Result[String, String] = fs_read_file(fs, "install.sh");
+    let src: String = if sh.is_ok() { sh.val } else { "" };
+    let arch: Bool = str_contains(src, "ARCH=\"$(uname -m)\"") &&
+        str_contains(src, "x86_64|amd64) ARCH=x86_64") &&
+        str_contains(src, "aarch64|arm64) ARCH=arm64") &&
+        str_contains(src, "unsupported arch: $ARCH (need x86_64 or arm64)") &&
+        str_contains(src, "exit 1");
+    if expect(arch, "16 arch gate admits only x86_64/arm64 and refuses mismatch") { np = np + 1; }
+    let dig: Bool = str_contains(src, "refuse unsigned install") &&
+        str_contains(src, "SHA-256 checksum mismatch") &&
+        str_contains(src, "if ! sha256_check \"$wd/$name\" \"$wd/$name.sha256\" \"$key\"") &&
+        str_contains(src, "mv -f \"$wd/$name\" \"$dest\"");
+    if expect(dig, "17 unsigned or forged artifacts refuse before install") { np = np + 1; }
+    return np;
 }
 
 pub fn main(
@@ -62,10 +112,11 @@ pub fn main(
     let floor: Bool = oo_pqc_sha3_round(0, 0) >= 1 && oo_pqc_sha3_round(0 - 1, 7) >= 1 &&
         oo_pqc_sha3_round(41, 7) >= 1;
     if expect(floor, "14 degenerate inputs floor at 1, never zero") { p = p + 1; }
-    if p == 14 {
-        println("install tests: 14/14 passed");
+    p = sec_gates(fs_r, p);
+    if p == 17 {
+        println("install tests: 17/17 passed");
         return Ok(0);
     }
-    println("install tests: FAILED (" + to_string(p) + "/14)");
+    println("install tests: FAILED (" + to_string(p) + "/17)");
     return Ok(1);
 }
