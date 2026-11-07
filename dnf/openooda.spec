@@ -2,7 +2,6 @@ Name:           openooda
 Version:        0.2.6
 Release:        1%{?dist}
 Summary:        openOODA — Primary Systems Language for the AI Era
-License:        Apache-2.0
 URL:            https://openooda.org
 Source0:        https://github.com/openOODA/install/archive/v%{version}.tar.gz
 BuildArch:      x86_64 aarch64

@@ -46,7 +46,3 @@ before execution; a missing or mismatched sidecar aborts the install.
 
 System packages: `apt/`, `dnf/`, and `pacman/` carry the distro packaging specs;
 `versions.toml` pins component versions for reproducible installs.
-
-## License
-
-Apache-2.0. See [LICENSE](LICENSE) for full text.

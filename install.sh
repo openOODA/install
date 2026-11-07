@@ -441,11 +441,14 @@ asset_names() {
 release_url_for() {
   local key="$1" name="$2"
   local tag="${PINS[$key]:-latest}"
-  local repo="${REPOS[$key]}"
   if [[ "$tag" == "latest" ]]; then
-    printf '%s\n' "${RELEASES}/${repo}/releases/latest/download/${name}"
+    printf '%s\n' "https://github.com/openOODA/catalog/releases/latest/download/${name}"
+    printf '%s\n' "https://github.com/openOODA/install/releases/latest/download/${name}"
+    printf '%s\n' "${RELEASES}/${REPOS[$key]}/releases/latest/download/${name}"
   else
-    printf '%s\n' "${RELEASES}/${repo}/releases/download/${tag}/${name}"
+    printf '%s\n' "https://github.com/openOODA/catalog/releases/download/${tag}/${name}"
+    printf '%s\n' "https://github.com/openOODA/install/releases/download/${tag}/${name}"
+    printf '%s\n' "${RELEASES}/${REPOS[$key]}/releases/download/${tag}/${name}"
   fi
 }
 
