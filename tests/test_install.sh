@@ -267,6 +267,25 @@ bash -c '
   load_pins
   [ "${#PINS[@]}" -eq 0 ] || { echo "FAIL empty manifest loaded ${#PINS[@]} pins"; exit 1; }
 ' _ "$TMPD/pins.sh" || { echo "FAIL load_pins empty-manifest edge broke"; exit 1; }
+# Update-channel directives that are not pins must never reach PINS:
+# branch=/channel=/url= lines are skipped by the pin grammar, so a
+# mismatched release channel cannot be smuggled through versions.toml.
+cat > "$TMPD/versions.toml" <<'EOF'
+branch = "master"
+channel = "nightly"
+url = "https://example.invalid/x"
+ref = "deadbeef"
+oodac = "v1.2.3"
+EOF
+bash -c '
+  source "$1"
+  load_pins
+  [ "${#PINS[@]}" -eq 1 ] || { echo "FAIL directive leak: ${#PINS[@]} pins"; declare -p PINS; exit 1; }
+  [ "${PINS[oodac]:-}" = "v1.2.3" ] || { echo "FAIL oodac pin lost"; exit 1; }
+  for k in branch channel url ref; do
+    [ -z "${PINS[$k]:-}" ] || { echo "FAIL non-pin directive reached PINS: $k"; exit 1; }
+  done
+' _ "$TMPD/pins.sh" || { echo "FAIL versions.toml channel-directive refusal broke"; exit 1; }
 # Plan v31: CLI contract dogfooding. --version prints and exits 0;
 # unknown long options, bare positionals, unknown short options, and
 # arguments after -- must all refuse fail-closed (rc!=0, no install).
@@ -303,4 +322,4 @@ v_file="$(tr -d '[:space:]' < VERSION)"
 bash install.sh --version 2>&1 | grep -qF "openOODA installer $v_file" || { echo "FAIL --version disagrees with VERSION ($v_file)"; exit 1; }
 v_pkg="$(sed -n 's/^version=//p' ooda.pkg | head -1)"
 [ "$v_pkg" = "$v_file" ] || { echo "FAIL ooda.pkg version $v_pkg != VERSION $v_file"; exit 1; }
-echo "PASS install 9.15 fail-closed sha256+blackbox+toolchain+bash-rc+no-shadow+no-state-loss+opm-nonzero+on-disk-accept+from-source+from-source-dryrun-no-bootstrap+no-double-tui+selftest-corrupted-digests+pin-parsing-negative-trust+pin-grammar-adversarial+pin-lenient-edges+pin-empty-manifest+cli-contract-refusals+dryrun-idempotence+dryrun-schema+version-roundtrip"
+echo "PASS install 9.16 fail-closed sha256+blackbox+toolchain+bash-rc+no-shadow+no-state-loss+opm-nonzero+on-disk-accept+from-source+from-source-dryrun-no-bootstrap+no-double-tui+selftest-corrupted-digests+pin-parsing-negative-trust+pin-grammar-adversarial+pin-lenient-edges+pin-empty-manifest+pin-channel-directive-refusal+cli-contract-refusals+dryrun-idempotence+dryrun-schema+version-roundtrip"
