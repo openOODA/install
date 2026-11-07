@@ -159,6 +159,19 @@ fi
 if grep -q '(also ooda-tui)' install.sh; then echo "FAIL preamble still apologizes for ooda-tui"; exit 1; fi
 if grep -q 'cp -f "$dest" "$BIN_DIR/ooda-tui"' install.sh; then echo "FAIL double-install copy remains"; exit 1; fi
 grep -q 'rm -f "$BIN_DIR/ooda-tui"' install.sh || { echo "FAIL no stale-alias removal"; exit 1; }
+# Canonical package resolution: component repos are the openOODA-core
+# names (ooda oodac oodar opm lsp mcp cli tui). Legacy ooda-* package
+# names must never appear as repo keys or install destinations.
+if grep -qE 'ooda-(cockpit|compositor|files|lock|panel|portal)' install.sh; then
+  echo "FAIL legacy ooda-* package name present"; exit 1
+fi
+repos_keys=$(grep -oE '^declare -A REPOS=\(\[[a-z]+\]=[a-z.-]+( \[[a-z]+\]=[a-z.-]+)*\)' install.sh | grep -oE '\[[a-z]+\]' | tr -d '[]' | sort | tr '\n' ' ')
+expected="cli lsp mcp ooda oodac oodar opm tui "
+[ "$repos_keys" = "$expected" ] || { echo "FAIL REPOS keys not canonical: $repos_keys"; exit 1; }
+bin_vals=$(grep -oE '^declare -A BINARIES=\(\[[a-z]+\]=[a-z.-]+( \[[a-z]+\]=[a-z.-]+)*\)' install.sh | grep -oE '=[a-z.-]+' | tr -d '=' | sort -u | tr '\n' ' ')
+for bv in $bin_vals; do
+  case "$bv" in ooda|oodac|liboodar.a|opm|cli|tui|ooda-lsp|ooda-mcp) ;; *) echo "FAIL non-canonical dest name: $bv"; exit 1;; esac
+done
 # Plan v30: versions.toml pin parsing is a trust boundary. Extract the
 # real declare+load_pins pair and feed it a hostile manifest: malformed
 # version strings and path-traversal keys must never reach PINS.
