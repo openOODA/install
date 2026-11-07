@@ -46,6 +46,28 @@ fn dead_directives(toml: String) -> Int {
     return bad;
 }
 
+// Count live versions.toml lines: non-empty and not comment-led.
+// Zero means the shipped file is comment-only, so the pin table
+// starts empty and every consumer must ride its :- default.
+fn live_lines(toml: String) -> Int {
+    let mut rest: String = toml;
+    let mut n: Int = 0;
+    while bytes_len(rest) > 0 {
+        let nl: Int = str_index_of(rest, "\n");
+        let ln: String = if nl < 0 { rest } else { byte_slice(rest, 0, nl) };
+        rest = if nl < 0 { "" } else { byte_slice(rest, nl + 1, bytes_len(rest)) };
+        let m: Int = bytes_len(ln);
+        let mut i: Int = 0;
+        while i < m {
+            let c: Int = byte_at(ln, i);
+            if c != 32 && c != 9 { break; }
+            i = i + 1;
+        }
+        if i < m && byte_at(ln, i) != 35 { n = n + 1; }
+    }
+    return n;
+}
+
 pub fn main(
     fs_r: &FsReadCap,
     _args: List[String]
@@ -75,10 +97,20 @@ pub fn main(
     if expect(g5, "05 partial install refuses fail-closed for core tools") { p = p + 1; }
     let g6: Bool = vt.is_ok() && dead_directives(toml) == 0;
     if expect(g6, "06 shipped versions.toml carries no dead channel directives") { p = p + 1; }
-    if p == 6 {
-        println("install update tests: 6/6 passed");
+    let g7: Bool = str_contains(src, "declare -A PINS=()") &&
+        str_contains(src, "while IFS= read -r line") &&
+        str_contains(src, "PINS[\"${BASH_REMATCH[1]}\"]=\"${BASH_REMATCH[2]}\"");
+    if expect(g7, "07 pins resolve per-component through one associative table") { p = p + 1; }
+    let g8: Bool = vt.is_ok() && live_lines(toml) == 0 &&
+        str_contains(src, "set -euo pipefail") &&
+        str_contains(src, "${PINS[$key]:-latest}") &&
+        str_contains(src, "${PINS[$key]:-}") &&
+        str_contains(src, "${PINS[std]:-}");
+    if expect(g8, "08 empty pin table stays safe under set -u via defaulted lookups") { p = p + 1; }
+    if p == 8 {
+        println("install update tests: 8/8 passed");
         return Ok(0);
     }
-    println("install update tests: FAILED (" + to_string(p) + "/6)");
+    println("install update tests: FAILED (" + to_string(p) + "/8)");
     return Ok(1);
 }
