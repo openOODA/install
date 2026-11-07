@@ -206,6 +206,13 @@ key_with_under = "v1.2.3"
 bad1 = v1.2.3
 bad2 = 'v1.2.3'
 bad3 = ""
+
+# adversarial version forms — refused by the strict "vX.Y.Z" grammar
+bad4 = "V1.2.3"
+bad5 = "v1.2.3 "
+bad6 = "v1.2.3+build"
+bad7 = "vv1.2.3"
+bad8 = "v1.2.3\n"
 EOF
 bash -c '
   source "$1"
@@ -215,7 +222,7 @@ bash -c '
   [ "${PINS[oodar]:-}" = "v1.2.3" ] || { echo "FAIL oodar pin"; fail=1; }
   [ "${PINS[std]:-}" = "v0.4.0" ] || { echo "FAIL std pin"; fail=1; }
   [ "${PINS[STD]:-}" = "v9.9.9" ] || { echo "FAIL STD uppercase-key pin (documents case-sensitive lookup)"; fail=1; }
-  for k in cli tui opm lsp mcp oodac bad1 bad2 bad3; do
+  for k in cli tui opm lsp mcp oodac bad1 bad2 bad3 bad4 bad5 bad6 bad7 bad8; do
     [ -z "${PINS[$k]:-}" ] || { echo "FAIL malformed pin accepted: $k=${PINS[$k]}"; fail=1; }
   done
   for k in "../evil" "a/b" "std.extra" "quoted" "key-with-dash" "key_with_under"; do
@@ -223,6 +230,26 @@ bash -c '
   done
   exit $fail
 ' _ "$TMPD/pins.sh" || { echo "FAIL load_pins accepted hostile versions.toml entries"; exit 1; }
+# Lenient edges documented: the pin grammar is quote-anchored but not
+# end-anchored — duplicate keys resolve last-wins, trailing bytes after
+# the closing quote are ignored, and leading-zero components pass [0-9]+
+# (a malformed pin then 404s fail-closed at fetch time, never installs).
+cat > "$TMPD/versions.toml" <<'EOF'
+dup = "v1.0.0"
+dup = "v2.0.0"
+trail = "v9.9.9"junk
+pad = "v03.4.5"
+EOF
+bash -c '
+  source "$1"
+  load_pins
+  fail=0
+  [ "${PINS[dup]:-}" = "v2.0.0" ] || { echo "FAIL dup pin not last-wins: ${PINS[dup]}"; fail=1; }
+  [ "${PINS[trail]:-}" = "v9.9.9" ] || { echo "FAIL trail pin: ${PINS[trail]}"; fail=1; }
+  [ "${PINS[pad]:-}" = "v03.4.5" ] || { echo "FAIL pad pin: ${PINS[pad]}"; fail=1; }
+  [ "${#PINS[@]}" -eq 3 ] || { echo "FAIL lenient pin count ${#PINS[@]} (want 3)"; fail=1; }
+  exit $fail
+' _ "$TMPD/pins.sh" || { echo "FAIL load_pins lenient-edge contract broke"; exit 1; }
 # Plan v31: CLI contract dogfooding. --version prints and exits 0;
 # unknown long options, bare positionals, unknown short options, and
 # arguments after -- must all refuse fail-closed (rc!=0, no install).
@@ -250,4 +277,4 @@ v_file="$(tr -d '[:space:]' < VERSION)"
 bash install.sh --version 2>&1 | grep -qF "openOODA installer $v_file" || { echo "FAIL --version disagrees with VERSION ($v_file)"; exit 1; }
 v_pkg="$(sed -n 's/^version=//p' ooda.pkg | head -1)"
 [ "$v_pkg" = "$v_file" ] || { echo "FAIL ooda.pkg version $v_pkg != VERSION $v_file"; exit 1; }
-echo "PASS install 9.12 fail-closed sha256+blackbox+toolchain+bash-rc+no-shadow+no-state-loss+opm-nonzero+on-disk-accept+from-source+from-source-dryrun-no-bootstrap+no-double-tui+selftest-corrupted-digests+pin-parsing-negative-trust+cli-contract-refusals+dryrun-idempotence+version-roundtrip"
+echo "PASS install 9.13 fail-closed sha256+blackbox+toolchain+bash-rc+no-shadow+no-state-loss+opm-nonzero+on-disk-accept+from-source+from-source-dryrun-no-bootstrap+no-double-tui+selftest-corrupted-digests+pin-parsing-negative-trust+pin-grammar-adversarial+pin-lenient-edges+cli-contract-refusals+dryrun-idempotence+version-roundtrip"

@@ -40,10 +40,15 @@ pub fn main(
         oo_pqc_sha3_round(41, 202) == s2 && oo_pqc_sha3_round(41, 303) == s3;
     if expect(repro, "07 sweep seals reproduce bit-for-bit") { p = p + 1; }
     if expect(oo_pqc_sha3_round(41, 7) != oo_pqc_sha3_round(7, 41), "08 digest/nonce order binds the seal") { p = p + 1; }
-    if p == 8 {
-        println("install tests: 8/8 passed");
+    let ds: Bool = oo_pqc_sha3_round(41, 7) != oo_pqc_sha3_round(42, 7) &&
+        oo_pqc_sha3_round(41, 7) != oo_pqc_sha3_round(43, 7) &&
+        oo_pqc_sha3_round(42, 7) != oo_pqc_sha3_round(43, 7);
+    if expect(ds, "09 digest sweep yields distinct seals") { p = p + 1; }
+    if expect(oo_pqc_sha3_round(0, 0) != oo_pqc_sha3_round(41, 7), "10 zero-zero boundary differs from honest") { p = p + 1; }
+    if p == 10 {
+        println("install tests: 10/10 passed");
         return Ok(0);
     }
-    println("install tests: FAILED (" + to_string(p) + "/8)");
+    println("install tests: FAILED (" + to_string(p) + "/10)");
     return Ok(1);
 }
