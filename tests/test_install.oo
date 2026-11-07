@@ -68,6 +68,15 @@ fn sec_gates(fs: &FsReadCap, p: Int) -> Int {
         str_contains(src, "if ! sha256_check \"$wd/$name\" \"$wd/$name.sha256\" \"$key\"") &&
         str_contains(src, "mv -f \"$wd/$name\" \"$dest\"");
     if expect(dig, "17 unsigned or forged artifacts refuse before install") { np = np + 1; }
+    let dirs: Bool = str_contains(src, "HOME=\"${HOME:-/home/$(id -un)}\"") &&
+        str_contains(src, "OPENOODA_HOME=\"${OPENOODA_HOME:-$HOME/.openooda}\"") &&
+        str_contains(src, "getent passwd \"$(id -un)\"") &&
+        str_contains(src, "BIN_DIR=\"$OPENOODA_HOME/bin\"");
+    if expect(dirs, "18 target dirs normalize literal tilde and empty HOME fail-safe") { np = np + 1; }
+    let dig2: Bool = str_contains(src, "-z \"$expected_hash\"") &&
+        str_contains(src, "!= \"$actual_hash\"") &&
+        str_contains(src, "\"200\" && -s \"$dest.tmp.sha256\"");
+    if expect(dig2, "19 checksum refusal covers empty expected hash and HTTP gate") { np = np + 1; }
     return np;
 }
 
@@ -113,10 +122,10 @@ pub fn main(
         oo_pqc_sha3_round(41, 7) >= 1;
     if expect(floor, "14 degenerate inputs floor at 1, never zero") { p = p + 1; }
     p = sec_gates(fs_r, p);
-    if p == 17 {
-        println("install tests: 17/17 passed");
+    if p == 19 {
+        println("install tests: 19/19 passed");
         return Ok(0);
     }
-    println("install tests: FAILED (" + to_string(p) + "/17)");
+    println("install tests: FAILED (" + to_string(p) + "/19)");
     return Ok(1);
 }
