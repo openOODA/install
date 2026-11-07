@@ -210,4 +210,18 @@ bash -c '
   done
   exit $fail
 ' _ "$TMPD/pins.sh" || { echo "FAIL load_pins accepted hostile versions.toml entries"; exit 1; }
-echo "PASS install 9.10 fail-closed sha256+blackbox+toolchain+bash-rc+no-shadow+no-state-loss+opm-nonzero+on-disk-accept+from-source+from-source-dryrun-no-bootstrap+no-double-tui+selftest-corrupted-digests+pin-parsing-negative-trust"
+# Plan v31: CLI contract dogfooding. --version prints and exits 0;
+# unknown long options, bare positionals, unknown short options, and
+# arguments after -- must all refuse fail-closed (rc!=0, no install).
+out="$(bash install.sh --version 2>&1)"; rc=$?
+[ $rc -eq 0 ] || { echo "FAIL --version rc=$rc"; exit 1; }
+echo "$out" | grep -q 'openOODA installer' || { echo "FAIL --version output: $out"; exit 1; }
+for bad in "--bogus-flag" "/etc/passwd" "-x" "-- --dry-run"; do
+  rc=0
+  bash install.sh $bad >/dev/null 2>&1 || rc=$?
+  [ $rc -ne 0 ] || { echo "FAIL accepted hostile args: $bad"; exit 1; }
+done
+bash install.sh --bogus-flag 2>&1 | grep -q 'unknown option' || { echo "FAIL no unknown-option message"; exit 1; }
+bash install.sh /etc/passwd 2>&1 | grep -q 'unexpected argument' || { echo "FAIL no unexpected-argument message"; exit 1; }
+bash install.sh -- --dry-run 2>&1 | grep -q 'after --' || { echo "FAIL no post-dashdash message"; exit 1; }
+echo "PASS install 9.11 fail-closed sha256+blackbox+toolchain+bash-rc+no-shadow+no-state-loss+opm-nonzero+on-disk-accept+from-source+from-source-dryrun-no-bootstrap+no-double-tui+selftest-corrupted-digests+pin-parsing-negative-trust+cli-contract-refusals"

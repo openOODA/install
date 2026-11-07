@@ -50,6 +50,7 @@ openOODA installer — curl -fsSL https://openooda.org/install.sh | bash
   bash install.sh [options]
 Options:
   --help              show this help
+  --version           print the installer version and exit
   --dry-run           preview without downloading (also OPENOODA_DRY_RUN=1)
   --yes, -y           auto-answer y to all prompts (also OPENOODA_YES=1)
   --no-modify-shell   do not edit shell rc files
@@ -68,9 +69,11 @@ Options:
   OPENOODA_SOURCE=DIR same as --from-source=DIR
 USAGE
 }
+DASHDASH=0
 for arg in "$@"; do
   case "$arg" in
     --help|-h) usage; exit 0;;
+    --version|-V) printf 'openOODA installer %s\n' "$VERSION"; exit 0;;
     --dry-run) DRY_RUN=1;;
     --yes|-y) OPENOODA_YES=1;;
     --no-modify-shell) NO_MODIFY_SHELL=1;;
@@ -80,10 +83,23 @@ for arg in "$@"; do
     --from-source=*) FROM_SOURCE=1; SOURCE_DIR="${arg#--from-source=}";;
     --from-source) FROM_SOURCE=1;;
     --selftest-sha) SELFTEST_SHA=1; OPENOODA_HOME="${TMPDIR:-/tmp}/openooda-selftest-sha.$$"; LOG_FILE="$OPENOODA_HOME/install.log";;
-    --) break;;
-    --*) err "unknown option $arg (see --help)"; exit 1;;
+    --) DASHDASH=1; break;;
+    --*) printf 'install.sh: unknown option: %s (see --help)\n' "$arg" >&2; exit 1;;
+    *)   printf 'install.sh: unexpected argument: %s (see --help)\n' "$arg" >&2; exit 1;;
   esac
 done
+# Everything after -- is positional; this installer takes none, so any
+# trailing argument (e.g. a flag the user meant as an option) refuses.
+if [[ "$DASHDASH" == "1" ]]; then
+  past=0
+  for arg in "$@"; do
+    if [[ "$past" == "1" ]]; then
+      printf 'install.sh: unexpected argument after --: %s (see --help)\n' "$arg" >&2
+      exit 1
+    fi
+    [[ "$arg" == "--" ]] && past=1
+  done
+fi
 # log setup — append, keep 1M rotation
 if [[ "$DRY_RUN" != "1" ]]; then
   mkdir -p "$OPENOODA_HOME" 2>/dev/null || true
