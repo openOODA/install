@@ -53,10 +53,19 @@ pub fn main(
         oo_pqc_sha3_round(2147483647, 0) != oo_pqc_sha3_round(41, 7) &&
         oo_pqc_sha3_round(0, 2147483647) != oo_pqc_sha3_round(41, 7);
     if expect(ext, "12 extreme limb asymmetry binds the seal") { p = p + 1; }
-    if p == 12 {
-        println("install tests: 12/12 passed");
+    let inband: Bool = oo_pqc_sha3_round(41, 7) >= 1 &&
+        oo_pqc_sha3_round(41, 7) <= 4611686018427387903 &&
+        oo_pqc_sha3_round(0 - 1, 0 - 1) >= 1 &&
+        oo_pqc_sha3_round(0 - 1, 0 - 1) <= 4611686018427387903 &&
+        oo_pqc_sha3_round(2147483647, 0) <= 4611686018427387903;
+    if expect(inband, "13 seals stay inside the positive 62-bit field") { p = p + 1; }
+    let floor: Bool = oo_pqc_sha3_round(0, 0) >= 1 && oo_pqc_sha3_round(0 - 1, 7) >= 1 &&
+        oo_pqc_sha3_round(41, 7) >= 1;
+    if expect(floor, "14 degenerate inputs floor at 1, never zero") { p = p + 1; }
+    if p == 14 {
+        println("install tests: 14/14 passed");
         return Ok(0);
     }
-    println("install tests: FAILED (" + to_string(p) + "/12)");
+    println("install tests: FAILED (" + to_string(p) + "/14)");
     return Ok(1);
 }

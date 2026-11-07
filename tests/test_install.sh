@@ -288,10 +288,19 @@ flt_dry() { grep -v 'time:' | sed -E 's/runtime v[0-9.?]+/runtime vREL/'; }
 env -i PATH=/usr/bin:/bin HOME="$HOME" OPENOODA_HOME="$TMPD/dh" bash install.sh --dry-run 2>&1 | flt_dry > "$TMPD/d1"
 env -i PATH=/usr/bin:/bin HOME="$HOME" OPENOODA_HOME="$TMPD/dh" bash install.sh --dry-run 2>&1 | flt_dry > "$TMPD/d2"
 cmp -s "$TMPD/d1" "$TMPD/d2" || { echo "FAIL dry-run plan not idempotent"; diff "$TMPD/d1" "$TMPD/d2" | head -10; exit 1; }
+# Output-schema completeness: the dry-run plan must carry its required
+# sections (prefix, Summary, simulated install, no-writes marker) and
+# name every canonical component it would place.
+for key in 'prefix:' 'Summary' 'simulated install' 'no files written'; do
+  grep -qF "$key" "$TMPD/d1" || { echo "FAIL dry-run plan missing required section: $key"; exit 1; }
+done
+for comp in ooda cli tui oodac oodar opm lsp mcp; do
+  grep -qw "$comp" "$TMPD/d1" || { echo "FAIL dry-run plan missing component: $comp"; exit 1; }
+done
 # Version round-trip: the --version banner, the VERSION file, and the
 # ooda.pkg manifest must all agree on the same release.
 v_file="$(tr -d '[:space:]' < VERSION)"
 bash install.sh --version 2>&1 | grep -qF "openOODA installer $v_file" || { echo "FAIL --version disagrees with VERSION ($v_file)"; exit 1; }
 v_pkg="$(sed -n 's/^version=//p' ooda.pkg | head -1)"
 [ "$v_pkg" = "$v_file" ] || { echo "FAIL ooda.pkg version $v_pkg != VERSION $v_file"; exit 1; }
-echo "PASS install 9.14 fail-closed sha256+blackbox+toolchain+bash-rc+no-shadow+no-state-loss+opm-nonzero+on-disk-accept+from-source+from-source-dryrun-no-bootstrap+no-double-tui+selftest-corrupted-digests+pin-parsing-negative-trust+pin-grammar-adversarial+pin-lenient-edges+pin-empty-manifest+cli-contract-refusals+dryrun-idempotence+version-roundtrip"
+echo "PASS install 9.15 fail-closed sha256+blackbox+toolchain+bash-rc+no-shadow+no-state-loss+opm-nonzero+on-disk-accept+from-source+from-source-dryrun-no-bootstrap+no-double-tui+selftest-corrupted-digests+pin-parsing-negative-trust+pin-grammar-adversarial+pin-lenient-edges+pin-empty-manifest+cli-contract-refusals+dryrun-idempotence+dryrun-schema+version-roundtrip"
