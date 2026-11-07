@@ -45,10 +45,18 @@ pub fn main(
         oo_pqc_sha3_round(42, 7) != oo_pqc_sha3_round(43, 7);
     if expect(ds, "09 digest sweep yields distinct seals") { p = p + 1; }
     if expect(oo_pqc_sha3_round(0, 0) != oo_pqc_sha3_round(41, 7), "10 zero-zero boundary differs from honest") { p = p + 1; }
-    if p == 10 {
-        println("install tests: 10/10 passed");
+    let neg: Bool = oo_pqc_sha3_round(0 - 1, 7) != oo_pqc_sha3_round(41, 7) &&
+        oo_pqc_sha3_round(41, 0 - 1) != oo_pqc_sha3_round(41, 7) &&
+        oo_pqc_sha3_round(0 - 1, 0 - 1) == oo_pqc_sha3_round(0 - 1, 0 - 1);
+    if expect(neg, "11 negative inputs stay deterministic and distinct") { p = p + 1; }
+    let ext: Bool = oo_pqc_sha3_round(2147483647, 0) != oo_pqc_sha3_round(0, 2147483647) &&
+        oo_pqc_sha3_round(2147483647, 0) != oo_pqc_sha3_round(41, 7) &&
+        oo_pqc_sha3_round(0, 2147483647) != oo_pqc_sha3_round(41, 7);
+    if expect(ext, "12 extreme limb asymmetry binds the seal") { p = p + 1; }
+    if p == 12 {
+        println("install tests: 12/12 passed");
         return Ok(0);
     }
-    println("install tests: FAILED (" + to_string(p) + "/10)");
+    println("install tests: FAILED (" + to_string(p) + "/12)");
     return Ok(1);
 }

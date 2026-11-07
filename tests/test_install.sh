@@ -213,6 +213,12 @@ bad5 = "v1.2.3 "
 bad6 = "v1.2.3+build"
 bad7 = "vv1.2.3"
 bad8 = "v1.2.3\n"
+bad9 = "v1.2.3#"
+9lives = "v1.2.3"
+# non-ASCII keys (e.g. "ké") are locale-dependent: UTF-8 collation may
+# fold them into [a-zA-Z] while C locale refuses. They are inert either
+# way — PINS is only read by literal ASCII component names — so no
+# assertion pins the behavior.
 EOF
 bash -c '
   source "$1"
@@ -222,7 +228,7 @@ bash -c '
   [ "${PINS[oodar]:-}" = "v1.2.3" ] || { echo "FAIL oodar pin"; fail=1; }
   [ "${PINS[std]:-}" = "v0.4.0" ] || { echo "FAIL std pin"; fail=1; }
   [ "${PINS[STD]:-}" = "v9.9.9" ] || { echo "FAIL STD uppercase-key pin (documents case-sensitive lookup)"; fail=1; }
-  for k in cli tui opm lsp mcp oodac bad1 bad2 bad3 bad4 bad5 bad6 bad7 bad8; do
+  for k in cli tui opm lsp mcp oodac bad1 bad2 bad3 bad4 bad5 bad6 bad7 bad8 bad9 9lives; do
     [ -z "${PINS[$k]:-}" ] || { echo "FAIL malformed pin accepted: $k=${PINS[$k]}"; fail=1; }
   done
   for k in "../evil" "a/b" "std.extra" "quoted" "key-with-dash" "key_with_under"; do
@@ -239,6 +245,8 @@ dup = "v1.0.0"
 dup = "v2.0.0"
 trail = "v9.9.9"junk
 pad = "v03.4.5"
+compact="v5.0.0"
+cmt = "v6.0.0" # pinned by fleet
 EOF
 bash -c '
   source "$1"
@@ -247,9 +255,18 @@ bash -c '
   [ "${PINS[dup]:-}" = "v2.0.0" ] || { echo "FAIL dup pin not last-wins: ${PINS[dup]}"; fail=1; }
   [ "${PINS[trail]:-}" = "v9.9.9" ] || { echo "FAIL trail pin: ${PINS[trail]}"; fail=1; }
   [ "${PINS[pad]:-}" = "v03.4.5" ] || { echo "FAIL pad pin: ${PINS[pad]}"; fail=1; }
-  [ "${#PINS[@]}" -eq 3 ] || { echo "FAIL lenient pin count ${#PINS[@]} (want 3)"; fail=1; }
+  [ "${PINS[compact]:-}" = "v5.0.0" ] || { echo "FAIL compact pin: ${PINS[compact]}"; fail=1; }
+  [ "${PINS[cmt]:-}" = "v6.0.0" ] || { echo "FAIL trailing-comment pin: ${PINS[cmt]}"; fail=1; }
+  [ "${#PINS[@]}" -eq 5 ] || { echo "FAIL lenient pin count ${#PINS[@]} (want 5)"; fail=1; }
   exit $fail
 ' _ "$TMPD/pins.sh" || { echo "FAIL load_pins lenient-edge contract broke"; exit 1; }
+# Empty-manifest edge: an existing-but-empty versions.toml loads zero pins.
+: > "$TMPD/versions.toml"
+bash -c '
+  source "$1"
+  load_pins
+  [ "${#PINS[@]}" -eq 0 ] || { echo "FAIL empty manifest loaded ${#PINS[@]} pins"; exit 1; }
+' _ "$TMPD/pins.sh" || { echo "FAIL load_pins empty-manifest edge broke"; exit 1; }
 # Plan v31: CLI contract dogfooding. --version prints and exits 0;
 # unknown long options, bare positionals, unknown short options, and
 # arguments after -- must all refuse fail-closed (rc!=0, no install).
@@ -277,4 +294,4 @@ v_file="$(tr -d '[:space:]' < VERSION)"
 bash install.sh --version 2>&1 | grep -qF "openOODA installer $v_file" || { echo "FAIL --version disagrees with VERSION ($v_file)"; exit 1; }
 v_pkg="$(sed -n 's/^version=//p' ooda.pkg | head -1)"
 [ "$v_pkg" = "$v_file" ] || { echo "FAIL ooda.pkg version $v_pkg != VERSION $v_file"; exit 1; }
-echo "PASS install 9.13 fail-closed sha256+blackbox+toolchain+bash-rc+no-shadow+no-state-loss+opm-nonzero+on-disk-accept+from-source+from-source-dryrun-no-bootstrap+no-double-tui+selftest-corrupted-digests+pin-parsing-negative-trust+pin-grammar-adversarial+pin-lenient-edges+cli-contract-refusals+dryrun-idempotence+version-roundtrip"
+echo "PASS install 9.14 fail-closed sha256+blackbox+toolchain+bash-rc+no-shadow+no-state-loss+opm-nonzero+on-disk-accept+from-source+from-source-dryrun-no-bootstrap+no-double-tui+selftest-corrupted-digests+pin-parsing-negative-trust+pin-grammar-adversarial+pin-lenient-edges+pin-empty-manifest+cli-contract-refusals+dryrun-idempotence+version-roundtrip"
