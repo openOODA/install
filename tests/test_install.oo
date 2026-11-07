@@ -8,6 +8,7 @@
 //   1. Assert the seal round is deterministic and positive.
 //   2. Assert a tampered nonce changes the seal.
 //   3. Assert a forged digest fails closed.
+//   4. Assert the nonce sweep stays distinct, positive, and reproducible.
 
 import "std/sec/pqc.oo";
 
@@ -29,10 +30,20 @@ pub fn main(
     if expect(oo_pqc_sha3_round(41, 7) > 0, "02 seal stays in the positive field") { p = p + 1; }
     if expect(oo_pqc_sha3_round(41, 7) != oo_pqc_sha3_round(41, 8), "03 tampered nonce yields a different seal") { p = p + 1; }
     if expect(oo_pqc_sha3_round(0, 7) != oo_pqc_sha3_round(41, 7), "04 forged digest yields a different seal") { p = p + 1; }
-    if p == 4 {
-        println("install tests: 4/4 passed");
+    let s1: Int = oo_pqc_sha3_round(41, 101);
+    let s2: Int = oo_pqc_sha3_round(41, 202);
+    let s3: Int = oo_pqc_sha3_round(41, 303);
+    let distinct: Bool = s1 != s2 && s1 != s3 && s2 != s3;
+    if expect(distinct, "05 nonce sweep yields distinct seals") { p = p + 1; }
+    if expect(s1 > 0 && s2 > 0 && s3 > 0, "06 nonce sweep seals stay positive") { p = p + 1; }
+    let repro: Bool = oo_pqc_sha3_round(41, 101) == s1 &&
+        oo_pqc_sha3_round(41, 202) == s2 && oo_pqc_sha3_round(41, 303) == s3;
+    if expect(repro, "07 sweep seals reproduce bit-for-bit") { p = p + 1; }
+    if expect(oo_pqc_sha3_round(41, 7) != oo_pqc_sha3_round(7, 41), "08 digest/nonce order binds the seal") { p = p + 1; }
+    if p == 8 {
+        println("install tests: 8/8 passed");
         return Ok(0);
     }
-    println("install tests: FAILED (" + to_string(p) + "/4)");
+    println("install tests: FAILED (" + to_string(p) + "/8)");
     return Ok(1);
 }

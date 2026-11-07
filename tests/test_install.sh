@@ -237,4 +237,17 @@ done
 bash install.sh --bogus-flag 2>&1 | grep -q 'unknown option' || { echo "FAIL no unknown-option message"; exit 1; }
 bash install.sh /etc/passwd 2>&1 | grep -q 'unexpected argument' || { echo "FAIL no unexpected-argument message"; exit 1; }
 bash install.sh -- --dry-run 2>&1 | grep -q 'after --' || { echo "FAIL no post-dashdash message"; exit 1; }
-echo "PASS install 9.11 fail-closed sha256+blackbox+toolchain+bash-rc+no-shadow+no-state-loss+opm-nonzero+on-disk-accept+from-source+from-source-dryrun-no-bootstrap+no-double-tui+selftest-corrupted-digests+pin-parsing-negative-trust+cli-contract-refusals"
+# Round-trip/idempotence: two dry-runs must emit the identical install
+# plan. Only self-reported wall-time and the live-fetched runtime
+# version are volatile, so both are normalized before comparison.
+flt_dry() { grep -v 'time:' | sed -E 's/runtime v[0-9.?]+/runtime vREL/'; }
+env -i PATH=/usr/bin:/bin HOME="$HOME" OPENOODA_HOME="$TMPD/dh" bash install.sh --dry-run 2>&1 | flt_dry > "$TMPD/d1"
+env -i PATH=/usr/bin:/bin HOME="$HOME" OPENOODA_HOME="$TMPD/dh" bash install.sh --dry-run 2>&1 | flt_dry > "$TMPD/d2"
+cmp -s "$TMPD/d1" "$TMPD/d2" || { echo "FAIL dry-run plan not idempotent"; diff "$TMPD/d1" "$TMPD/d2" | head -10; exit 1; }
+# Version round-trip: the --version banner, the VERSION file, and the
+# ooda.pkg manifest must all agree on the same release.
+v_file="$(tr -d '[:space:]' < VERSION)"
+bash install.sh --version 2>&1 | grep -qF "openOODA installer $v_file" || { echo "FAIL --version disagrees with VERSION ($v_file)"; exit 1; }
+v_pkg="$(sed -n 's/^version=//p' ooda.pkg | head -1)"
+[ "$v_pkg" = "$v_file" ] || { echo "FAIL ooda.pkg version $v_pkg != VERSION $v_file"; exit 1; }
+echo "PASS install 9.12 fail-closed sha256+blackbox+toolchain+bash-rc+no-shadow+no-state-loss+opm-nonzero+on-disk-accept+from-source+from-source-dryrun-no-bootstrap+no-double-tui+selftest-corrupted-digests+pin-parsing-negative-trust+cli-contract-refusals+dryrun-idempotence+version-roundtrip"
