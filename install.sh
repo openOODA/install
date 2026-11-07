@@ -635,12 +635,34 @@ selftest_sha() {
   if sha256_check "$dest" "$td/bad.sha256" "selftest-mismatch" 2>/dev/null; then
     rm -rf "$td"; err "selftest: mismatch must fail"; exit 1
   fi
+  # Corrupted digest shapes must all refuse: uppercase hex, non-hex
+  # alphabet, truncated, and over-length sidecars never equal the
+  # lowercase 64-hex digest sha256sum emits.
+  (cd "$td" && sha256sum bin | awk '{print $1}' | tr 'a-f' 'A-F') > "$td/upper.sha256"
+  echo "$(cat "$td/upper.sha256")  bin" > "$td/upper.sha256"
+  if sha256_check "$dest" "$td/upper.sha256" "selftest-uppercase" 2>/dev/null; then
+    rm -rf "$td"; err "selftest: uppercase sidecar must fail"; exit 1
+  fi
+  echo "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz  bin" > "$td/nonhex.sha256"
+  if sha256_check "$dest" "$td/nonhex.sha256" "selftest-nonhex" 2>/dev/null; then
+    rm -rf "$td"; err "selftest: non-hex sidecar must fail"; exit 1
+  fi
+  (cd "$td" && sha256sum bin | awk '{print substr($1, 1, 63)}') > "$td/trunc.sha256"
+  echo "$(cat "$td/trunc.sha256")  bin" > "$td/trunc.sha256"
+  if sha256_check "$dest" "$td/trunc.sha256" "selftest-truncated" 2>/dev/null; then
+    rm -rf "$td"; err "selftest: truncated sidecar must fail"; exit 1
+  fi
+  (cd "$td" && sha256sum bin | awk '{print $1}') > "$td/over.sha256"
+  echo "$(cat "$td/over.sha256")0  bin" > "$td/over.sha256"
+  if sha256_check "$dest" "$td/over.sha256" "selftest-overlength" 2>/dev/null; then
+    rm -rf "$td"; err "selftest: over-length sidecar must fail"; exit 1
+  fi
   (cd "$td" && sha256sum bin > good.sha256)
   if ! sha256_check "$dest" "$td/good.sha256" "selftest-match"; then
     rm -rf "$td"; err "selftest: matching sidecar must pass"; exit 1
   fi
   rm -rf "$td" "$OPENOODA_HOME"
-  ok "selftest-sha: missing/empty/mismatch refuse, match accepts"
+  ok "selftest-sha: missing/empty/mismatch/uppercase/nonhex/truncated/overlength refuse, match accepts"
   exit 0
 }
 

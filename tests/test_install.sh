@@ -159,4 +159,55 @@ fi
 if grep -q '(also ooda-tui)' install.sh; then echo "FAIL preamble still apologizes for ooda-tui"; exit 1; fi
 if grep -q 'cp -f "$dest" "$BIN_DIR/ooda-tui"' install.sh; then echo "FAIL double-install copy remains"; exit 1; fi
 grep -q 'rm -f "$BIN_DIR/ooda-tui"' install.sh || { echo "FAIL no stale-alias removal"; exit 1; }
-echo "PASS install 9.9 fail-closed sha256+blackbox+toolchain+bash-rc+no-shadow+no-state-loss+opm-nonzero+on-disk-accept+from-source+from-source-dryrun-no-bootstrap+no-double-tui"
+# Plan v30: versions.toml pin parsing is a trust boundary. Extract the
+# real declare+load_pins pair and feed it a hostile manifest: malformed
+# version strings and path-traversal keys must never reach PINS.
+awk '
+  /^declare -A PINS=/ { print; next }
+  /^load_pins\(\)/, /^\}/ { print; if (/^\}/) exit }
+' install.sh > "$TMPD/pins.sh"
+test -s "$TMPD/pins.sh" || { echo "FAIL could not extract load_pins from install.sh"; exit 1; }
+cat > "$TMPD/versions.toml" <<'EOF'
+# valid pins — the only entries that may load
+oodar = "v1.2.3"
+std = "v0.4.0"
+STD = "v9.9.9"
+
+# malformed version strings — all refused by the pin regex
+cli = "1.2.3"
+tui = "v1.2"
+opm = "v1.2.3.4"
+lsp = "v1.2.3-beta"
+mcp = "v1.2.3; rm -rf /"
+oodac = "v1.2"
+
+# path-traversal and non-token keys — all refused
+../evil = "v9.9.9"
+a/b = "v9.9.9"
+std.extra = "v9.9.9"
+"quoted" = "v1.2.3"
+key-with-dash = "v1.2.3"
+key_with_under = "v1.2.3"
+
+# unquoted, single-quoted, and empty values — all refused
+bad1 = v1.2.3
+bad2 = 'v1.2.3'
+bad3 = ""
+EOF
+bash -c '
+  source "$1"
+  load_pins
+  fail=0
+  [ "${#PINS[@]}" -eq 3 ] || { echo "FAIL pin count ${#PINS[@]} (want 3: oodar,std,STD)"; declare -p PINS; fail=1; }
+  [ "${PINS[oodar]:-}" = "v1.2.3" ] || { echo "FAIL oodar pin"; fail=1; }
+  [ "${PINS[std]:-}" = "v0.4.0" ] || { echo "FAIL std pin"; fail=1; }
+  [ "${PINS[STD]:-}" = "v9.9.9" ] || { echo "FAIL STD uppercase-key pin (documents case-sensitive lookup)"; fail=1; }
+  for k in cli tui opm lsp mcp oodac bad1 bad2 bad3; do
+    [ -z "${PINS[$k]:-}" ] || { echo "FAIL malformed pin accepted: $k=${PINS[$k]}"; fail=1; }
+  done
+  for k in "../evil" "a/b" "std.extra" "quoted" "key-with-dash" "key_with_under"; do
+    [ -z "${PINS[$k]:-}" ] || { echo "FAIL traversal/weird key accepted: $k"; fail=1; }
+  done
+  exit $fail
+' _ "$TMPD/pins.sh" || { echo "FAIL load_pins accepted hostile versions.toml entries"; exit 1; }
+echo "PASS install 9.10 fail-closed sha256+blackbox+toolchain+bash-rc+no-shadow+no-state-loss+opm-nonzero+on-disk-accept+from-source+from-source-dryrun-no-bootstrap+no-double-tui+selftest-corrupted-digests+pin-parsing-negative-trust"
