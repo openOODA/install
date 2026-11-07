@@ -27,8 +27,8 @@ After it finishes, either restart your shell or run `source ~/.bashrc` (or
 │   ├── oodac        # compiler
 │   ├── liboodar.a   # runtime substrate (static lib)
 │   ├── opm          # package manager
-│   ├── lsp          # writing helper (language server)
-│   └── mcp          # AI helper (MCP server)
+│   ├── ooda-lsp     # writing helper (language server)
+│   └── ooda-mcp     # AI helper (MCP server)
 └── std/             # standard library (git clone)
 ```
 
@@ -49,8 +49,8 @@ installed.
 | `oodac`   | openOODA-core/oodac | `oodac`      | Compiler                                 |
 | `oodar`   | openOODA-core/oodar | `liboodar.a` | Runtime substrate (C static library)     |
 | `opm`     | openOODA-core/opm   | `opm`        | Package manager                          |
-| `lsp`     | openOODA-core/lsp   | `lsp`        | Language server                          |
-| `mcp`     | openOODA-core/mcp   | `mcp`        | MCP server                               |
+| `lsp`     | openOODA-core/lsp   | `ooda-lsp`   | Language server                          |
+| `mcp`     | openOODA-core/mcp   | `ooda-mcp`   | MCP server                               |
 | `std`     | openOODA-core/std   | (clone)      | Standard library                         |
 
 ## Environment variables

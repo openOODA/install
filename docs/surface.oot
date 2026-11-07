@@ -30,5 +30,5 @@ Each GitHub release asset `{bin}-{os}-{arch}` must ship a
 sibling `{bin}-{os}-{arch}.sha256`. `install.sh` refuses
 a missing sidecar the same way it refuses a hash mismatch.
 
-Binaries: ooda, cli, tui, oodac, liboodar.a, opm, lsp, mcp.
+Binaries: ooda, cli, tui, oodac, liboodar.a, opm, ooda-lsp, ooda-mcp.
 std is a git clone under `~/.openooda/std`.

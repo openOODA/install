@@ -13,7 +13,7 @@ rc=$?
 test "$rc" -eq 0 || { echo "FAIL installer exit=$rc"; tail -5 "$THOME/install.log"; exit 1; }
 grep -q "SHA-256 verified" "$THOME/install.log" || { echo "FAIL no SHA-256 verified line"; exit 1; }
 grep -q "skipped (--no-modify-shell)" "$THOME/install.log" || { echo "FAIL summary misreports rc skip"; exit 1; }
-for b in ooda cli oodac opm lsp mcp tui; do
+for b in ooda cli oodac opm ooda-lsp ooda-mcp tui; do
   test -x "$THOME/.openooda/bin/$b" || { echo "FAIL missing bin $b"; exit 1; }
   "$THOME/.openooda/bin/$b" --help >/dev/null 2>&1 || { echo "FAIL $b --help"; exit 1; }
 done
