@@ -21,19 +21,25 @@ fn install_root(env: &EnvCap) -> String {
 
 fn extract_from_sh(p: &ProcessCap, root: String) -> String {
   // Extract values only from BINARIES declaration line
-  let cmd: String = "grep 'BINARIES=' " + root + "/install.sh | grep -oE '\\[[^]]+\\]=[^ )]+' | sed 's/\\[[^]]*\\]=//' | sort -u | tr '\\n' ',' | sed 's/,$//'";
+  let cmd: String = "grep 'BINARIES=' " + root + "/install.sh"
+    + " | grep -oE '\\[[^]]+\\]=[^ )]+'"
+    + " | sed 's/\\[[^]]*\\]=//' | sort -u | tr '\\n' ',' | sed 's/,$//'";
   let r: Result[String, String] = sys_exec(p, "bash", "-c", cmd);
   return match r { Ok(s) => s, Err(_) => "" };
 }
 
 fn extract_from_oot(p: &ProcessCap, root: String) -> String {
   // Extract binaries from docs/surface.oot multi-line block
-  let cmd: String = "grep '^Binaries: ' " + root + "/docs/surface.oot | sed 's/^Binaries: //;s/\\.$//' | tr ',' '\\n' | sed 's/^ *//;s/ *$//' | grep -v '^$' | sort -u | tr '\\n' ',' | sed 's/,$//'";
+  let cmd: String = "grep '^Binaries: ' " + root + "/docs/surface.oot"
+    + " | sed 's/^Binaries: //;s/\\.$//' | tr ',' '\\n'"
+    + " | sed 's/^ *//;s/ *$//' | grep -v '^$'"
+    + " | sort -u | tr '\\n' ',' | sed 's/,$//'";
   let r: Result[String, String] = sys_exec(p, "bash", "-c", cmd);
   return match r { Ok(s) => s, Err(_) => "" };
 }
 
-pub fn main(p: &ProcessCap, fs_r: &FsReadCap, sys: &SysCap, env: &EnvCap, time: &TimeCap, fs_w: &FsWriteCap, alloc: &AllocCap, args: List[String]) -> Result[Int, String] {
+pub fn main(p: &ProcessCap, fs_r: &FsReadCap, sys: &SysCap, env: &EnvCap,
+    time: &TimeCap, fs_w: &FsWriteCap, alloc: &AllocCap, args: List[String]) -> Result[Int, String] {
   let root: String = install_root(env);
   let from_sh: String = extract_from_sh(p, root);
   let from_oot: String = extract_from_oot(p, root);

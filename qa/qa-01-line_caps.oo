@@ -19,10 +19,17 @@ fn install_root(env: &EnvCap) -> String {
   return ".";
 }
 
-pub fn main(p: &ProcessCap, fs_r: &FsReadCap, sys: &SysCap, env: &EnvCap, time: &TimeCap, fs_w: &FsWriteCap, alloc: &AllocCap, args: List[String]) -> Result[Int, String] {
+pub fn main(p: &ProcessCap, fs_r: &FsReadCap, sys: &SysCap, env: &EnvCap,
+    time: &TimeCap, fs_w: &FsWriteCap, alloc: &AllocCap, args: List[String]) -> Result[Int, String] {
   let root: String = install_root(env);
   // One shell pipeline: find .oo/.oot files, count lines, fail on > 256.
-  let cmd: String = "find " + root + " -type f \\( -name '*.oo' -o -name '*.oot' \\) -not -path '*/.git/*' -not -path '*/audit/*' | while read f; do n=$(wc -l < \"$f\"); if [ \"$n\" -gt 256 ]; then echo \"$n $f\"; fi; done | head -1";
+  let q: String = "\"";
+  let cmd: String = "find " + root
+    + " -type f \\( -name '*.oo' -o -name '*.oot' \\) "
+    + "-not -path '*/.git/*' -not -path '*/audit/*' "
+    + "| while read f; do n=$(wc -l < " + q + "$f" + q + "); "
+    + "if [ " + q + "$n" + q + " -gt 256 ]; then echo "
+    + q + "$n $f" + q + "; fi; done | head -1";
   let cr: Result[String, String] = sys_exec(p, "bash", "-c", cmd);
   if cr.is_err() {
     let err_msg: String = match cr { Ok(_) => "", Err(e) => e };
@@ -34,7 +41,9 @@ pub fn main(p: &ProcessCap, fs_r: &FsReadCap, sys: &SysCap, env: &EnvCap, time: 
   }
 
   // Reject deprecated uppercase canonical boards
-  let upper_cmd: String = "find " + root + " -type f \\( -name 'ANCHOR.oo' -o -name 'INSTALL.md' -o -name 'SURFACE.oot' \\) -not -path '*/.git/*' | head -1";
+  let upper_cmd: String = "find " + root
+    + " -type f \\( -name 'ANCHOR.oo' -o -name 'INSTALL.md' "
+    + "-o -name 'SURFACE.oot' \\) -not -path '*/.git/*' | head -1";
   let ur: Result[String, String] = sys_exec(p, "bash", "-c", upper_cmd);
   if ur.is_err() {
     let u_err: String = match ur { Ok(_) => "", Err(e) => e };

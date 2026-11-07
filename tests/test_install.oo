@@ -29,7 +29,10 @@ pub fn main(
     if expect(oo_pqc_sha3_round(41, 7) > 0, "02 seal stays in the positive field") { p = p + 1; }
     if expect(oo_pqc_sha3_round(41, 7) != oo_pqc_sha3_round(41, 8), "03 tampered nonce yields a different seal") { p = p + 1; }
     if expect(oo_pqc_sha3_round(0, 7) != oo_pqc_sha3_round(41, 7), "04 forged digest yields a different seal") { p = p + 1; }
-    if p == 4 { println("install tests: 4/4 passed"); return Ok(0); }
+    if p == 4 {
+        println("install tests: 4/4 passed");
+        return Ok(0);
+    }
     println("install tests: FAILED (" + to_string(p) + "/4)");
     return Ok(1);
 }
