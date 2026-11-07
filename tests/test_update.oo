@@ -107,10 +107,18 @@ pub fn main(
         str_contains(src, "${PINS[$key]:-}") &&
         str_contains(src, "${PINS[std]:-}");
     if expect(g8, "08 empty pin table stays safe under set -u via defaulted lookups") { p = p + 1; }
-    if p == 8 {
-        println("install update tests: 8/8 passed");
+    let g9: Bool = str_contains(src, "v[0-9]+\\.[0-9]+\\.[0-9]+") &&
+        str_contains(src, "|| continue") &&
+        str_contains(src, "declare -A PINS=()");
+    if expect(g9, "09 pin grammar refuses unquoted or non-semver values before fetch refs") { p = p + 1; }
+    let g10: Bool = str_contains(src, "! -f \"$rc.bak.openooda\"") &&
+        str_contains(src, "cp -p \"$rc\" \"$rc.bak.openooda\"") &&
+        str_contains(src, ".bak.openooda backup");
+    if expect(g10, "10 rc edits are preceded by a single-shot backup for rollback") { p = p + 1; }
+    if p == 10 {
+        println("install update tests: 10/10 passed");
         return Ok(0);
     }
-    println("install update tests: FAILED (" + to_string(p) + "/8)");
+    println("install update tests: FAILED (" + to_string(p) + "/10)");
     return Ok(1);
 }
