@@ -12,7 +12,7 @@ run_install() {
     bash install.sh --yes --no-modify-shell > "$THOME/$1" 2>&1
 }
 snapshot() {
-  (cd "$THOME/.openooda/bin" && for b in ooda cli oodac opm lsp mcp tui; do
+  (cd "$THOME/.openooda/bin" && for b in ooda cli oodac opm ooda-lsp ooda-mcp tui; do
     test -x "$b" || { echo "FAIL missing bin $b ($1)"; exit 1; }
     sha256sum "$b"
   done; test -f liboodar.a || { echo "FAIL missing liboodar.a ($1)"; exit 1; }
