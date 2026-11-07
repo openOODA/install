@@ -151,6 +151,9 @@ bar() {
 
 spinner() {
   local pid=$1
+  # No animation when stdout is not a tty: piped output must stay
+  # deterministic (frame count and step snapshots are timing-dependent).
+  [[ -t 1 ]] || return 0
   # Use braille if stdout is a tty AND locale likely supports UTF-8; else ASCII fallback.
   local frames
   if [[ -t 1 ]] && [[ "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" == *UTF-8* || "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" == *utf8* ]]; then
@@ -172,6 +175,9 @@ spinner() {
 # the literal "working" if the status file is empty/unreadable.
 spinner_with_status() {
   local pid=$1 status_file="$2"
+  # No animation when stdout is not a tty: piped output must stay
+  # deterministic (frame count and step snapshots are timing-dependent).
+  [[ -t 1 ]] || return 0
   local frames
   if [[ -t 1 ]] && [[ "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" == *UTF-8* || "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" == *utf8* ]]; then
     frames=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
