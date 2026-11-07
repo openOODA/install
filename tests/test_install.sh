@@ -322,4 +322,49 @@ v_file="$(tr -d '[:space:]' < VERSION)"
 bash install.sh --version 2>&1 | grep -qF "openOODA installer $v_file" || { echo "FAIL --version disagrees with VERSION ($v_file)"; exit 1; }
 v_pkg="$(sed -n 's/^version=//p' ooda.pkg | head -1)"
 [ "$v_pkg" = "$v_file" ] || { echo "FAIL ooda.pkg version $v_pkg != VERSION $v_file"; exit 1; }
-echo "PASS install 9.16 fail-closed sha256+blackbox+toolchain+bash-rc+no-shadow+no-state-loss+opm-nonzero+on-disk-accept+from-source+from-source-dryrun-no-bootstrap+no-double-tui+selftest-corrupted-digests+pin-parsing-negative-trust+pin-grammar-adversarial+pin-lenient-edges+pin-empty-manifest+pin-channel-directive-refusal+cli-contract-refusals+dryrun-idempotence+dryrun-schema+version-roundtrip"
+# Multi-arch artifact resolution + fetch_and_verify tamper refusal.
+# The real functions are lifted from install.sh and driven against a
+# stubbed curl that serves fixtures, so the inline hash path (separate
+# from sha256_check) is exercised behaviorally, not by grep.
+FV="$TMPD/fv"; mkdir -p "$FV"
+{ sed -n '/^declare -A BINARIES=/p;/^declare -A ASSETS=/p' install.sh
+  sed -n '/^asset_stem() {/,/^}/p;/^asset_names() {/,/^}/p;/^fetch_and_verify() {/,/^}/p' install.sh
+} > "$FV/lib.sh"
+grep -q '^fetch_and_verify() {' "$FV/lib.sh" && grep -q '^asset_names() {' "$FV/lib.sh" \
+  || { echo "FAIL could not lift asset_names/fetch_and_verify from install.sh"; exit 1; }
+an() { ( . "$FV/lib.sh"; OS=linux; ARCH="$2"; asset_names "$1" | tr '\n' ' ' ); }
+[ "$(an mcp arm64)" = "ooda-mcp-linux-arm64 ooda-mcp " ] || { echo "FAIL mcp arm64 candidates: $(an mcp arm64)"; exit 1; }
+[ "$(an oodac x86_64)" = "oodac-linux-x86_64 oodac " ] || { echo "FAIL oodac x86_64 candidates: $(an oodac x86_64)"; exit 1; }
+[ "$(an oodar arm64)" = "liboodar.a-linux-arm64 liboodar.a " ] || { echo "FAIL oodar arm64 candidates: $(an oodar arm64)"; exit 1; }
+an lsp arm64 | grep -q 'x86_64' && { echo "FAIL arm64 resolution leaked an x86_64 asset"; exit 1; }
+an lsp x86_64 | grep -q 'arm64' && { echo "FAIL x86_64 resolution leaked an arm64 asset"; exit 1; }
+# fv_case <name> <binary-body> <sidecar-body|404> -> runs fetch_and_verify
+fv_case() {
+  local d="$FV/$1"; mkdir -p "$d/wd"; printf '%s' "$2" > "$d/srv_bin"
+  if [ "$3" = "404" ]; then rm -f "$d/srv_sha"; else printf '%s\n' "$3" > "$d/srv_sha"; fi
+  ( . "$FV/lib.sh"
+    curl() { local o="" u="" a; while [ $# -gt 0 ]; do a="$1"; shift
+        case "$a" in -o) o="$1"; shift;; -w|--connect-timeout|--max-time) shift;; -*) ;; *) u="$a";; esac; done
+      case "$u" in *.sha256) [ -f "$d/srv_sha" ] || { printf 404; return 0; }; cp "$d/srv_sha" "$o";;
+        *) cp "$d/srv_bin" "$o";; esac; printf 200; }
+    fetch_and_verify "https://example.invalid/asset" "$d/dest" "$d/wd" )
+}
+good_hash="$(printf 'openooda-asset' | sha256sum | awk '{print $1}')"
+fv_case ok 'openooda-asset' "$good_hash  asset"
+[ "$(cat "$FV/ok/wd/vrc")" = "0" ] && [ -x "$FV/ok/dest" ] && [ ! -e "$FV/ok/dest.tmp.sha256" ] \
+  || { echo "FAIL fetch_and_verify did not install a correctly signed artifact"; exit 1; }
+fv_case tamper 'openooda-asseT' "$good_hash  asset"
+[ "$(cat "$FV/tamper/wd/vrc")" = "mismatch" ] && [ ! -e "$FV/tamper/dest" ] \
+  || { echo "FAIL fetch_and_verify installed a tampered artifact"; exit 1; }
+fv_case upper 'openooda-asset' "$(printf '%s' "$good_hash" | tr 'a-f' 'A-F')  asset"
+[ ! -e "$FV/upper/dest" ] || { echo "FAIL fetch_and_verify accepted an uppercase-corrupted digest"; exit 1; }
+fv_case trunc 'openooda-asset' "${good_hash:0:63}  asset"
+[ ! -e "$FV/trunc/dest" ] || { echo "FAIL fetch_and_verify accepted a truncated digest"; exit 1; }
+fv_case blank 'openooda-asset' "   "
+[ ! -e "$FV/blank/dest" ] || { echo "FAIL fetch_and_verify accepted a blank sidecar"; exit 1; }
+fv_case nosig 'openooda-asset' 404
+[ ! -e "$FV/nosig/dest" ] && [ ! -e "$FV/nosig/wd/vrc" ] \
+  || { echo "FAIL fetch_and_verify installed an artifact with no sidecar"; exit 1; }
+fv_case empty '' "$good_hash  asset"
+[ ! -e "$FV/empty/dest" ] || { echo "FAIL fetch_and_verify installed an empty artifact"; exit 1; }
+echo "PASS install 9.16 multi-arch-resolution+fetch-verify-tamper-refusal+fail-closed sha256+blackbox+toolchain+bash-rc+no-shadow+no-state-loss+opm-nonzero+on-disk-accept+from-source+from-source-dryrun-no-bootstrap+no-double-tui+selftest-corrupted-digests+pin-parsing-negative-trust+pin-grammar-adversarial+pin-lenient-edges+pin-empty-manifest+pin-channel-directive-refusal+cli-contract-refusals+dryrun-idempotence+dryrun-schema+version-roundtrip"
