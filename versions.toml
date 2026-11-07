@@ -1,10 +1,9 @@
 # openOODA version overrides for install.sh.
 #
-# All component binaries publish as assets on the openOODA/openOODA
-# umbrella release (auto-release.yml). A pin value is a tag on that
-# release — NOT a per-component version. Default: latest release.
-# Pin a component to an older umbrella tag by uncommenting, e.g.:
-# oodac = "v2.11.127"
-# ooda = "v2.11.126"
+# Each L0 toolchain binary publishes from its openOODA-core/<repo> release
+# (or a local dist file, or `gh release download`). A pin value is a tag on
+# that component repo. Default: latest release. Example:
+# oodac = "v0.11.63"
+# oodar = "v4.0.90"
 # std clones openOODA-core/std; its pin is a git ref on that repo:
 # std = "v1.0.88"

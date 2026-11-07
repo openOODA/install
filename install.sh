@@ -24,7 +24,6 @@ case "$OPENOODA_HOME" in \~|\~/*)
 esac
 BIN_DIR="$OPENOODA_HOME/bin"
 STD_DIR="$OPENOODA_HOME/std"
-RELEASES="https://github.com/openOODA"
 DRY_RUN="${OPENOODA_DRY_RUN:-0}"
 LOG_FILE="$OPENOODA_HOME/install.log"
 NO_MODIFY_SHELL=0
@@ -99,10 +98,12 @@ else
 fi
 _log() { printf '[%s] %s\n' "$(date -Iseconds 2>/dev/null || date)" "$*" >&3 2>/dev/null || true; }
 
-# Every component's binary publishes as an asset on the openOODA/openOODA
-# umbrella release (auto-release.yml attaches release-assets-* there); the
-# per-component-repo release model was retired — pointing at it 404s.
-declare -A REPOS=([ooda]=openOODA [oodac]=openOODA [oodar]=openOODA [opm]=openOODA [lsp]=openOODA [mcp]=openOODA [cli]=openOODA [tui]=openOODA)
+# The 8 L0 toolchain repos live in the openOODA-core org. The openOODA/<repo>
+# and openOODA/openOODA umbrella URLs 404 for these assets. Resolution order
+# is a local dist file, then `gh release download` from openOODA-core/<repo>,
+# then the HTTPS asset URL on that same repo.
+RELEASES="https://github.com/openOODA-core"
+declare -A REPOS=([ooda]=ooda [oodac]=oodac [oodar]=oodar [opm]=opm [lsp]=lsp [mcp]=mcp [cli]=cli [tui]=tui)
 # Dest names match repo names. ASSETS is the GitHub release stem when it
 # still differs (lsp/mcp have not republished as lsp-linux-x86_64 yet).
 declare -A BINARIES=([ooda]=ooda [oodac]=oodac [oodar]=liboodar.a [opm]=opm [lsp]=ooda-lsp [mcp]=ooda-mcp [cli]=cli [tui]=tui)
@@ -412,13 +413,114 @@ asset_stem() {
   echo "${ASSETS[$1]:-${BINARIES[$1]}}"
 }
 
-release_url() {
-  local tag="${PINS[$1]:-latest}"
-  local stem; stem=$(asset_stem "$1")
+# Candidate asset basenames. Releases are inconsistent: mcp publishes
+# stem-os-arch, oodac and oodar publish the bare binary name.
+asset_names() {
+  local key="$1" stem bin
+  stem="$(asset_stem "$key")"
+  bin="${BINARIES[$key]}"
+  printf '%s\n%s\n%s\n' "${stem}-${OS}-${ARCH}" "$bin" "$stem" | awk '!seen[$0]++'
+}
+
+release_url_for() {
+  local key="$1" name="$2"
+  local tag="${PINS[$key]:-latest}"
+  local repo="${REPOS[$key]}"
   if [[ "$tag" == "latest" ]]; then
-    echo "${RELEASES}/${REPOS[$1]}/releases/latest/download/${stem}-${OS}-${ARCH}"
+    printf '%s\n' "${RELEASES}/${repo}/releases/latest/download/${name}"
   else
-    echo "${RELEASES}/${REPOS[$1]}/releases/download/${tag}/${stem}-${OS}-${ARCH}"
+    printf '%s\n' "${RELEASES}/${repo}/releases/download/${tag}/${name}"
+  fi
+}
+
+release_url() {
+  local name
+  name="$(asset_names "$1")"
+  name="${name%%$'\n'*}"
+  release_url_for "$1" "$name"
+}
+
+# First hit wins: OPENOODA_CORE, OPENOODA_DIST, then a checkout-sibling
+# openOODA-core (install.sh lives in <openOODA>/install) and flat dist dirs.
+local_dist_file() {
+  local key="$1" repo="${REPOS[$key]}"
+  local -a names=() roots=()
+  local name root rel self here
+  while IFS= read -r name; do
+    [[ -n "$name" ]] && names+=("$name")
+  done < <(asset_names "$key")
+  [[ -n "${OPENOODA_CORE:-}" ]] && roots+=("$OPENOODA_CORE")
+  [[ -n "${OPENOODA_DIST:-}" ]] && roots+=("$OPENOODA_DIST")
+  self="${BASH_SOURCE[0]:-$0}"
+  if [[ -f "$self" ]]; then
+    here="$(cd "$(dirname "$self")" && pwd)"
+    roots+=("$here/../../openOODA-core" "$here/../dist" "$here/dist")
+  fi
+  for root in "${roots[@]}"; do
+    [[ -d "$root" ]] || continue
+    for name in "${names[@]}"; do
+      for rel in \
+        "$root/$repo/dist/$name" \
+        "$root/$repo/bin/$name" \
+        "$root/$repo/scripts/lib/$name" \
+        "$root/dist/$name" \
+        "$root/$name"
+      do
+        if [[ -f "$rel" && -s "$rel" ]]; then
+          printf '%s\n' "$rel"
+          return 0
+        fi
+      done
+    done
+  done
+  return 1
+}
+
+# 0 = installed, 1 = no asset (caller may try the next source), 2 = hard fail.
+install_from_gh() {
+  local key="$1" dest="$2"
+  command -v gh >/dev/null 2>&1 || return 1
+  local repo="${REPOS[$key]}" tag="${PINS[$key]:-}"
+  local -a tagargs=()
+  local wd name size
+  [[ -n "$tag" && "$tag" != "latest" ]] && tagargs=(--tag "$tag")
+  wd=$(mktemp -d 2>/dev/null || echo "/tmp/openooda-gh-$$-$key")
+  while IFS= read -r name; do
+    [[ -n "$name" ]] || continue
+    rm -f "$wd/$name" "$wd/$name.sha256"
+    if gh release download --repo "openOODA-core/$repo" "${tagargs[@]}" \
+        --pattern "$name" --pattern "$name.sha256" --dir "$wd" --clobber >/dev/null 2>&1 \
+        && [[ -s "$wd/$name" ]]; then
+      if [[ ! -s "$wd/$name.sha256" ]]; then
+        rm -rf "$wd"
+        err "$key: release asset $name has no SHA-256 sidecar; refuse unsigned install"
+        return 2
+      fi
+      if ! sha256_check "$wd/$name" "$wd/$name.sha256" "$key"; then
+        rm -rf "$wd"
+        return 2
+      fi
+      mv -f "$wd/$name" "$dest"
+      chmod +x "$dest" 2>/dev/null || true
+      rm -rf "$wd"
+      return 0
+    fi
+  done < <(asset_names "$key")
+  rm -rf "$wd"
+  return 1
+}
+
+note_installed() {
+  local key="$1" dest="$2" how="$3"
+  local size mb
+  size=$(wc -c < "$dest" 2>/dev/null || echo 0)
+  mb=$(awk -v s="$size" 'BEGIN{printf "%.1f", s/1048576}')
+  ok "installed $(basename "$dest") ${how} (${mb} MB)"
+  INSTALLED+=("$key")
+  BYTES=$((BYTES + size))
+  if [[ "$key" == "tui" && -e "$BIN_DIR/ooda-tui" ]]; then
+    rm -f "$BIN_DIR/ooda-tui" 2>/dev/null || true
+    ok "removed stale ~/.openooda/bin/ooda-tui alias"
   fi
 }
 
@@ -542,69 +644,114 @@ selftest_sha() {
   exit 0
 }
 
+install_from_local() {
+  local key="$1" dest="$2" src="$3"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    ok "[dry-run] would install $(basename "$dest") from $src"
+    INSTALLED+=("$key")
+    return 0
+  fi
+  cp -f "$src" "$dest.tmp"
+  if [[ -s "$src.sha256" ]]; then
+    cp -f "$src.sha256" "$dest.tmp.sha256"
+    if ! sha256_check "$dest.tmp" "$dest.tmp.sha256" "$key"; then
+      rm -f "$dest.tmp" "$dest.tmp.sha256"
+      return 1
+    fi
+    rm -f "$dest.tmp.sha256"
+  else
+    info "$key: local dist has no SHA-256 sidecar; installing the on-disk file"
+  fi
+  mv -f "$dest.tmp" "$dest"
+  chmod +x "$dest" 2>/dev/null || true
+  note_installed "$key" "$dest" "from local dist"
+  return 0
+}
+
 install_component() {
-  local key="$1" dest="$BIN_DIR/${BINARIES[$1]}" url
-  url="$(release_url "$key")"
+  local key="$1" dest="$BIN_DIR/${BINARIES[$1]}"
+  local local_src="" gh_rc=0 url
   printf '  %s%s%s\n' "$BOLD" "$key" "$RESET"
+  local_src="$(local_dist_file "$key" || true)"
+  if [[ -n "$local_src" ]]; then
+    install_from_local "$key" "$dest" "$local_src"
+    return $?
+  fi
 
   if [[ "$DRY_RUN" == "1" ]]; then
-    ok "[dry-run] would install $(basename "$dest")"
+    ok "[dry-run] would install $(basename "$dest") from openOODA-core/${REPOS[$key]} via gh release download or $(release_url "$key")"
     INSTALLED+=("$key")
     return 0
   fi
 
-  # ONE subshell + ONE spinner for the whole per-component install
-  local wd; wd=$(mktemp -d 2>/dev/null || echo "/tmp/openooda-$$-$key")
-  ( fetch_and_verify "$url" "$dest" "$wd" ) &
-  local pid=$!
-  spinner "$pid"
-  wait "$pid" 2>/dev/null || true
+  if command -v gh >/dev/null 2>&1; then
+    install_from_gh "$key" "$dest" || gh_rc=$?
+    if [[ $gh_rc -eq 0 ]]; then
+      note_installed "$key" "$dest" "via gh release download"
+      return 0
+    elif [[ $gh_rc -eq 2 ]]; then
+      return 1
+    fi
+  fi
 
-  # Read all results
-  local dl sha vrc vhash size expected actual
-  dl=$(cat "$wd/dl" 2>/dev/null || echo 000)
-  sha=$(cat "$wd/sha" 2>/dev/null || echo "")
-  vrc=$(cat "$wd/vrc" 2>/dev/null || echo "missing")
-  vhash=$(cat "$wd/vhash" 2>/dev/null || echo "")
-  size=$(cat "$wd/size" 2>/dev/null || echo 0)
-  expected=$(cat "$wd/expected" 2>/dev/null || echo "")
-  actual=$(cat "$wd/actual" 2>/dev/null || echo "")
+  # HTTPS fallback. A 404 tries the next asset name. A downloaded asset
+  # with a bad or missing sidecar refuses; it does not fall through.
+  local wd dl sha vrc vhash size expected actual last_dl="404" got_asset=0
+  wd=$(mktemp -d 2>/dev/null || echo "/tmp/openooda-$$-$key")
+  while IFS= read -r url; do
+    [[ -n "$url" ]] || continue
+    rm -f "$dest.tmp" "$dest.tmp.sha256"
+    rm -rf "$wd"; mkdir -p "$wd"
+    ( fetch_and_verify "$url" "$dest" "$wd" ) &
+    local pid=$!
+    spinner "$pid"
+    wait "$pid" 2>/dev/null || true
+    dl=$(cat "$wd/dl" 2>/dev/null || echo 000)
+    sha=$(cat "$wd/sha" 2>/dev/null || echo "")
+    vrc=$(cat "$wd/vrc" 2>/dev/null || echo "missing")
+    vhash=$(cat "$wd/vhash" 2>/dev/null || echo "")
+    size=$(cat "$wd/size" 2>/dev/null || echo 0)
+    expected=$(cat "$wd/expected" 2>/dev/null || echo "")
+    actual=$(cat "$wd/actual" 2>/dev/null || echo "")
+    last_dl="$dl"
+    if [[ "$vrc" == "0" && -e "$dest" ]]; then
+      info "$key: SHA-256 verified ($vhash...)"
+      local mb; mb=$(awk -v s="$size" 'BEGIN{printf "%.1f", s/1048576}')
+      ok "installed $(basename "$dest") (${mb} MB)"; INSTALLED+=("$key")
+      BYTES=$((BYTES + size))
+      if [[ "$key" == "tui" && -e "$BIN_DIR/ooda-tui" ]]; then
+        rm -f "$BIN_DIR/ooda-tui" 2>/dev/null || true
+        ok "removed stale ~/.openooda/bin/ooda-tui alias"
+      fi
+      got_asset=1
+      break
+    fi
+    if [[ "$dl" == "200" ]]; then
+      rm -rf "$wd"
+      rm -f "$dest.tmp" "$dest.tmp.sha256"
+      if [[ -z "$sha" || "$sha" != "200" ]]; then
+        err "$key: missing SHA-256 sidecar; refuse unsigned install"
+      else
+        err "$key: SHA-256 checksum mismatch (expected ${expected:-empty}, got $actual)"
+      fi
+      return 1
+    fi
+  done < <(asset_names "$key" | while IFS= read -r name; do release_url_for "$key" "$name"; done)
   rm -rf "$wd"
+  [[ $got_asset -eq 1 ]] && return 0
 
-  # Branch on results
-  if [[ "$vrc" == "0" && -e "$dest" ]]; then
-    local mb; mb=$(awk -v s="$size" 'BEGIN{printf "%.1f", s/1048576}')
-    info "$key: SHA-256 verified ($vhash...)"
-    ok "installed $(basename "$dest") (${mb} MB)"; INSTALLED+=("$key")
-    BYTES=$((BYTES + size))
-    # The ooda-tui double-install is retired: one binary named tui.
-    # Remove the ghost alias left by older installers, if present.
-    if [[ "$key" == "tui" && -e "$BIN_DIR/ooda-tui" ]]; then
-      rm -f "$BIN_DIR/ooda-tui" 2>/dev/null || true
-      ok "removed stale ~/.openooda/bin/ooda-tui alias"
-    fi
-  elif [[ "$dl" != "200" ]]; then
-    rm -f "$dest.tmp" "$dest.tmp.sha256"
-    if [[ -e "$dest" ]]; then
-      warn "$key download failed (http $dl); preserved existing $(basename "$dest")"
-      INSTALLED+=("$key")
-    elif [[ "$dl" == "404" ]]; then
-      skip "$key not yet shipped for $OS-$ARCH"; SKIPPED+=("$key")
-    elif [[ "$key" == "ooda" || "$key" == "oodac" ]]; then
-      err "$key download failed (http $dl) with no existing binary; refusing partial install"
-      exit 1
-    else
-      warn "$key download failed (http $dl); continuing without $(basename "$dest")"
-      SKIPPED+=("$key")
-    fi
-  elif [[ -z "$sha" || "$sha" != "200" ]]; then
-    rm -f "$dest.tmp" "$dest.tmp.sha256"
-    err "$key: missing SHA-256 sidecar; refuse unsigned install"
-    return 1
+  rm -f "$dest.tmp" "$dest.tmp.sha256"
+  if [[ -e "$dest" ]]; then
+    warn "$key download failed (http $last_dl); preserved existing $(basename "$dest")"
+    INSTALLED+=("$key")
+  elif [[ "$last_dl" == "404" ]]; then
+    skip "$key not yet shipped for $OS-$ARCH"; SKIPPED+=("$key")
+  elif [[ "$key" == "ooda" || "$key" == "oodac" ]]; then
+    err "$key download failed (http $last_dl) with no existing binary; refusing partial install"
+    exit 1
   else
-    rm -f "$dest.tmp" "$dest.tmp.sha256"
-    err "$key: SHA-256 checksum mismatch (expected ${expected:-empty}, got $actual)"
-    return 1
+    warn "$key download failed (http $last_dl); continuing without $(basename "$dest")"
+    SKIPPED+=("$key")
   fi
 }
 
