@@ -1,9 +1,0 @@
-name=install
-version=0.2.6
-caps=FsRead,FsWrite,Process,Env
-deps=std
-description=Bootstrap installer for the openOODA toolchain: curl|bash entrypoint with apt/dnf/pacman hooks, fail-closed SHA-256 sidecar verification, idempotent installs.
-payload=anchor.oo
-commit=
-sha256=
-sig=
