@@ -157,6 +157,8 @@ stage_images() {
   local iso_dir="$STAGE/iso-root"
   mkdir -p "$iso_dir/EFI/BOOT" "$iso_dir/boot" "$iso_dir/bin"
   [[ -f "$STAGE/ooboot-linux-x86_64" ]] && cp -f "$STAGE/ooboot-linux-x86_64" "$iso_dir/EFI/BOOT/BOOTX64.EFI"
+  [[ -f "$STAGE/ooboot-linux-x86_64" ]] && cp -f "$STAGE/ooboot-linux-x86_64" "$iso_dir/boot/eltorito.img"
+  [[ -f "$STAGE/ooboot-linux-x86_64" ]] && cp -f "$STAGE/ooboot-linux-x86_64" "$iso_dir/boot/efi.img"
   [[ -f "$STAGE/ookernel-linux-x86_64" ]] && cp -f "$STAGE/ookernel-linux-x86_64" "$iso_dir/boot/ookernel"
   [[ -f "$STAGE/ooinit-linux-x86_64" ]] && cp -f "$STAGE/ooinit-linux-x86_64" "$iso_dir/bin/ooinit"
   [[ -f "$STAGE/oosh-linux-x86_64" ]] && cp -f "$STAGE/oosh-linux-x86_64" "$iso_dir/bin/oosh"
