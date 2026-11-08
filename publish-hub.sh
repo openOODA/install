@@ -99,9 +99,12 @@ find_repo() {  # $1 = package name → prints repo dir or nothing
 # binary is ooda-lsp; oodar's product is the liboodar.a archive.
 bin_candidates() {
   case "$1" in
-    oodar) printf 'liboodar.a\n';;
-    oolsp) printf 'oolsp\nooda-lsp\n';;
-    *)     printf '%s\n%s-linux-x86_64\n' "$1" "$1";;
+    oodar)  printf 'liboodar.a\n';;
+    oolsp)  printf 'oolsp\nooda-lsp\n';;
+    oofs)   printf 'oofs\noofs-linux-x86_64\noocp\noocp-linux-x86_64\n';;
+    oohw)   printf 'oohw\noohw-linux-x86_64\noohwinfo\noohwinfo-linux-x86_64\n';;
+    ooperm) printf 'ooperm\nooperm-linux-x86_64\noochmod\noochmod-linux-x86_64\n';;
+    *)      printf '%s\n%s-linux-x86_64\n' "$1" "$1";;
   esac
 }
 
@@ -133,6 +136,15 @@ ensure_binary() {  # $1 = package name → prints path to built binary
 
 stage_pkg() {  # $1 = package name
   local pkg="$1" bin asset
+  if [[ "$pkg" == "oostd" ]]; then
+    local repo
+    repo="$(find_repo oostd)" || die "no repo for oostd"
+    asset="oostd-linux-x86_64.tar.gz"
+    ( cd "$repo" && tar --exclude='.git' --exclude='.ooda-cache' --exclude='bin' --exclude='dist' -czf "$STAGE/$asset" . )
+    chmod 0644 "$STAGE/$asset"
+    say "staged $asset <- $repo (source archive)"
+    return 0
+  fi
   bin="$(ensure_binary "$pkg")"
   if [[ "$pkg" == "oodar" ]]; then asset="liboodar.a"; else asset="${pkg}-linux-x86_64"; fi
   cp -f "$bin" "$STAGE/$asset"
@@ -184,7 +196,7 @@ prune_assets() {
   while IFS= read -r n; do
     [[ -n "$n" ]] || continue
     case "$n" in
-      SHA256SUMS|SHA256SUMS.sig|liboodar.a|*-linux-x86_64) ;;
+      SHA256SUMS|SHA256SUMS.sig|liboodar.a|oostd-linux-x86_64.tar.gz|*-linux-x86_64) ;;
       *)
         say "deleting legacy asset $n"
         [[ "$DRY_RUN" == "1" ]] || \
@@ -226,8 +238,9 @@ main() {
   ensure_single_release
   prune_assets
   upload_all
-  gh release view "$RELEASE_TAG" -R "$RELEASE_REPO" --json assets \
-    -q '.assets | length' | xargs -I{} say "release now carries {} assets"
+  local asset_count
+  asset_count="$(gh release view "$RELEASE_TAG" -R "$RELEASE_REPO" --json assets -q '.assets | length')"
+  say "release now carries $asset_count assets"
   ok "hub publish complete"
 }
 
