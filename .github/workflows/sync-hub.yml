@@ -1,0 +1,258 @@
+# ==============================================================================
+# sync-hub: Server-Independent Zero-Trust GitHub Action
+#
+# Polls every canonical product repo across the openOODA-* orgs, rebuilds any
+# repo whose master SHA moved (or whose binary is absent from the hub Release),
+# and republishes the single openOODA/install Release pool plus the catalog
+# COMMIT_LEDGER / SHA256SUMS. All compilation happens on GitHub-hosted runners
+# with stdout/stderr discarded so no .oo source ever reaches public logs.
+# ==============================================================================
+
+name: sync-hub
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+    inputs:
+      package:
+        description: "Package to force-rebuild (name or 'all')"
+        required: false
+        default: "all"
+  repository_dispatch:
+    types: [sync-hub]
+
+concurrency:
+  group: sync-hub
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ secrets.OODA_ORG_TOKEN }}
+      RELEASE_REPO: openOODA/install
+      CATALOG_REPO: openOODA/catalog
+      BOOTSTRAP: /tmp/ooda-bootstrap
+      WORK_ROOT: /tmp/build-work
+      OUT_ROOT: /tmp/hub-out
+    steps:
+      - name: Checkout install and catalog
+        uses: actions/checkout@v4
+        with:
+          repository: openOODA/install
+          token: ${{ secrets.OODA_ORG_TOKEN }}
+          path: install
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: openOODA/catalog
+          token: ${{ secrets.OODA_ORG_TOKEN }}
+          path: catalog
+          persist-credentials: false
+
+      - name: Resolve canonical packages and changed repos (single GraphQL call)
+        id: resolve
+        run: |
+          set -euo pipefail
+          cd catalog
+          declare -A GDEF=()
+          while IFS= read -r line; do
+            line="${line%%#*}"
+            [[ "$line" =~ ^[[:space:]]*@([A-Za-z0-9_-]+)[[:space:]]*=[[:space:]]*(.*)$ ]] || continue
+            GDEF["${BASH_REMATCH[1]}"]="${BASH_REMATCH[2]}"
+          done < groups.oot
+          expand() {
+            local want="$1" out="" seen=" " tok g
+            local -a queue=("$want")
+            while ((${#queue[@]})); do
+              g="${queue[0]}"; queue=("${queue[@]:1}")
+              [[ "$seen" == *" $g "* ]] && continue
+              seen="$seen$g "
+              for tok in ${GDEF[$g]:-}; do
+                if [[ "$tok" == @* ]]; then queue+=("${tok#@}"); else out="$out $tok"; fi
+              done
+            done
+            printf '%s\n' $out | awk 'NF && !seen[$0]++'
+          }
+          expand all | grep -vx oostd > /tmp/pkgs.txt
+          echo "canonical buildable packages: $(wc -l < /tmp/pkgs.txt)"
+
+          ORGS="openOODA-core openOODA-kernel openOODA-OS openOODA-tools openOODA-DE openOODA-apps openOODA-cloud openOODA-agents"
+          : > /tmp/repo-map.txt
+          for org in $ORGS; do
+            gh api "orgs/$org/repos?per_page=100" --paginate -q '.[].name' | while read -r r; do
+              printf '%s %s/%s\n' "$r" "$org" "$r" >> /tmp/repo-map.txt
+            done
+          done
+          declare -A REPO_OF=()
+          while read -r name orgrepo; do
+            if grep -qx "$name" /tmp/pkgs.txt; then REPO_OF[$name]="$orgrepo"; fi
+          done < /tmp/repo-map.txt
+
+          # One GraphQL query for every mapped repo's master SHA.
+          {
+            echo 'query {'
+            i=0
+            for pkg in $(cat /tmp/pkgs.txt); do
+              repo="${REPO_OF[$pkg]:-}"
+              [ -z "$repo" ] && continue
+              org="${repo%%/*}"; name="${repo##*/}"
+              printf 'r%d: repository(owner:"%s",name:"%s") { object(expression:"master") { ... on Commit { oid } } }\n' "$i" "$org" "$name"
+              printf '%s\n' "$i $pkg $repo" >> /tmp/gql-index.txt
+              i=$((i+1))
+            done
+            echo '}'
+          } > /tmp/shas.graphql
+          gh api graphql -f query="$(cat /tmp/shas.graphql)" > /tmp/shas.json
+          : > /tmp/current-sha.txt
+          while read -r i pkg repo; do
+            sha="$(jq -r ".data.r$i.object.oid // empty" /tmp/shas.json)"
+            [ -n "$sha" ] && printf '%s %s %s\n' "$pkg" "$repo" "$sha" >> /tmp/current-sha.txt
+          done < /tmp/gql-index.txt
+
+          LEDGER=/tmp/COMMIT_LEDGER.json
+          if [ -f catalog/COMMIT_LEDGER ]; then cp catalog/COMMIT_LEDGER "$LEDGER"; else echo '{}' > "$LEDGER"; fi
+          TAG="$(gh api repos/$RELEASE_REPO/releases/latest -q .tag_name)"
+          echo "release tag: $TAG"
+          gh release view "$TAG" -R "$RELEASE_REPO" --json assets -q '.assets[].name' | sort > /tmp/release-assets.txt
+
+          FORCED="${{ inputs.package }}"
+          [ "$FORCED" = "null" ] && FORCED=""
+          : > /tmp/changed.txt
+          while read -r pkg repo sha; do
+            old="$(jq -r --arg k "$repo" '.[$k] // empty' "$LEDGER")"
+            asset="$pkg-linux-x86_64"; [ "$pkg" = "oodar" ] && asset="liboodar.a"
+            need=0
+            if [ -n "$FORCED" ] && { [ "$FORCED" = "all" ] || [ "$FORCED" = "$pkg" ]; }; then need=1; fi
+            if [ "$old" != "$sha" ]; then need=1; fi
+            if ! grep -qx "$asset" /tmp/release-assets.txt; then need=1; fi
+            if [ "$need" = "1" ]; then printf '%s %s %s\n' "$pkg" "$repo" "$sha" >> /tmp/changed.txt; fi
+          done < /tmp/current-sha.txt
+
+          n=$(wc -l < /tmp/changed.txt | tr -d ' ')
+          echo "changed/missing: $n"
+          if [ "$n" = "0" ]; then echo "skip=true" >> "$GITHUB_OUTPUT"; else echo "skip=false" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Exit early when nothing changed
+        if: steps.resolve.outputs.skip == 'true'
+        run: echo "no repo SHA changed and all binaries present; nothing to do"
+
+      - name: Fetch bootstrap toolchain (outside checkout)
+        if: steps.resolve.outputs.skip == 'false'
+        run: |
+          set -euo pipefail
+          TAG="$(gh api repos/$RELEASE_REPO/releases/latest -q .tag_name)"
+          mkdir -p "$BOOTSTRAP"
+          gh release download "$TAG" -R "$RELEASE_REPO" -D "$BOOTSTRAP" \
+            --pattern 'oodac-linux-x86_64' --pattern 'liboodar.a' --clobber
+          mv -f "$BOOTSTRAP/oodac-linux-x86_64" "$BOOTSTRAP/oodac"
+          chmod +x "$BOOTSTRAP/oodac"
+          git clone --depth 1 https://github.com/openOODA-core/oostd.git "$BOOTSTRAP/oostd" >/dev/null 2>&1
+          test -f "$BOOTSTRAP/oostd/anchor.oo" && echo "bootstrap ready"
+
+      - name: Build changed repos and stage stripped binaries
+        if: steps.resolve.outputs.skip == 'false'
+        run: |
+          set -uo pipefail
+          mkdir -p "$WORK_ROOT" "$OUT_ROOT"
+          while read -r pkg repo sha; do
+            [ -z "$pkg" ] && continue
+            echo "=== build $pkg ($repo)"
+            rm -rf "$WORK_ROOT/$pkg"
+            if ! git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/$repo.git" "$WORK_ROOT/$pkg" >/dev/null 2>&1; then
+              echo "warn: clone failed for $repo"; continue
+            fi
+            cd "$WORK_ROOT/$pkg"
+            if [ -f Makefile ]; then
+              OODA_COMPILER="$BOOTSTRAP/oodac" OO_LIST_AMBIENT_QUOTA=34359738368 OODA_NO_JAIL=1 \
+                make build >/dev/null 2>&1 || \
+              OODA_COMPILER="$BOOTSTRAP/oodac" OO_LIST_AMBIENT_QUOTA=34359738368 OODA_NO_JAIL=1 \
+                make >/dev/null 2>&1 || true
+            fi
+            bin=""
+            for cand in "dist/$pkg" "bin/$pkg" "scripts/lib/$pkg" "$pkg"; do
+              [ -f "$cand" ] && [ -s "$cand" ] && { bin="$cand"; break; }
+            done
+            if [ -z "$bin" ] && [ "$pkg" = "oolsp" ]; then
+              for cand in "dist/oolsp" "dist/ooda-lsp" "bin/oolsp" "bin/ooda-lsp"; do
+                [ -f "$cand" ] && [ -s "$cand" ] && { bin="$cand"; break; }
+              done
+            fi
+            if [ -z "$bin" ] && [ "$pkg" = "oodar" ]; then
+              for cand in "scripts/lib/liboodar.a" "dist/liboodar.a" "liboodar.a"; do
+                [ -f "$cand" ] && [ -s "$cand" ] && { bin="$cand"; break; }
+              done
+            fi
+            if [ -n "$bin" ]; then
+              asset="$pkg-linux-x86_64"; [ "$pkg" = "oodar" ] && asset="liboodar.a"
+              cp -f "$WORK_ROOT/$pkg/$bin" "$OUT_ROOT/$asset"
+              if [ "$pkg" != "oodar" ]; then strip --strip-all "$OUT_ROOT/$asset"; fi
+              echo "built $pkg -> $asset"
+            else
+              echo "warn: no binary produced for $pkg"
+            fi
+            cd /
+            rm -rf "$WORK_ROOT/$pkg"
+          done < /tmp/changed.txt
+          echo "build pass complete"
+
+      - name: Publish release assets and master SHA256SUMS
+        if: steps.resolve.outputs.skip == 'false'
+        run: |
+          set -euo pipefail
+          TAG="$(gh api repos/$RELEASE_REPO/releases/latest -q .tag_name)"
+          mkdir -p "$OUT_ROOT"
+          gh release download "$TAG" -R "$RELEASE_REPO" -D "$OUT_ROOT" --clobber || true
+          # keep only the canonical pool: <pkg>-linux-x86_64 for every buildable pkg + liboodar.a
+          : > /tmp/keep-assets.txt
+          while read -r pkg; do
+            asset="$pkg-linux-x86_64"; [ "$pkg" = "oodar" ] && asset="liboodar.a"
+            printf '%s\n' "$asset" >> /tmp/keep-assets.txt
+          done < /tmp/pkgs.txt
+          for f in "$OUT_ROOT"/*; do
+            [ -e "$f" ] || continue
+            base="$(basename "$f")"
+            if ! grep -qx "$base" /tmp/keep-assets.txt; then rm -f "$f"; fi
+          done
+          rm -f "$OUT_ROOT"/SHA256SUMS "$OUT_ROOT"/SHA256SUMS.sig
+          ( cd "$OUT_ROOT" && find . -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort | xargs -r sha256sum > SHA256SUMS )
+          ( cd "$OUT_ROOT" && sha256sum -c SHA256SUMS --quiet ) && echo "sums self-check OK"
+          gh release upload "$TAG" "$OUT_ROOT"/* --clobber -R "$RELEASE_REPO"
+          echo "published $(find "$OUT_ROOT" -maxdepth 1 -type f | wc -l) assets"
+
+      - name: Update catalog COMMIT_LEDGER and SHA256SUMS
+        if: steps.resolve.outputs.skip == 'false'
+        run: |
+          set -euo pipefail
+          cd catalog
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/openOODA/catalog.git"
+          python3 - <<'PY'
+          import json
+          merged = json.load(open('/tmp/COMMIT_LEDGER.json'))
+          pkg2repo = {}
+          for line in open('/tmp/repo-map.txt'):
+              p = line.split()
+              if len(p) == 2:
+                  pkg2repo[p[0]] = p[1]
+          for line in open('/tmp/current-sha.txt'):
+              p = line.split()
+              if len(p) == 3:
+                  pkg, repo, sha = p
+                  merged[repo] = sha
+          with open('COMMIT_LEDGER', 'w') as f:
+              json.dump(merged, f, indent=2, sort_keys=True)
+              f.write('\n')
+          PY
+          cp /tmp/hub-out/SHA256SUMS SHA256SUMS
+          git add COMMIT_LEDGER SHA256SUMS
+          if git diff --cached --quiet; then echo "ledger unchanged"; else
+            git commit -m "chore(catalog): sync-hub COMMIT_LEDGER + SHA256SUMS [skip ci]"
+            git push origin HEAD:master
+          fi
