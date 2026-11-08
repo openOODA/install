@@ -152,6 +152,37 @@ stage_pkg() {  # $1 = package name
   say "staged $asset <- $bin"
 }
 
+stage_images() {
+  # 1. Stage ooda-os-x86_64.iso (bootable UEFI/BIOS ISO9660 image packed by ooflash)
+  local iso_dir="$STAGE/iso-root"
+  mkdir -p "$iso_dir/EFI/BOOT" "$iso_dir/boot" "$iso_dir/bin"
+  [[ -f "$STAGE/ooboot-linux-x86_64" ]] && cp -f "$STAGE/ooboot-linux-x86_64" "$iso_dir/EFI/BOOT/BOOTX64.EFI"
+  [[ -f "$STAGE/ookernel-linux-x86_64" ]] && cp -f "$STAGE/ookernel-linux-x86_64" "$iso_dir/boot/ookernel"
+  [[ -f "$STAGE/ooinit-linux-x86_64" ]] && cp -f "$STAGE/ooinit-linux-x86_64" "$iso_dir/bin/ooinit"
+  [[ -f "$STAGE/oosh-linux-x86_64" ]] && cp -f "$STAGE/oosh-linux-x86_64" "$iso_dir/bin/oosh"
+  if [[ -x "$ROOT/openOODA-apps/ooflash/bin/ooflash" ]]; then
+    "$ROOT/openOODA-apps/ooflash/bin/ooflash" pack-iso "$iso_dir" -o "$STAGE/ooda-os-x86_64.iso" >/dev/null 2>&1 || true
+  fi
+  rm -rf "$iso_dir"
+  if [[ -s "$STAGE/ooda-os-x86_64.iso" ]]; then
+    chmod 0644 "$STAGE/ooda-os-x86_64.iso"
+    say "staged ooda-os-x86_64.iso (bootable ISO9660 image)"
+  fi
+
+  # 2. Stage ooda-buildbox-x86_64.tar.gz (hermetic L0 buildbox container rootfs)
+  local bb_dir="$STAGE/buildbox-root"
+  mkdir -p "$bb_dir/bin" "$bb_dir/lib" "$bb_dir/std"
+  for c in ooda oodac oopm oolsp oomcp oocontainer oohat oosh; do
+    [[ -f "$STAGE/${c}-linux-x86_64" ]] && cp -f "$STAGE/${c}-linux-x86_64" "$bb_dir/bin/$c" && chmod 0755 "$bb_dir/bin/$c"
+  done
+  [[ -f "$STAGE/liboodar.a" ]] && cp -f "$STAGE/liboodar.a" "$bb_dir/lib/liboodar.a"
+  [[ -f "$ROOT/openOODA/openOODA/AGENTS.md" ]] && cp -f "$ROOT/openOODA/openOODA/AGENTS.md" "$bb_dir/AGENTS.md"
+  ( cd "$bb_dir" && tar -czf "$STAGE/ooda-buildbox-x86_64.tar.gz" . )
+  rm -rf "$bb_dir"
+  chmod 0644 "$STAGE/ooda-buildbox-x86_64.tar.gz"
+  say "staged ooda-buildbox-x86_64.tar.gz (hermetic buildbox container bundle)"
+}
+
 gen_sums() {
   ( cd "$STAGE" && find . -maxdepth 1 -type f ! -name 'SHA256SUMS*' -printf '%f\n' \
       | LC_ALL=C sort | xargs sha256sum > SHA256SUMS )
@@ -196,7 +227,7 @@ prune_assets() {
   while IFS= read -r n; do
     [[ -n "$n" ]] || continue
     case "$n" in
-      SHA256SUMS|SHA256SUMS.sig|liboodar.a|oostd-linux-x86_64.tar.gz|*-linux-x86_64) ;;
+      SHA256SUMS|SHA256SUMS.sig|liboodar.a|oostd-linux-x86_64.tar.gz|ooda-os-x86_64.iso|ooda-buildbox-x86_64.tar.gz|*-linux-x86_64) ;;
       *)
         say "deleting legacy asset $n"
         [[ "$DRY_RUN" == "1" ]] || \
@@ -228,7 +259,8 @@ main() {
     [[ -n "$name" ]] || continue
     stage_pkg "$name"; n=$((n+1))
   done <<< "$pkgs"
-  ok "staged $n assets in $STAGE"
+  stage_images
+  ok "staged $n package assets + ISO & buildbox images in $STAGE"
   gen_sums
   if [[ "$DRY_RUN" == "1" ]]; then
     say "[dry-run] would ensure single release, prune legacy assets, upload $(ls "$STAGE" | wc -l) files"
