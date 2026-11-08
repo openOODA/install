@@ -51,7 +51,7 @@ installed.
 | `opm`     | openOODA-core/opm   | `opm`        | Package manager                          |
 | `lsp`     | openOODA-core/lsp   | `ooda-lsp`   | Language server                          |
 | `mcp`     | openOODA-core/mcp   | `ooda-mcp`   | MCP server                               |
-| `std`     | openOODA-core/std   | (clone)      | Standard library                         |
+| `std`     | openOODA-core/oostd   | (clone)      | Standard library                         |
 
 ## Environment variables
 
@@ -194,7 +194,7 @@ The standard library is cloned via `git`. If `git` is missing, `install.sh`
 skips the `std` clone and prints the manual command. Install `git` and run:
 
 ```sh
-git clone --depth 1 https://github.com/openOODA-core/std ~/.openooda/std
+git clone --depth 1 https://github.com/openOODA-core/oostd ~/.openooda/std
 ```
 
 ### `permission denied` when running installed binaries

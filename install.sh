@@ -127,7 +127,7 @@ declare -A ASSETS=([lsp]=ooda-lsp [mcp]=ooda-mcp)
 # SOURCE_MAIN: repo-root-relative build entry per component, used only by
 # --from-source. oodac has no entry: `oodac build oodac/main.oo` refuses
 # (unique_fns), so from-source keeps the bootstrap compiler as the product.
-declare -A SOURCE_MAIN=([ooda]=ooda/main.oo [cli]=cli/main.oo [opm]=opm/cli/main.oo [lsp]=lsp/cli/main.oo [mcp]=mcp/cli/main.oo [tui]=tui/main.oo)
+declare -A SOURCE_MAIN=([ooda]=ooda/main.oo [cli]=oocli/main.oo [opm]=oopm/cli/main.oo [lsp]=oolsp/cli/main.oo [mcp]=oomcp/cli/main.oo [tui]=ootui/entry/main.oo)
 
 # --- color --------------------------------------------------------------------
 
@@ -829,10 +829,10 @@ resolve_source_dir() {
   [[ -n "$d" ]] || { err "from-source: cannot resolve dir: $SOURCE_DIR"; return 1; }
   local missing=()
   local s
-  for s in ooda/main.oo cli/main.oo tui/main.oo opm/cli/main.oo lsp/cli/main.oo mcp/cli/main.oo oodar/scripts/Makefile openOODA/northstar.oot openOODA/spec.oot; do
+  for s in ooda/main.oo oocli/main.oo ootui/entry/main.oo oopm/cli/main.oo oolsp/cli/main.oo oomcp/cli/main.oo oodar/scripts/Makefile openOODA/northstar.oot openOODA/spec.oot; do
     [[ -f "$d/$s" ]] || missing+=("$s")
   done
-  [[ -f "$d/std/anchor.oo" || -f "$d/std/ANCHOR.oo" ]] || missing+=("std/anchor.oo")
+  [[ -f "$d/oostd/anchor.oo" || -f "$d/oostd/ANCHOR.oo" ]] || missing+=("oostd/anchor.oo")
   if [[ ${#missing[@]} -gt 0 ]]; then
     err "from-source: $d is not an openOODA checkout (missing: ${missing[*]})"
     return 1
@@ -951,7 +951,7 @@ install_std_from_source() {
     return 0
   fi
   rm -rf "$STD_DIR.new" 2>/dev/null || true
-  cp -a "$SRC_DIR/std" "$STD_DIR.new" 2>/dev/null || { err "std sync failed (copy)"; return 1; }
+  cp -a "$SRC_DIR/oostd" "$STD_DIR.new" 2>/dev/null || { err "std sync failed (copy)"; return 1; }
   if [[ ! -f "$STD_DIR.new/anchor.oo" && ! -f "$STD_DIR.new/ANCHOR.oo" ]]; then
     rm -rf "$STD_DIR.new" 2>/dev/null || true
     err "std sync failed (no anchor.oo in source std)"
@@ -1296,7 +1296,7 @@ do_install() {
   elif [[ ! -f "$STD_DIR/anchor.oo" && ! -f "$STD_DIR/ANCHOR.oo" ]]; then
     step_status "installing std"
     local wd; wd=$(mktemp -d 2>/dev/null || echo "/tmp/openooda-std-$$")
-    ( fetch_repo "https://github.com/openOODA-core/std" "$STD_DIR" "anchor.oo" "${PINS[std]:-}" "$wd" ) &
+    ( fetch_repo "https://github.com/openOODA-core/oostd" "$STD_DIR" "anchor.oo" "${PINS[std]:-}" "$wd" ) &
     spinner $!
     wait $! 2>/dev/null || true
     local status; status=$(cat "$wd/status" 2>/dev/null || echo "fail")

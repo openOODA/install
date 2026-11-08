@@ -85,7 +85,8 @@ pub fn main(
         str_contains(src, "tag=\"${PINS[$key]:-}\"");
     if expect(g2, "02 release channel binds --tag to PINS lookups only") { p = p + 1; }
     let g3: Bool = str_contains(src, "args+=(--branch \"$branch\")") &&
-        str_contains(src, "fetch_repo \"https://github.com/openOODA-core/std\" \"$STD_DIR\" \"anchor.oo\" \"${PINS[std]:-}\"");
+        str_contains(src, "fetch_repo \"https://github.com/openOODA-core/oostd\" \"$STD_DIR\" \"anchor.oo\"") &&
+        str_contains(src, "\"${PINS[std]:-}\"");
     if expect(g3, "03 git channel binds --branch to the std pin only") { p = p + 1; }
     let g4: Bool = str_contains(src, "mv -f \"$tmp\" \"$RESULTS_FILE\"") &&
         str_contains(src, "install state was lost") &&
