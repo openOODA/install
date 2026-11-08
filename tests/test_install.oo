@@ -10,9 +10,9 @@
 //   3. Assert a forged digest fails closed.
 //   4. Assert the nonce sweep stays distinct, positive, and reproducible.
 
-import "std/core/primitives/str.oo";
-import "std/fs/os/fs.oo";
-import "std/sec/pqc.oo";
+import "oostd/core/primitives/str.oo";
+import "oostd/fs/os/fs.oo";
+import "oostd/sec/pqc.oo";
 
 fn expect(cond: Bool, label: String) -> Bool {
     if cond {

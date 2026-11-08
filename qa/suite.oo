@@ -9,7 +9,7 @@
 //   2. Typecheck and double-run each probe driver (Run_1 == Run_2 = 0).
 //   3. Print summary.
 
-import "std/sec/pqc.oo";
+import "oostd/sec/pqc.oo";
 
 // The seal of one QA digest. The digest and the verifier nonce are bound
 // through the canonical post-quantum round so two runs agree.

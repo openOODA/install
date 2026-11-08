@@ -10,8 +10,8 @@
 //   3. Assert the install-state transaction commits atomically behind fail-closed guards.
 //   4. Assert the shipped versions.toml carries no dead channel directives.
 
-import "std/core/primitives/str.oo";
-import "std/fs/os/fs.oo";
+import "oostd/core/primitives/str.oo";
+import "oostd/fs/os/fs.oo";
 
 fn expect(cond: Bool, label: String) -> Bool {
     if cond {
