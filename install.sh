@@ -467,7 +467,8 @@ release_url() {
 # First hit wins: OPENOODA_CORE, OPENOODA_DIST, then a checkout-sibling
 # openOODA-core (install.sh lives in <openOODA>/install) and flat dist dirs.
 local_dist_file() {
-  local key="$1" repo="${REPOS[$key]}"
+  local key="$1"
+  local repo="${REPOS[$key]}"
   local -a names=() roots=()
   local name root rel self here
   while IFS= read -r name; do

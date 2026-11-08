@@ -7,8 +7,8 @@
 // Beats:
 //   1. Re-export line-cap probe (qa-01-line_caps.oo).
 //   2. Re-export binary manifest probe (qa-02-bin_manifest.oo).
-//   3. Re-export suite orchestrator (suite.oo).
+//   3. The suite orchestrator (suite.oo) runs as its own page: it spawns both
+//      probes as subprocesses, so re-exporting it here would collide on `main`.
 
 import "qa-01-line_caps.oo";
 import "qa-02-bin_manifest.oo";
-import "suite.oo";

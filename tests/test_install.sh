@@ -332,7 +332,7 @@ FV="$TMPD/fv"; mkdir -p "$FV"
 } > "$FV/lib.sh"
 grep -q '^fetch_and_verify() {' "$FV/lib.sh" && grep -q '^asset_names() {' "$FV/lib.sh" \
   || { echo "FAIL could not lift asset_names/fetch_and_verify from install.sh"; exit 1; }
-an() { ( . "$FV/lib.sh"; OS=linux; ARCH="$2"; asset_names "$1" | tr '\n' ' ' ); }
+an() { ( . "$FV/lib.sh"; export OS=linux ARCH="$2"; asset_names "$1" | tr '\n' ' ' ); }
 [ "$(an oomcp arm64)" = "ooda-mcp-linux-arm64 ooda-mcp " ] || { echo "FAIL oomcp arm64 candidates: $(an oomcp arm64)"; exit 1; }
 [ "$(an oodac x86_64)" = "oodac-linux-x86_64 oodac " ] || { echo "FAIL oodac x86_64 candidates: $(an oodac x86_64)"; exit 1; }
 [ "$(an oodar arm64)" = "liboodar.a-linux-arm64 liboodar.a " ] || { echo "FAIL oodar arm64 candidates: $(an oodar arm64)"; exit 1; }

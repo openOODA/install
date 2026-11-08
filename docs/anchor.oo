@@ -7,5 +7,6 @@
 // Beats:
 //   1. surface.oot — distro surface and public install URL.
 //   2. INSTALL.md — flags, ~/.openooda/ layout, three paths.
-
-import "surface.oot";
+//
+// The manual pages are .oot and .md, not .oo pages: a .oo page cannot import
+// them, so this anchor documents the manual without importing it.
