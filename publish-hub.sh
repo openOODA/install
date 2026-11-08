@@ -1,0 +1,234 @@
+#!/usr/bin/env bash
+# publish-hub.sh — Fedora-style binary pool publisher for openOODA/install.
+#
+#   bash publish-hub.sh [pkg ...]
+#
+# With no arguments, publishes every canonical package in
+# /Projects/openOODA/catalog/groups.oot (@all expansion). Named arguments
+# publish only those packages. For each package the script locates the
+# repo under /Projects/openOODA-*/, builds it with `make build` when no
+# binary is present, stages it as <name>-linux-x86_64 (liboodar.a keeps
+# its name), regenerates the single master SHA256SUMS (+ SHA256SUMS.sig
+# when a minisign key is available), copies SHA256SUMS into the catalog
+# repo, and uploads everything in place to the single latest GitHub
+# Release on openOODA/install. Legacy per-file .sha256 sidecars and
+# retired binary assets are deleted; older releases are removed so
+# exactly one active Release remains.
+#
+# Env:
+#   OO_PROJECTS_ROOT  default /Projects
+#   OO_MINISIGN_KEY   path to minisign secret for SHA256SUMS.sig
+#   OO_HUB_RELEASE    release tag on openOODA/install (default: hub)
+#   OO_DRY_RUN=1      stage + print, skip gh upload/delete
+
+set -euo pipefail
+
+ROOT="${OO_PROJECTS_ROOT:-/Projects}"
+CATALOG="$ROOT/openOODA/catalog"
+GROUPS_FILE="$CATALOG/groups.oot"
+ORG_DIRS=(openOODA-core openOODA-kernel openOODA-OS openOODA-tools \
+          openOODA-DE openOODA-apps openOODA-cloud openOODA-agents)
+RELEASE_REPO="openOODA/install"
+RELEASE_TAG="${OO_HUB_RELEASE:-hub}"
+DRY_RUN="${OO_DRY_RUN:-0}"
+STAGE="$(mktemp -d "${TMPDIR:-/tmp}/openooda-hub.XXXXXX")"
+trap 'rm -rf "$STAGE"' EXIT
+
+say()  { printf '  %s\n' "$*"; }
+ok()   { printf '  ✓ %s\n' "$*"; }
+warn() { printf '  ! %s\n' "$*" >&2; }
+die()  { printf '  ✗ %s\n' "$*" >&2; exit 1; }
+
+# --- canonical package list -------------------------------------------------
+
+# groups.oot line parser: `@name = tok tok ...`; @-tokens expand transitively.
+load_groups() {
+  [[ -f "$GROUPS_FILE" ]] || die "groups file missing: $GROUPS_FILE"
+  declare -gA GDEF=()
+  local line g rest
+  while IFS= read -r line; do
+    line="${line%%#*}"
+    [[ "$line" =~ ^[[:space:]]*@([A-Za-z0-9_-]+)[[:space:]]*=[[:space:]]*(.*)$ ]] || continue
+    GDEF["${BASH_REMATCH[1]}"]="${BASH_REMATCH[2]}"
+  done < "$GROUPS_FILE"
+  [[ ${#GDEF[@]} -gt 0 ]] || die "no @group definitions parsed from $GROUPS_FILE"
+}
+
+expand_group() {  # $1 = group name without @; prints deduped members
+  local want="$1" out="" seen=" "
+  local -a queue=("$want")
+  while ((${#queue[@]})); do
+    local g="${queue[0]}"; queue=("${queue[@]:1}")
+    [[ "$seen" == *" $g "* ]] && continue
+    seen="$seen$g "
+    [[ -n "${GDEF[$g]:-}" ]] || die "unknown group @$g"
+    local tok
+    for tok in ${GDEF[$g]}; do
+      if [[ "$tok" == @* ]]; then queue+=("${tok#@}"); else out="$out $tok"; fi
+    done
+  done
+  printf '%s\n' $out | awk 'NF && !seen[$0]++'
+}
+
+canonical_pkgs() {
+  if (($#)); then
+    local a need_groups=0
+    for a in "$@"; do [[ "$a" == @* ]] && need_groups=1; done
+    [[ $need_groups == 1 ]] && load_groups
+    for a in "$@"; do
+      if [[ "$a" == @* ]]; then expand_group "${a#@}"; else printf '%s\n' "$a"; fi
+    done | awk 'NF && !seen[$0]++'
+    return
+  fi
+  load_groups
+  expand_group all
+}
+
+# --- repo lookup --------------------------------------------------------------
+
+find_repo() {  # $1 = package name → prints repo dir or nothing
+  local org d
+  for org in "${ORG_DIRS[@]}"; do
+    d="$ROOT/$org/$1"
+    [[ -d "$d" ]] && { printf '%s\n' "$d"; return 0; }
+  done
+  return 1
+}
+
+# Binary basenames a repo may produce, in preference order. oolsp's product
+# binary is ooda-lsp; oodar's product is the liboodar.a archive.
+bin_candidates() {
+  case "$1" in
+    oodar) printf 'liboodar.a\n';;
+    oolsp) printf 'oolsp\nooda-lsp\n';;
+    *)     printf '%s\n%s-linux-x86_64\n' "$1" "$1";;
+  esac
+}
+
+locate_binary() {  # $1 = repo dir, $2 = package name → prints path or nothing
+  local repo="$1" pkg="$2" cand rel
+  while IFS= read -r cand; do
+    for rel in "dist/$cand" "bin/$cand" "scripts/lib/$cand" "$cand"; do
+      [[ -f "$repo/$rel" && -s "$repo/$rel" ]] && { printf '%s\n' "$repo/$rel"; return 0; }
+    done
+  done < <(bin_candidates "$pkg")
+  return 1
+}
+
+ensure_binary() {  # $1 = package name → prints path to built binary
+  local pkg="$1" repo bin
+  repo="$(find_repo "$pkg")" || die "no repo for package $pkg under $ROOT/openOODA-*"
+  bin="$(locate_binary "$repo" "$pkg" || true)"
+  if [[ -z "$bin" && -f "$repo/Makefile" ]]; then
+    say "building $pkg ($(basename "$repo"))"
+    ( cd "$repo" && make build >/dev/null 2>&1 ) || \
+      ( cd "$repo" && make >/dev/null 2>&1 ) || true
+    bin="$(locate_binary "$repo" "$pkg" || true)"
+  fi
+  [[ -n "$bin" ]] || die "no binary for $pkg in $repo (make build produced nothing locatable)"
+  printf '%s\n' "$bin"
+}
+
+# --- staging + checksums -------------------------------------------------------
+
+stage_pkg() {  # $1 = package name
+  local pkg="$1" bin asset
+  bin="$(ensure_binary "$pkg")"
+  if [[ "$pkg" == "oodar" ]]; then asset="liboodar.a"; else asset="${pkg}-linux-x86_64"; fi
+  cp -f "$bin" "$STAGE/$asset"
+  chmod 0644 "$STAGE/$asset"
+  say "staged $asset <- $bin"
+}
+
+gen_sums() {
+  ( cd "$STAGE" && find . -maxdepth 1 -type f ! -name 'SHA256SUMS*' -printf '%f\n' \
+      | LC_ALL=C sort | xargs sha256sum > SHA256SUMS )
+  [[ -s "$STAGE/SHA256SUMS" ]] || die "SHA256SUMS generation produced nothing"
+  if [[ -n "${OO_MINISIGN_KEY:-}" && -f "${OO_MINISIGN_KEY}" ]] && command -v minisign >/dev/null 2>&1; then
+    ( cd "$STAGE" && minisign -S -s "$OO_MINISIGN_KEY" -m SHA256SUMS -x SHA256SUMS.sig ) && \
+      ok "signed SHA256SUMS -> SHA256SUMS.sig" || warn "minisign failed; shipping unsigned sums"
+  else
+    warn "no OO_MINISIGN_KEY/minisign; SHA256SUMS.sig not generated"
+  fi
+  cp -f "$STAGE/SHA256SUMS" "$CATALOG/SHA256SUMS"
+  ok "master SHA256SUMS -> catalog/SHA256SUMS"
+}
+
+# --- release hygiene -------------------------------------------------------------
+
+ensure_single_release() {
+  local tags
+  tags="$(gh release list -R "$RELEASE_REPO" --limit 100 --json tagName -q '.[].tagName' 2>/dev/null || true)"
+  if ! printf '%s\n' "$tags" | grep -qx "$RELEASE_TAG"; then
+    gh release create "$RELEASE_TAG" -R "$RELEASE_REPO" \
+      --title "openOODA binary hub" --notes "Single binary pool. SHA256SUMS is the master checksum; install.sh verifies against it." || \
+      die "cannot create release $RELEASE_TAG on $RELEASE_REPO"
+    ok "created release $RELEASE_TAG"
+  fi
+  local t
+  while IFS= read -r t; do
+    [[ -n "$t" && "$t" != "$RELEASE_TAG" ]] || continue
+    gh release delete "$t" -R "$RELEASE_REPO" -y >/dev/null 2>&1 && \
+      say "deleted older release $t"
+  done <<< "$tags"
+}
+
+prune_assets() {
+  # Allowlist hygiene: the pool keeps exactly SHA256SUMS*, liboodar.a, and
+  # <pkg>-linux-x86_64 binaries. Everything else — legacy per-file .sha256
+  # sidecars, retired bare stems (cli, tui, ooarchitect, oodo, and the
+  # pre-rename opm/ooda-lsp/ooda-mcp spellings) — is deleted so the master
+  # SHA256SUMS stays the only checksum channel.
+  local names n
+  names="$(gh release view "$RELEASE_TAG" -R "$RELEASE_REPO" --json assets -q '.assets[].name' 2>/dev/null || true)"
+  while IFS= read -r n; do
+    [[ -n "$n" ]] || continue
+    case "$n" in
+      SHA256SUMS|SHA256SUMS.sig|liboodar.a|*-linux-x86_64) ;;
+      *)
+        say "deleting legacy asset $n"
+        [[ "$DRY_RUN" == "1" ]] || \
+          gh release delete-asset "$RELEASE_TAG" "$n" -R "$RELEASE_REPO" -y >/dev/null 2>&1 || true
+        ;;
+    esac
+  done <<< "$names"
+}
+
+upload_all() {
+  local f
+  for f in "$STAGE"/*; do
+    [[ -f "$f" ]] || continue
+    say "upload $(basename "$f")"
+    [[ "$DRY_RUN" == "1" ]] || \
+      gh release upload "$RELEASE_TAG" "$f" -R "$RELEASE_REPO" --clobber >/dev/null
+  done
+}
+
+# --- main -------------------------------------------------------------------------
+
+main() {
+  say "openOODA hub publish -> $RELEASE_REPO@$RELEASE_TAG"
+  local pkgs
+  pkgs="$(canonical_pkgs "$@")"
+  [[ -n "$pkgs" ]] || die "empty package selection"
+  local n=0 name
+  while IFS= read -r name; do
+    [[ -n "$name" ]] || continue
+    stage_pkg "$name"; n=$((n+1))
+  done <<< "$pkgs"
+  ok "staged $n assets in $STAGE"
+  gen_sums
+  if [[ "$DRY_RUN" == "1" ]]; then
+    say "[dry-run] would ensure single release, prune legacy assets, upload $(ls "$STAGE" | wc -l) files"
+    return 0
+  fi
+  command -v gh >/dev/null 2>&1 || die "gh CLI required"
+  ensure_single_release
+  prune_assets
+  upload_all
+  gh release view "$RELEASE_TAG" -R "$RELEASE_REPO" --json assets \
+    -q '.assets | length' | xargs -I{} say "release now carries {} assets"
+  ok "hub publish complete"
+}
+
+main "$@"

@@ -63,6 +63,11 @@ Options:
                       script runs from <checkout>/install/install.sh.
                       Needs an installed oodac as bootstrap; oodac itself is
                       kept (the compiler cannot self-rebuild: unique_fns).
+  --pkg NAME          install one binary-pool package (<name>-linux-x86_64
+                      from the openOODA/install release, SHA256SUMS-verified)
+  --group @GROUP      install a Fedora-style group profile from
+                      catalog/groups.oot (@core @kernel @os @tools @de
+                      @apps @games @cloud @agents @all); repeatable
   NO_COLOR=1          disable color
   OPENOODA_DRY_RUN=1  same as --dry-run
   OPENOODA_YES=1      same as --yes
@@ -70,8 +75,14 @@ Options:
 USAGE
 }
 DASHDASH=0
+EXPECT_ARG=""
+declare -a PKG_LIST=() GROUP_LIST=()
 for arg in "$@"; do
   case "$arg" in
+    --pkg) EXPECT_ARG="pkg";;
+    --pkg=*) PKG_LIST+=("${arg#--pkg=}");;
+    --group) EXPECT_ARG="group";;
+    --group=*) GROUP_LIST+=("${arg#--group=}");;
     --help|-h) usage; exit 0;;
     --version|-V) printf 'openOODA installer %s\n' "$VERSION"; exit 0;;
     --dry-run) DRY_RUN=1;;
@@ -85,9 +96,15 @@ for arg in "$@"; do
     --selftest-sha) SELFTEST_SHA=1; OPENOODA_HOME="${TMPDIR:-/tmp}/openooda-selftest-sha.$$"; LOG_FILE="$OPENOODA_HOME/install.log";;
     --) DASHDASH=1; break;;
     --*) printf 'install.sh: unknown option: %s (see --help)\n' "$arg" >&2; exit 1;;
-    *)   printf 'install.sh: unexpected argument: %s (see --help)\n' "$arg" >&2; exit 1;;
+    *)
+      if [[ "$EXPECT_ARG" == "pkg" ]]; then PKG_LIST+=("$arg"); EXPECT_ARG="";
+      elif [[ "$EXPECT_ARG" == "group" ]]; then GROUP_LIST+=("$arg"); EXPECT_ARG="";
+      else printf 'install.sh: unexpected argument: %s (see --help)\n' "$arg" >&2; exit 1; fi;;
   esac
 done
+if [[ -n "$EXPECT_ARG" ]]; then
+  printf 'install.sh: --%s requires an argument\n' "$EXPECT_ARG" >&2; exit 1
+fi
 # Everything after -- is positional; this installer takes none, so any
 # trailing argument (e.g. a flag the user meant as an option) refuses.
 if [[ "$DASHDASH" == "1" ]]; then
@@ -120,15 +137,17 @@ _log() { printf '[%s] %s\n' "$(date -Iseconds 2>/dev/null || date)" "$*" >&3 2>/
 # Resolution order is a local dist file, then `gh release download` from
 # openOODA-core/<repo>, then the HTTPS asset URL on that same repo.
 RELEASES="https://github.com/openOODA-core"
-declare -A REPOS=([ooda]=ooda [oodac]=oodac [oodar]=oodar [opm]=opm [oolsp]=oolsp [oomcp]=oomcp)
-# Dest names match repo names. ASSETS is the GitHub release stem when it
-# still differs (oolsp/oomcp publish ooda-lsp/ooda-mcp asset names).
-declare -A BINARIES=([ooda]=ooda [oodac]=oodac [oodar]=liboodar.a [opm]=opm [oolsp]=ooda-lsp [oomcp]=ooda-mcp)
-declare -A ASSETS=([oolsp]=ooda-lsp [oomcp]=ooda-mcp)
+declare -A REPOS=([ooda]=ooda [oodac]=oodac [oodar]=oodar [oopm]=oopm [oolsp]=oolsp [oomcp]=oomcp)
+# Dest names match the canonical L0 binary names. ASSETS is the release
+# stem when it differs: the hub publishes <pkg>-linux-x86_64 per binary and
+# liboodar.a verbatim; every asset verifies against the single master
+# SHA256SUMS at the install release, not per-file .sha256 sidecars.
+declare -A BINARIES=([ooda]=ooda [oodac]=oodac [oodar]=liboodar.a [oopm]=oopm [oolsp]=oolsp [oomcp]=oomcp)
+declare -A ASSETS=([oodar]=liboodar.a)
 # SOURCE_MAIN: repo-root-relative build entry per component, used only by
 # --from-source. oodac has no entry: `oodac build oodac/main.oo` refuses
 # (unique_fns), so from-source keeps the bootstrap compiler as the product.
-declare -A SOURCE_MAIN=([ooda]=ooda/main.oo [opm]=oopm/cli/main.oo [oolsp]=oolsp/cli/main.oo [oomcp]=oomcp/cli/main.oo)
+declare -A SOURCE_MAIN=([ooda]=ooda/main.oo [oopm]=oopm/cli/main.oo [oolsp]=oolsp/cli/main.oo [oomcp]=oomcp/cli/main.oo)
 
 # --- color --------------------------------------------------------------------
 
@@ -287,9 +306,9 @@ print_preamble() {
   printf '    oodac    ~/.openooda/bin/oodac\n'
   printf '    oodar    ~/.openooda/bin/liboodar.a\n'
   printf '    std      ~/.openooda/std\n'
-  printf '    opm      ~/.openooda/bin/opm\n'
-  printf '    ooda-lsp ~/.openooda/bin/ooda-lsp\n'
-  printf '    ooda-mcp ~/.openooda/bin/ooda-mcp\n'
+  printf '    oopm     ~/.openooda/bin/oopm\n'
+  printf '    oolsp    ~/.openooda/bin/oolsp\n'
+  printf '    oomcp    ~/.openooda/bin/oomcp\n'
   printf '    spec     ~/.openooda/spec.oot (spec.md Quick Card)\n'
   if [[ "${FROM_SOURCE:-0}" == "1" ]]; then
     printf '\n  %sEstimated time: 3-8 minutes (local builds). Press Ctrl-C to cancel.%s\n\n' "$DIM" "$RESET"
@@ -588,7 +607,43 @@ sha256_check() {
   return 0
 }
 
-# fetch_and_verify: download binary + sidecar + verify SHA-256 + install.
+# --- master SHA256SUMS (single hub checksum) ----------------------------------
+#
+# The openOODA/install release carries ONE master checksum file:
+#   https://github.com/openOODA/install/releases/latest/download/SHA256SUMS
+# Lines are `<64-hex-sha256>  <asset-name>` (sha256sum format). It is cached
+# per-run under $OPENOODA_HOME so background fetch subshells (same $$) share
+# one download. publish-hub.sh regenerates it on every release.
+
+HUB_SUMS_URL="https://github.com/openOODA/install/releases/latest/download/SHA256SUMS"
+
+sums_cache_file() {
+  printf '%s/openooda-hub-sums.%s\n' "${TMPDIR:-/tmp}" "$$"
+}
+
+sums_ensure() {
+  local f; f="$(sums_cache_file)"
+  [[ -s "$f" ]] && return 0
+  local tmp="$f.tmp.$$"
+  if curl -fsSL --connect-timeout 10 --max-time 30 -o "$tmp" "$HUB_SUMS_URL" 2>/dev/null \
+      && [[ -s "$tmp" ]]; then
+    mv -f "$tmp" "$f" 2>/dev/null || cp -f "$tmp" "$f" 2>/dev/null || true
+  fi
+  rm -f "$tmp" 2>/dev/null || true
+  [[ -s "$f" ]]
+}
+
+# Print the expected sha256 for an asset name, or nothing when absent.
+sums_expected() {
+  local f; f="$(sums_cache_file)"
+  [[ -s "$f" ]] || return 0
+  awk -v n="$1" '{ name=$2; sub(/^\*/, "", name); if (name == n) { print $1; exit } }' "$f"
+}
+
+# fetch_and_verify: download binary + verify + install.
+# Verification order: the master SHA256SUMS entry for the asset name wins;
+# the legacy per-asset .sha256 sidecar remains only as a fallback for
+# non-hub release hosts (openOODA-core repo releases still ship sidecars).
 # Runs entirely in a background subshell called by install_component.
 # Writes result files into $wd; caller reads them after `wait`.
 fetch_and_verify() {
@@ -598,19 +653,26 @@ fetch_and_verify() {
     -w '%{http_code}' "$url" 2>/dev/null || echo 000)
   echo "$dl" > "$wd/dl"
   [[ "$dl" == "200" && -s "$dest.tmp" ]] || return 0
-  # 2. sidecar
-  local sha; sha=$(curl -sSL --connect-timeout 5 --max-time 15 \
-    -o "$dest.tmp.sha256" -w '%{http_code}' "${url}.sha256" 2>/dev/null || echo 000)
-  echo "$sha" > "$wd/sha"
-  [[ "$sha" == "200" && -s "$dest.tmp.sha256" ]] || return 0
+  # 2. expected digest: master SHA256SUMS first, .sha256 sidecar fallback
+  local asset="${url##*/}"
+  local expected; expected="$(sums_expected "$asset")"
+  local sha="sums"
+  if [[ -z "$expected" ]]; then
+    sha=$(curl -sSL --connect-timeout 5 --max-time 15 \
+      -o "$dest.tmp.sha256" -w '%{http_code}' "${url}.sha256" 2>/dev/null || echo 000)
+    echo "$sha" > "$wd/sha"
+    [[ "$sha" == "200" && -s "$dest.tmp.sha256" ]] || return 0
+    expected=$(awk '{print $1}' "$dest.tmp.sha256" | tr -d '\r\n ')
+  else
+    echo "200" > "$wd/sha"
+  fi
   # 3. SHA check (inline; captures actual_hash for success line)
-  local actual expected
+  local actual
   if command -v sha256sum >/dev/null 2>&1; then
     actual=$(sha256sum "$dest.tmp" | awk '{print $1}')
   else
     actual=$(shasum -a 256 "$dest.tmp" | awk '{print $1}')
   fi
-  expected=$(awk '{print $1}' "$dest.tmp.sha256" | tr -d '\r\n ')
   if [[ -z "$expected" || "$expected" != "$actual" ]]; then
     echo "mismatch" > "$wd/vrc"; echo "$expected" > "$wd/expected"; echo "$actual" > "$wd/actual"
     return 0
@@ -738,7 +800,10 @@ install_component() {
   fi
 
   # HTTPS fallback. A 404 tries the next asset name. A downloaded asset
-  # with a bad or missing sidecar refuses; it does not fall through.
+  # with a bad digest or missing checksum channel refuses; it does not
+  # fall through. Warm the master SHA256SUMS cache before forking fetch
+  # subshells so they all read the same verified sums file.
+  sums_ensure || true
   local wd dl sha vrc vhash size expected actual last_dl="404" got_asset=0
   wd=$(mktemp -d 2>/dev/null || echo "/tmp/openooda-$$-$key")
   while IFS= read -r url; do
@@ -792,6 +857,122 @@ install_component() {
     warn "$key download failed (http $last_dl); continuing without $(basename "$dest")"
     SKIPPED+=("$key")
   fi
+}
+
+# --- binary pool packages (--pkg / --group) -------------------------------------
+#
+# The openOODA/install release is the single binary pool: every canonical
+# package ships as <name>-linux-x86_64 beside the six L0 components, all
+# covered by the one master SHA256SUMS. --pkg installs one package;
+# --group expands a Fedora-style @group profile from catalog/groups.oot
+# (@core @kernel @os @tools @de @apps @games @cloud @agents @all).
+
+GROUPS_OOT=""
+GROUPS_OOT_TRIED=0
+declare -A GDEF=()
+
+# Fetch groups.oot once per run. catalog.openooda.org serves the repo tree
+# on GitHub Pages; raw.githubusercontent is the fallback.
+groups_oot_load() {
+  [[ "$GROUPS_OOT_TRIED" == "1" ]] && return 0
+  GROUPS_OOT_TRIED=1
+  local u
+  for u in \
+    "https://catalog.openooda.org/groups.oot" \
+    "https://raw.githubusercontent.com/openOODA/catalog/master/groups.oot"
+  do
+    GROUPS_OOT=$(curl -fsSL --connect-timeout 8 --max-time 20 "$u" 2>/dev/null || true)
+    [[ -n "$GROUPS_OOT" ]] && break
+  done
+  [[ -z "$GROUPS_OOT" ]] && return 1
+  local line g rest
+  while IFS= read -r line; do
+    line="${line%%#*}"
+    [[ "$line" =~ ^[[:space:]]*@([A-Za-z0-9_-]+)[[:space:]]*=[[:space:]]*(.*)$ ]] || continue
+    g="${BASH_REMATCH[1]}"
+    rest="${BASH_REMATCH[2]}"
+    GDEF["$g"]="$rest"
+  done <<< "$GROUPS_OOT"
+  [[ ${#GDEF[@]} -gt 0 ]]
+}
+
+# Expand @group to a deduped member list. @-tokens inside a definition are
+# followed transitively; a visited set breaks @all-style cycles. Unknown
+# groups refuse closed.
+expand_group() {
+  local want="${1#@}" out="" seen=" "
+  local -a queue=("$want")
+  while ((${#queue[@]})); do
+    local g="${queue[0]}"; queue=("${queue[@]:1}")
+    [[ "$seen" == *" $g "* ]] && continue
+    seen="$seen$g "
+    if [[ -z "${GDEF[$g]:-}" ]]; then
+      err "unknown group @$g (not defined in catalog/groups.oot)"
+      return 1
+    fi
+    local tok
+    for tok in ${GDEF[$g]}; do
+      if [[ "$tok" == @* ]]; then queue+=("${tok#@}");
+      else out="$out $tok"; fi
+    done
+  done
+  printf '%s\n' $out | awk 'NF && !seen[$0]++'
+}
+
+# install_pkg: one binary-pool package — <name>-linux-x86_64 from the hub
+# release, verified against the master SHA256SUMS before it lands in
+# $BIN_DIR. Refuses closed on bad names, missing sums entries, and any
+# digest mismatch.
+install_pkg() {
+  local name="$1" asset dest url expected actual
+  if [[ ! "$name" =~ ^[a-z0-9][a-z0-9-]{0,63}$ ]]; then
+    err "pkg: refused malformed package name '$name'"
+    return 1
+  fi
+  # L0 component names are owned by install_component; --pkg covers the
+  # wider pool. Installing an L0 name here would skip local-dist/gh paths.
+  case " ${!REPOS[@]} " in *" $name "*) return 0;; esac
+  asset="${name}-linux-x86_64"
+  dest="$BIN_DIR/$name"
+  printf '  %s%s%s (pool)\n' "$BOLD" "$name" "$RESET"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    ok "[dry-run] would install $asset from the openOODA/install release"
+    INSTALLED+=("$name")
+    return 0
+  fi
+  sums_ensure || { err "pkg $name: cannot fetch master SHA256SUMS; refuse unsigned install"; return 1; }
+  expected="$(sums_expected "$asset")"
+  if [[ -z "$expected" ]]; then
+    err "pkg $name: no SHA256SUMS entry for $asset; refuse unsigned install"
+    return 1
+  fi
+  url="https://github.com/openOODA/install/releases/latest/download/$asset"
+  local tmp; tmp=$(mktemp -d 2>/dev/null || echo "/tmp/openooda-pkg-$$-$name")
+  if ! curl -fsSL --connect-timeout 10 --max-time 300 -o "$tmp/$asset" "$url" 2>/dev/null \
+      || [[ ! -s "$tmp/$asset" ]]; then
+    rm -rf "$tmp"
+    err "pkg $name: download failed ($asset)"
+    return 1
+  fi
+  if command -v sha256sum >/dev/null 2>&1; then
+    actual=$(sha256sum "$tmp/$asset" | awk '{print $1}')
+  else
+    actual=$(shasum -a 256 "$tmp/$asset" | awk '{print $1}')
+  fi
+  if [[ "$actual" != "$expected" ]]; then
+    rm -rf "$tmp"
+    err "pkg $name: SHA256SUMS mismatch (expected ${expected:0:16}..., got ${actual:0:16}...)"
+    return 1
+  fi
+  mv -f "$tmp/$asset" "$dest" 2>/dev/null || { rm -rf "$tmp"; err "pkg $name: cannot place $dest"; return 1; }
+  chmod +x "$dest" 2>/dev/null || true
+  local size mb; size=$(wc -c < "$dest" 2>/dev/null || echo 0)
+  mb=$(awk -v s="$size" 'BEGIN{printf "%.1f", s/1048576}')
+  ok "installed $name (${mb} MB, SHA256SUMS verified)"
+  INSTALLED+=("$name")
+  BYTES=$((BYTES + size))
+  rm -rf "$tmp"
+  return 0
 }
 
 # --- from-source install -------------------------------------------------------
@@ -1194,7 +1375,7 @@ post_flight() {
   export OODA_FS_READDIR="${OODA_FS_READDIR:-$HOME/.openooda:/etc:/usr}"
   export OODA_FS_WRITEDIR="${OODA_FS_WRITEDIR:-$HOME}"
   local fail=0
-  local bins=(ooda oodac ooda-lsp ooda-mcp opm)
+  local bins=(ooda oodac oopm oolsp oomcp)
   for bin in "${bins[@]}"; do
     # Verify by output, not exit code: some tools exit nonzero on --help
     # (opm) or under non-tty stdout (ooda), and a silent stub that exits 0
@@ -1254,7 +1435,7 @@ do_install() {
   if [[ "$FROM_SOURCE" == "1" ]]; then
     step_status "resolving source checkout"
     resolve_source_dir || return 1
-    for key in ooda oodac oodar opm oolsp oomcp; do
+    for key in ooda oodac oodar oopm oolsp oomcp; do
       step_status "installing $key from source"
       case "$key" in
         oodac) install_oodac_from_source || return 1;;
@@ -1265,9 +1446,36 @@ do_install() {
   else
     step_status "loading version pins"
     load_pins
-    for key in ooda oodac oodar opm oolsp oomcp; do
+    for key in ooda oodac oodar oopm oolsp oomcp; do
       step_status "installing $key"
       install_component "$key" || return 1
+    done
+  fi
+
+  # step 2b: binary pool selections — --pkg names plus every --group
+  # profile expanded through catalog/groups.oot. Each package verifies
+  # against the master SHA256SUMS before it lands in $BIN_DIR.
+  if ((${#GROUP_LIST[@]} + ${#PKG_LIST[@]})); then
+    step_status "expanding package selections"
+    local -a want_pkgs=("${PKG_LIST[@]}")
+    if ((${#GROUP_LIST[@]})); then
+      groups_oot_load || { err "cannot fetch catalog/groups.oot; group install refused"; return 1; }
+      local g
+      for g in "${GROUP_LIST[@]}"; do
+        local members
+        members="$(expand_group "$g")" || return 1
+        local m
+        while IFS= read -r m; do
+          [[ -n "$m" ]] && want_pkgs+=("$m")
+        done <<< "$members"
+      done
+    fi
+    local -A seen_pkg=()
+    local pkg
+    for pkg in "${want_pkgs[@]}"; do
+      [[ -n "$pkg" && -z "${seen_pkg[$pkg]:-}" ]] || continue
+      seen_pkg[$pkg]=1
+      install_pkg "$pkg" || return 1
     done
   fi
 
