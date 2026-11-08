@@ -148,8 +148,8 @@ bash install.sh --help 2>&1 | grep -q -- "--from-source" || { echo "FAIL --help 
 # dry-run failed closed requiring a compiler it never invokes). Fixture
 # checkout is empty marker files (resolve only checks existence); stripped
 # PATH proves no oodac is consulted.
-mkdir -p "$TMPD/fakesrc/std" "$TMPD/fakesrc/opm/cli" "$TMPD/fakesrc/lsp/cli" "$TMPD/fakesrc/mcp/cli" "$TMPD/fakesrc/oodar/scripts" "$TMPD/fakesrc/openOODA" "$TMPD/fakesrc/ooda" "$TMPD/fakesrc/cli" "$TMPD/fakesrc/tui"
-for f in ooda/main.oo cli/main.oo tui/main.oo opm/cli/main.oo lsp/cli/main.oo mcp/cli/main.oo oodar/scripts/Makefile openOODA/northstar.oot openOODA/spec.oot std/anchor.oo; do : > "$TMPD/fakesrc/$f"; done
+mkdir -p "$TMPD/fakesrc/oostd" "$TMPD/fakesrc/oopm/cli" "$TMPD/fakesrc/oolsp/cli" "$TMPD/fakesrc/oomcp/cli" "$TMPD/fakesrc/oodar/scripts" "$TMPD/fakesrc/openOODA" "$TMPD/fakesrc/ooda"
+for f in ooda/main.oo oopm/cli/main.oo oolsp/cli/main.oo oomcp/cli/main.oo oodar/scripts/Makefile openOODA/AGENTS.md openOODA/spec.md oostd/anchor.oo; do : > "$TMPD/fakesrc/$f"; done
 if ! env -i PATH=/usr/bin:/bin HOME="$HOME" OPENOODA_HOME="$TMPD/home2" bash install.sh --from-source="$TMPD/fakesrc" --dry-run >/dev/null 2>&1; then
   echo "FAIL --from-source dry-run demanded a bootstrap oodac"; exit 1
 fi
@@ -158,19 +158,19 @@ fi
 # and the stale alias left by older installers must be removed.
 if grep -q '(also ooda-tui)' install.sh; then echo "FAIL preamble still apologizes for ooda-tui"; exit 1; fi
 if grep -q 'cp -f "$dest" "$BIN_DIR/ooda-tui"' install.sh; then echo "FAIL double-install copy remains"; exit 1; fi
-grep -q 'rm -f "$BIN_DIR/ooda-tui"' install.sh || { echo "FAIL no stale-alias removal"; exit 1; }
+grep -qE 'for stale in .*ooda-tui' install.sh || { echo "FAIL no stale-alias removal"; exit 1; }
 # Canonical package resolution: component repos are the openOODA-core
-# names (ooda oodac oodar opm lsp mcp cli tui). Legacy ooda-* package
+# names (ooda oodac oodar opm oolsp oomcp). Legacy ooda-* package
 # names must never appear as repo keys or install destinations.
 if grep -qE 'ooda-(cockpit|compositor|files|lock|panel|portal)' install.sh; then
   echo "FAIL legacy ooda-* package name present"; exit 1
 fi
 repos_keys=$(grep -oE '^declare -A REPOS=\(\[[a-z]+\]=[a-z.-]+( \[[a-z]+\]=[a-z.-]+)*\)' install.sh | grep -oE '\[[a-z]+\]' | tr -d '[]' | sort | tr '\n' ' ')
-expected="cli lsp mcp ooda oodac oodar opm tui "
+expected="ooda oodac oodar oolsp oomcp opm "
 [ "$repos_keys" = "$expected" ] || { echo "FAIL REPOS keys not canonical: $repos_keys"; exit 1; }
 bin_vals=$(grep -oE '^declare -A BINARIES=\(\[[a-z]+\]=[a-z.-]+( \[[a-z]+\]=[a-z.-]+)*\)' install.sh | grep -oE '=[a-z.-]+' | tr -d '=' | sort -u | tr '\n' ' ')
 for bv in $bin_vals; do
-  case "$bv" in ooda|oodac|liboodar.a|opm|cli|tui|ooda-lsp|ooda-mcp) ;; *) echo "FAIL non-canonical dest name: $bv"; exit 1;; esac
+  case "$bv" in ooda|oodac|liboodar.a|opm|ooda-lsp|ooda-mcp) ;; *) echo "FAIL non-canonical dest name: $bv"; exit 1;; esac
 done
 # Plan v30: versions.toml pin parsing is a trust boundary. Extract the
 # real declare+load_pins pair and feed it a hostile manifest: malformed
@@ -313,7 +313,7 @@ cmp -s "$TMPD/d1" "$TMPD/d2" || { echo "FAIL dry-run plan not idempotent"; diff 
 for key in 'prefix:' 'Summary' 'simulated install' 'no files written'; do
   grep -qF "$key" "$TMPD/d1" || { echo "FAIL dry-run plan missing required section: $key"; exit 1; }
 done
-for comp in ooda cli tui oodac oodar opm lsp mcp; do
+for comp in ooda oodac oodar opm oolsp oomcp; do
   grep -qw "$comp" "$TMPD/d1" || { echo "FAIL dry-run plan missing component: $comp"; exit 1; }
 done
 # Version round-trip: the --version banner, the VERSION file, and the
@@ -333,11 +333,11 @@ FV="$TMPD/fv"; mkdir -p "$FV"
 grep -q '^fetch_and_verify() {' "$FV/lib.sh" && grep -q '^asset_names() {' "$FV/lib.sh" \
   || { echo "FAIL could not lift asset_names/fetch_and_verify from install.sh"; exit 1; }
 an() { ( . "$FV/lib.sh"; OS=linux; ARCH="$2"; asset_names "$1" | tr '\n' ' ' ); }
-[ "$(an mcp arm64)" = "ooda-mcp-linux-arm64 ooda-mcp " ] || { echo "FAIL mcp arm64 candidates: $(an mcp arm64)"; exit 1; }
+[ "$(an oomcp arm64)" = "ooda-mcp-linux-arm64 ooda-mcp " ] || { echo "FAIL oomcp arm64 candidates: $(an oomcp arm64)"; exit 1; }
 [ "$(an oodac x86_64)" = "oodac-linux-x86_64 oodac " ] || { echo "FAIL oodac x86_64 candidates: $(an oodac x86_64)"; exit 1; }
 [ "$(an oodar arm64)" = "liboodar.a-linux-arm64 liboodar.a " ] || { echo "FAIL oodar arm64 candidates: $(an oodar arm64)"; exit 1; }
-an lsp arm64 | grep -q 'x86_64' && { echo "FAIL arm64 resolution leaked an x86_64 asset"; exit 1; }
-an lsp x86_64 | grep -q 'arm64' && { echo "FAIL x86_64 resolution leaked an arm64 asset"; exit 1; }
+an oolsp arm64 | grep -q 'x86_64' && { echo "FAIL arm64 resolution leaked an x86_64 asset"; exit 1; }
+an oolsp x86_64 | grep -q 'arm64' && { echo "FAIL x86_64 resolution leaked an arm64 asset"; exit 1; }
 # fv_case <name> <binary-body> <sidecar-body|404> -> runs fetch_and_verify
 fv_case() {
   local d="$FV/$1"; mkdir -p "$d/wd"; printf '%s' "$2" > "$d/srv_bin"

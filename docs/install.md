@@ -21,9 +21,7 @@ After it finishes, either restart your shell or run `source ~/.bashrc` (or
 ```
 ~/.openooda/
 ├── bin/
-│   ├── ooda         # workflow driver (routes language verbs to cli)
-│   ├── cli          # language commands: build, run, test, fmt, fix
-│   ├── tui          # work screen harness
+│   ├── ooda         # canonical CLI: build, run, test, fmt, install, qa, fix, about
 │   ├── oodac        # compiler
 │   ├── liboodar.a   # runtime substrate (static lib)
 │   ├── opm          # package manager
@@ -39,18 +37,22 @@ sidecar, empty hash, hasher absent, and hash mismatch all fail
 closed. The temp download is deleted and that component is not
 installed.
 
-## The 8 binary components + standard library
+## The 6 binary components + standard library
+
+`ooda` is the canonical L0 flagship CLI — it absorbed `cli`/`oocli`, and
+`tui`/`ootui` plus `oostd-hw` are retired. The wider fleet ships ~86
+canonical `oo*` binaries across the orgs (e.g. `oomodemd`, `oocamera`,
+`oodefense`, `oorgb`); this installer covers the L0 toolchain only —
+install fleet tools with `opm`.
 
 | Component | Repo           | Binary       | Purpose                                  |
 |-----------|----------------|--------------|------------------------------------------|
-| `ooda`    | openOODA-core/ooda  | `ooda`       | Workflow driver (routes to cli)          |
-| `cli`     | openOODA-core/cli   | `cli`        | Language commands                        |
-| `tui`     | openOODA-core/tui   | `tui`        | Work screen harness                      |
+| `ooda`    | openOODA-core/ooda  | `ooda`       | Canonical CLI (build/run/test/qa/about)  |
 | `oodac`   | openOODA-core/oodac | `oodac`      | Compiler                                 |
 | `oodar`   | openOODA-core/oodar | `liboodar.a` | Runtime substrate (C static library)     |
 | `opm`     | openOODA-core/opm   | `opm`        | Package manager                          |
-| `lsp`     | openOODA-core/lsp   | `ooda-lsp`   | Language server                          |
-| `mcp`     | openOODA-core/mcp   | `ooda-mcp`   | MCP server                               |
+| `oolsp`   | openOODA-core/oolsp | `ooda-lsp`   | Language server                          |
+| `oomcp`   | openOODA-core/oomcp | `ooda-mcp`   | MCP server                               |
 | `std`     | openOODA-core/oostd   | (clone)      | Standard library                         |
 
 ## Environment variables

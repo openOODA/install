@@ -1,39 +1,18 @@
-# install: Agent Engineering Standards (v1)
-
-This repository houses the multi-platform installer (`install.sh`, apt, dnf, pacman) and packaging specifications for openOODA.
-All work in this repository strictly defers to the organization standards in [`openOODA/AGENTS.md`](file:///home/ubermetroid/Projects/openOODA/openOODA/AGENTS.md).
-
----
-
-## 1. Packaging Architecture & Invariants
-- **Fail-Closed Verification**: SHA-256 sidecars verified before execution. Corrupt downloads abort immediately.
-- **Idempotency**: Running `install.sh` twice leaves the system in a bit-identical state.
-- **Clean Uninstallation**: Uninstallation cleanly purges binaries, man pages, and profile scripts without leaving dirty state.
-
----
-
-## 2. Invariants & Quality Standards
-- **Pure POSIX Shell**: Host installation scripts must run cleanly on Ubuntu/Debian, Fedora/RHEL, Arch, and Alpine (`sh` / `bash`).
-- **Zero Sudo Without Consent**: Script detects write permissions before prompting for elevated privileges.
-
----
-
-## 3. Local Verification Commands
-```bash
-bash tests/test_e2e_install.sh
-bash tests/test_idempotent.sh
-```
-
----
-
-## 7. Multi-Engine Audit Protocol (Pre-Release)
-
-Advisory tiered audit run before tagging releases, budgeted by token capacity:
-1. **`mcode`** (Abundant tokens): Full codebase scan for contract mismatches, packaging specs, and CI gates.  
-   `mcode exec --permission full "<prompt>"`
-2. **`vibe`** (Moderate tokens): Adversarial diff inspection for subtle regressions, security bypasses, and API validity.  
-   `vibe -p "<prompt>" --trust --auto-approve`
-3. **`grok`** (Strict quota): High-value referee and final sanity check on critical release diffs.  
-   `grok -p "<prompt>" --always-approve`
-
-**Rule:** External audits are strictly advisory; all findings must be verified against source code. External LLMs never gate CI—the §5 Verification Ladder is the sole canonical authority.
+# openOODA (.oo) Agent Quick Card
+1. **The 8 Canonical Quick Cards** (Zero-bloat ~24-line cards built into `ooda`):
+   - `ooda ooda`     -> `ooda.md`     (How to rapidly build, test, and adapt openOODA software)
+   - `ooda layers`   -> `layers.md`   (The 8-Layer Architecture Map `L0`–`L7` across Desktop, Server & Mobile)
+   - `ooda spec`     -> `spec.md`     (`.oo` syntax, types, structs, `match`, and `oostd` builtins)
+   - `ooda rules`    -> `rules.md`    (Power-of-2 Shape Ladder `1/2/4/8/16/32/64/128/256` & CLI laws)
+   - `ooda ui`       -> `ui.md`       (CLI, TUI, Desktop & Mobile UI + `ootheme` 25 presets & 34 tokens)
+   - `ooda security` -> `security.md` (Zero-Trust `CapReg64` `0..31` caps, `oosandbox`, `oosign`, `ooprovenance`, `oovault`)
+   - `ooda privacy`  -> `privacy.md`  (Zero-telemetry, PII/EXIF/SECRET scrubbing `ooredact`, LED & clipboard TTL gates)
+   - `ooda defense`  -> `defense.md`  (Active defense `oodefense` IDS/canary/honeypot, `oofirewall`, DMA/DRAM/USB guards)
+2. **Power-of-2 Shape Ladder (`1/2/4/8/16/32/64/128/256`)**:
+   - `1`: Link count == 1 (0 symlinks/hardlinks) & max 1 statement/line. `2`: Min 2 tests (functional + negative-trust exit != 0).
+   - `4`: Max 4 nesting depth. `8`: Max 8 files/dir, 8 fns/file, 8 params/fn. `16`: Min 16 lines/file.
+   - `32`: 32 explicit capabilities (`&FsReadCap`, `&FsWriteCap`, `&NetCap`, `&ProcessCap`, `&EnvCap`), max 32 chars/name (no `*_1.oo` splits), <=32 files/repo.
+   - `64`: Max 64 code lines/fn. `128`: Max 128 chars/line. `256`: Max 256 lines/file.
+3. **Syntax & Workflow**:
+   - Relative string imports only (`import "core/engine.oo";` or `import "oostd/fs/os/fs.oo";`, never `::`). No parens on `if cond { }` / `while cond { }`. No struct trailing commas. Connect all CLI/TUI/GUI output to `ootheme` and expose `<binary> about`.
+   - Build & Verify: `ooda build && ooda test && ooda check && ooda audit`.

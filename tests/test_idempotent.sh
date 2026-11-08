@@ -7,12 +7,17 @@ set -u
 cd "$(dirname "$0")/.." || exit 1
 THOME="$(mktemp -d /tmp/e2eidem.XXXXXX)" || exit 1
 trap 'rm -rf "$THOME"' EXIT
+# openOODA-core/oostd is private: the std git clone needs credentials a
+# temp HOME does not carry. Seed the anchor so the clone step skips; the
+# idempotency check asserts binaries, not the std tree.
+mkdir -p "$THOME/.openooda/std" && : > "$THOME/.openooda/std/anchor.oo"
 run_install() {
   HOME="$THOME" OPENOODA_HOME="$THOME/.openooda" XDG_CONFIG_HOME="$THOME/.config" \
+    PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
     bash install.sh --yes --no-modify-shell > "$THOME/$1" 2>&1
 }
 snapshot() {
-  (cd "$THOME/.openooda/bin" && for b in ooda cli oodac opm ooda-lsp ooda-mcp tui; do
+  (cd "$THOME/.openooda/bin" && for b in ooda oodac opm ooda-lsp ooda-mcp; do
     test -x "$b" || { echo "FAIL missing bin $b ($1)"; exit 1; }
     sha256sum "$b"
   done; test -f liboodar.a || { echo "FAIL missing liboodar.a ($1)"; exit 1; }

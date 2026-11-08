@@ -114,20 +114,21 @@ else
 fi
 _log() { printf '[%s] %s\n' "$(date -Iseconds 2>/dev/null || date)" "$*" >&3 2>/dev/null || true; }
 
-# The 8 L0 toolchain repos live in the openOODA-core org. The openOODA/<repo>
-# and openOODA/openOODA umbrella URLs 404 for these assets. Resolution order
-# is a local dist file, then `gh release download` from openOODA-core/<repo>,
-# then the HTTPS asset URL on that same repo.
+# The 6 L0 toolchain repos live in the openOODA-core org: ooda is the canonical
+# CLI (it absorbed cli/oocli; tui/ootui and oostd-hw are retired). The
+# openOODA/<repo> and openOODA/openOODA umbrella URLs 404 for these assets.
+# Resolution order is a local dist file, then `gh release download` from
+# openOODA-core/<repo>, then the HTTPS asset URL on that same repo.
 RELEASES="https://github.com/openOODA-core"
-declare -A REPOS=([ooda]=ooda [oodac]=oodac [oodar]=oodar [opm]=opm [lsp]=lsp [mcp]=mcp [cli]=cli [tui]=tui)
+declare -A REPOS=([ooda]=ooda [oodac]=oodac [oodar]=oodar [opm]=opm [oolsp]=oolsp [oomcp]=oomcp)
 # Dest names match repo names. ASSETS is the GitHub release stem when it
-# still differs (lsp/mcp have not republished as lsp-linux-x86_64 yet).
-declare -A BINARIES=([ooda]=ooda [oodac]=oodac [oodar]=liboodar.a [opm]=opm [lsp]=ooda-lsp [mcp]=ooda-mcp [cli]=cli [tui]=tui)
-declare -A ASSETS=([lsp]=ooda-lsp [mcp]=ooda-mcp)
+# still differs (oolsp/oomcp publish ooda-lsp/ooda-mcp asset names).
+declare -A BINARIES=([ooda]=ooda [oodac]=oodac [oodar]=liboodar.a [opm]=opm [oolsp]=ooda-lsp [oomcp]=ooda-mcp)
+declare -A ASSETS=([oolsp]=ooda-lsp [oomcp]=ooda-mcp)
 # SOURCE_MAIN: repo-root-relative build entry per component, used only by
 # --from-source. oodac has no entry: `oodac build oodac/main.oo` refuses
 # (unique_fns), so from-source keeps the bootstrap compiler as the product.
-declare -A SOURCE_MAIN=([ooda]=ooda/main.oo [cli]=oocli/main.oo [opm]=oopm/cli/main.oo [lsp]=oolsp/cli/main.oo [mcp]=oomcp/cli/main.oo [tui]=ootui/entry/main.oo)
+declare -A SOURCE_MAIN=([ooda]=ooda/main.oo [opm]=oopm/cli/main.oo [oolsp]=oolsp/cli/main.oo [oomcp]=oomcp/cli/main.oo)
 
 # --- color --------------------------------------------------------------------
 
@@ -283,15 +284,13 @@ print_preamble() {
     printf '  %sOne release hub, one asset per component. Fetch, SHA-256, place.%s\n\n' "$BOLD" "$RESET"
   fi
   printf '    ooda     ~/.openooda/bin/ooda\n'
-  printf '    cli      ~/.openooda/bin/cli\n'
-  printf '    tui      ~/.openooda/bin/tui\n'
   printf '    oodac    ~/.openooda/bin/oodac\n'
   printf '    oodar    ~/.openooda/bin/liboodar.a\n'
   printf '    std      ~/.openooda/std\n'
   printf '    opm      ~/.openooda/bin/opm\n'
   printf '    ooda-lsp ~/.openooda/bin/ooda-lsp\n'
   printf '    ooda-mcp ~/.openooda/bin/ooda-mcp\n'
-  printf '    spec     ~/.openooda/spec.oot\n'
+  printf '    spec     ~/.openooda/spec.oot (spec.md Quick Card)\n'
   if [[ "${FROM_SOURCE:-0}" == "1" ]]; then
     printf '\n  %sEstimated time: 3-8 minutes (local builds). Press Ctrl-C to cancel.%s\n\n' "$DIM" "$RESET"
   else
@@ -543,10 +542,6 @@ note_installed() {
   ok "installed $(basename "$dest") ${how} (${mb} MB)"
   INSTALLED+=("$key")
   BYTES=$((BYTES + size))
-  if [[ "$key" == "tui" && -e "$BIN_DIR/ooda-tui" ]]; then
-    rm -f "$BIN_DIR/ooda-tui" 2>/dev/null || true
-    ok "removed stale ~/.openooda/bin/ooda-tui alias"
-  fi
 }
 
 # --- "what's new" line (best-effort, 3s timeout) -----------------------------
@@ -766,10 +761,6 @@ install_component() {
       local mb; mb=$(awk -v s="$size" 'BEGIN{printf "%.1f", s/1048576}')
       ok "installed $(basename "$dest") (${mb} MB)"; INSTALLED+=("$key")
       BYTES=$((BYTES + size))
-      if [[ "$key" == "tui" && -e "$BIN_DIR/ooda-tui" ]]; then
-        rm -f "$BIN_DIR/ooda-tui" 2>/dev/null || true
-        ok "removed stale ~/.openooda/bin/ooda-tui alias"
-      fi
       got_asset=1
       break
     fi
@@ -829,7 +820,7 @@ resolve_source_dir() {
   [[ -n "$d" ]] || { err "from-source: cannot resolve dir: $SOURCE_DIR"; return 1; }
   local missing=()
   local s
-  for s in ooda/main.oo oocli/main.oo ootui/entry/main.oo oopm/cli/main.oo oolsp/cli/main.oo oomcp/cli/main.oo oodar/scripts/Makefile openOODA/northstar.oot openOODA/spec.oot; do
+  for s in ooda/main.oo oopm/cli/main.oo oolsp/cli/main.oo oomcp/cli/main.oo oodar/scripts/Makefile openOODA/AGENTS.md openOODA/spec.md; do
     [[ -f "$d/$s" ]] || missing+=("$s")
   done
   [[ -f "$d/oostd/anchor.oo" || -f "$d/oostd/ANCHOR.oo" ]] || missing+=("oostd/anchor.oo")
@@ -881,12 +872,6 @@ build_component_from_source() {
     local mb; mb=$(awk -v s="$size" 'BEGIN{printf "%.1f", s/1048576}')
     ok "built $(basename "$dest") from source (${mb} MB)"; INSTALLED+=("$key")
     BYTES=$((BYTES + size))
-    # The ooda-tui double-install is retired: one binary named tui.
-    # Remove the ghost alias left by older installers, if present.
-    if [[ "$key" == "tui" && -e "$BIN_DIR/ooda-tui" ]]; then
-      rm -f "$BIN_DIR/ooda-tui" 2>/dev/null || true
-      ok "removed stale ~/.openooda/bin/ooda-tui alias"
-    fi
   else
     rm -f "$dest.tmp"
     err "$key: source build failed — last 10 lines of $log:"
@@ -1208,7 +1193,7 @@ post_flight() {
   export OODA_FS_READDIR="${OODA_FS_READDIR:-$HOME/.openooda:/etc:/usr}"
   export OODA_FS_WRITEDIR="${OODA_FS_WRITEDIR:-$HOME}"
   local fail=0
-  local bins=(ooda cli tui oodac ooda-lsp ooda-mcp opm)
+  local bins=(ooda oodac ooda-lsp ooda-mcp opm)
   for bin in "${bins[@]}"; do
     # Verify by output, not exit code: some tools exit nonzero on --help
     # (opm) or under non-tty stdout (ooda), and a silent stub that exits 0
@@ -1268,7 +1253,7 @@ do_install() {
   if [[ "$FROM_SOURCE" == "1" ]]; then
     step_status "resolving source checkout"
     resolve_source_dir || return 1
-    for key in ooda cli oodac oodar opm lsp mcp tui; do
+    for key in ooda oodac oodar opm oolsp oomcp; do
       step_status "installing $key from source"
       case "$key" in
         oodac) install_oodac_from_source || return 1;;
@@ -1279,9 +1264,20 @@ do_install() {
   else
     step_status "loading version pins"
     load_pins
-    for key in ooda cli oodac oodar opm lsp mcp tui; do
+    for key in ooda oodac oodar opm oolsp oomcp; do
       step_status "installing $key"
       install_component "$key" || return 1
+    done
+  fi
+
+  # Retired binaries from older installers (cli/tui absorbed into the canonical
+  # ooda CLI; oostd-hw merged into oostd): sweep stale artifacts so PATH stays clean.
+  if [[ "$DRY_RUN" != "1" ]]; then
+    for stale in cli tui oocli ootui ooda-tui oostd-hw; do
+      if [[ -e "$BIN_DIR/$stale" ]]; then
+        rm -f "$BIN_DIR/$stale" 2>/dev/null || true
+        ok "removed stale ~/.openooda/bin/$stale (retired)"
+      fi
     done
   fi
 
@@ -1310,19 +1306,22 @@ do_install() {
   # oodar is liboodar.a (install_component above). Do not also clone
   # sources — one repo, one artifact.
 
-  # step 3c: orientation codex (MCP servers fail closed without OODACODEX)
+  # step 3c: orientation codex (MCP servers fail closed without OODACODEX).
+  # northstar.oot is retired; the AGENTS.md Quick Card is the canonical
+  # agent-orientation doc. The legacy ~/.openooda/northstar.oot path is kept
+  # so OODACODEX consumers resolve unchanged.
   if [[ "$DRY_RUN" == "1" ]]; then
     step_status "[dry-run] skipping codex fetch"
     skip "[dry-run] skipping codex fetch"
   elif [[ "$FROM_SOURCE" == "1" ]]; then
     step_status "copying orientation codex from source"
-    install_file_from_source "openOODA/northstar.oot" "$OPENOODA_HOME/northstar.oot" "codex"
+    install_file_from_source "openOODA/AGENTS.md" "$OPENOODA_HOME/northstar.oot" "codex"
   else
     # Download to .tmp then rename on success (same atomic pattern as
     # fetch_and_verify): a failed refresh must never clobber a codex we
     # already hold — MCP servers fail closed without OODACODEX.
-    step_status "fetching orientation codex (openOODA/northstar.oot)"
-    if curl -sSL --connect-timeout 10 --max-time 60 -o "$OPENOODA_HOME/northstar.oot.tmp" "https://raw.githubusercontent.com/openOODA/openOODA/master/northstar.oot" 2>/dev/null && [[ -s "$OPENOODA_HOME/northstar.oot.tmp" ]]; then
+    step_status "fetching orientation codex (openOODA/AGENTS.md)"
+    if curl -sSL --connect-timeout 10 --max-time 60 -o "$OPENOODA_HOME/northstar.oot.tmp" "https://raw.githubusercontent.com/openOODA/openOODA/master/AGENTS.md" 2>/dev/null && [[ -s "$OPENOODA_HOME/northstar.oot.tmp" ]]; then
       mv -f "$OPENOODA_HOME/northstar.oot.tmp" "$OPENOODA_HOME/northstar.oot" 2>/dev/null || warn "codex rename failed; keeping previous northstar.oot"
     else
       rm -f "$OPENOODA_HOME/northstar.oot.tmp" 2>/dev/null || true
@@ -1334,26 +1333,28 @@ do_install() {
     fi
   fi
 
-  # step 3d: language specification (openOODA/spec.oot)
+  # step 3d: language specification — spec.oot is retired; spec.md is the
+  # canonical spec Quick Card. The legacy ~/.openooda/spec.oot path is kept
+  # so OODASPEC/OODA_SPEC consumers resolve unchanged.
   if [[ "$DRY_RUN" == "1" ]]; then
     step_status "[dry-run] skipping spec fetch"
     skip "[dry-run] skipping spec fetch"
   elif [[ "$FROM_SOURCE" == "1" ]]; then
     step_status "copying language specification from source"
-    install_file_from_source "openOODA/spec.oot" "$OPENOODA_HOME/spec.oot" "spec"
+    install_file_from_source "openOODA/spec.md" "$OPENOODA_HOME/spec.oot" "spec"
   else
     # Download to .tmp then rename on success (same atomic pattern as
     # fetch_and_verify): a failed refresh must never clobber a spec we
     # already hold.
-    step_status "fetching language specification (openOODA/spec.oot)"
-    if curl -sSL --connect-timeout 10 --max-time 60 -o "$OPENOODA_HOME/spec.oot.tmp" "https://raw.githubusercontent.com/openOODA/openOODA/master/spec.oot" 2>/dev/null && [[ -s "$OPENOODA_HOME/spec.oot.tmp" ]]; then
+    step_status "fetching language specification (openOODA/spec.md)"
+    if curl -sSL --connect-timeout 10 --max-time 60 -o "$OPENOODA_HOME/spec.oot.tmp" "https://raw.githubusercontent.com/openOODA/openOODA/master/spec.md" 2>/dev/null && [[ -s "$OPENOODA_HOME/spec.oot.tmp" ]]; then
       mv -f "$OPENOODA_HOME/spec.oot.tmp" "$OPENOODA_HOME/spec.oot" 2>/dev/null || warn "spec rename failed; keeping previous spec.oot"
     else
       rm -f "$OPENOODA_HOME/spec.oot.tmp" 2>/dev/null || true
       if [[ -s "$OPENOODA_HOME/spec.oot" ]]; then
         warn "spec refresh failed; keeping existing spec.oot"
       else
-        warn "spec fetch failed; cli spec and agent tooling need network to populate spec.oot"
+        warn "spec fetch failed; ooda spec and agent tooling need network to populate spec.oot"
       fi
     fi
   fi
