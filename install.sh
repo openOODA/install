@@ -309,7 +309,7 @@ print_preamble() {
   printf '    oopm     ~/.openooda/bin/oopm\n'
   printf '    oolsp    ~/.openooda/bin/oolsp\n'
   printf '    oomcp    ~/.openooda/bin/oomcp\n'
-  printf '    spec     ~/.openooda/spec.oot (spec.md Quick Card)\n'
+  printf '    spec     ~/.openooda/cards/spec.md (spec.md Quick Card)\n'
   if [[ "${FROM_SOURCE:-0}" == "1" ]]; then
     printf '\n  %sEstimated time: 3-8 minutes (local builds). Press Ctrl-C to cancel.%s\n\n' "$DIM" "$RESET"
   else
@@ -1002,7 +1002,7 @@ resolve_source_dir() {
   [[ -n "$d" ]] || { err "from-source: cannot resolve dir: $SOURCE_DIR"; return 1; }
   local missing=()
   local s
-  for s in ooda/main.oo oopm/cli/main.oo oolsp/cli/main.oo oomcp/cli/main.oo oodar/scripts/Makefile openOODA/AGENTS.md openOODA/spec.md; do
+  for s in ooda/main.oo oopm/cli/main.oo oolsp/cli/main.oo oomcp/cli/main.oo oodar/scripts/Makefile openOODA/AGENTS.md openOODA/cards/spec.md; do
     [[ -f "$d/$s" ]] || missing+=("$s")
   done
   [[ -f "$d/oostd/anchor.oo" || -f "$d/oostd/ANCHOR.oo" ]] || missing+=("oostd/anchor.oo")
@@ -1159,10 +1159,10 @@ setup_shell_rc() {
   # $OPENOODA_HOME here: that var is often unset in interactive shells.
   local l4='export OODA_FS_READDIR="$HOME/.openooda:/etc:/usr"'
   local l5='export OODA_FS_WRITEDIR="$HOME"'
-  local l6='export OODACODEX="$HOME/.openooda/northstar.oot"'
+  local l6='export OODACODEX="$HOME/.openooda/AGENTS.md"'
   local l7='export OO_LIST_AMBIENT_QUOTA="8589934592"'
-  local l8='export OODASPEC="$HOME/.openooda/spec.oot"'
-  local l9='export OODA_SPEC="$HOME/.openooda/spec.oot"'
+  local l8='export OODASPEC="$HOME/.openooda/cards/spec.md"'
+  local l9='export OODA_SPEC="$HOME/.openooda/cards/spec.md"'
   for rc in "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.zshrc"; do
     [[ -f "$rc" || ( "$rc" == "$HOME/.bashrc" && ! -f "$HOME/.bash_profile" && ! -f "$HOME/.zshrc" ) ]] || continue
     [[ -e "$rc" ]] || : >> "$rc" 2>/dev/null || continue
@@ -1516,54 +1516,54 @@ do_install() {
   # sources — one repo, one artifact.
 
   # step 3c: orientation codex (MCP servers fail closed without OODACODEX).
-  # northstar.oot is retired; the AGENTS.md Quick Card is the canonical
-  # agent-orientation doc. The legacy ~/.openooda/northstar.oot path is kept
+  # AGENTS.md is retired; the AGENTS.md Quick Card is the canonical
+  # agent-orientation doc. The legacy ~/.openooda/AGENTS.md path is kept
   # so OODACODEX consumers resolve unchanged.
   if [[ "$DRY_RUN" == "1" ]]; then
     step_status "[dry-run] skipping codex fetch"
     skip "[dry-run] skipping codex fetch"
   elif [[ "$FROM_SOURCE" == "1" ]]; then
     step_status "copying orientation codex from source"
-    install_file_from_source "openOODA/AGENTS.md" "$OPENOODA_HOME/northstar.oot" "codex"
+    install_file_from_source "openOODA/AGENTS.md" "$OPENOODA_HOME/AGENTS.md" "codex"
   else
     # Download to .tmp then rename on success (same atomic pattern as
     # fetch_and_verify): a failed refresh must never clobber a codex we
     # already hold — MCP servers fail closed without OODACODEX.
     step_status "fetching orientation codex (openOODA/AGENTS.md)"
-    if curl -sSL --connect-timeout 10 --max-time 60 -o "$OPENOODA_HOME/northstar.oot.tmp" "https://raw.githubusercontent.com/openOODA/openOODA/master/AGENTS.md" 2>/dev/null && [[ -s "$OPENOODA_HOME/northstar.oot.tmp" ]]; then
-      mv -f "$OPENOODA_HOME/northstar.oot.tmp" "$OPENOODA_HOME/northstar.oot" 2>/dev/null || warn "codex rename failed; keeping previous northstar.oot"
+    if curl -sSL --connect-timeout 10 --max-time 60 -o "$OPENOODA_HOME/AGENTS.md.tmp" "https://raw.githubusercontent.com/openOODA/openOODA/master/AGENTS.md" 2>/dev/null && [[ -s "$OPENOODA_HOME/AGENTS.md.tmp" ]]; then
+      mv -f "$OPENOODA_HOME/AGENTS.md.tmp" "$OPENOODA_HOME/AGENTS.md" 2>/dev/null || warn "codex rename failed; keeping previous AGENTS.md"
     else
-      rm -f "$OPENOODA_HOME/northstar.oot.tmp" 2>/dev/null || true
-      if [[ -s "$OPENOODA_HOME/northstar.oot" ]]; then
-        warn "codex refresh failed; keeping existing northstar.oot"
+      rm -f "$OPENOODA_HOME/AGENTS.md.tmp" 2>/dev/null || true
+      if [[ -s "$OPENOODA_HOME/AGENTS.md" ]]; then
+        warn "codex refresh failed; keeping existing AGENTS.md"
       else
         warn "codex fetch failed; MCP wiring gets an empty OODACODEX until network returns"
       fi
     fi
   fi
 
-  # step 3d: language specification — spec.oot is retired; spec.md is the
-  # canonical spec Quick Card. The legacy ~/.openooda/spec.oot path is kept
+  # step 3d: language specification — cards/spec.md is retired; spec.md is the
+  # canonical spec Quick Card. The legacy ~/.openooda/cards/spec.md path is kept
   # so OODASPEC/OODA_SPEC consumers resolve unchanged.
   if [[ "$DRY_RUN" == "1" ]]; then
     step_status "[dry-run] skipping spec fetch"
     skip "[dry-run] skipping spec fetch"
   elif [[ "$FROM_SOURCE" == "1" ]]; then
     step_status "copying language specification from source"
-    install_file_from_source "openOODA/spec.md" "$OPENOODA_HOME/spec.oot" "spec"
+    install_file_from_source "openOODA/cards/spec.md" "$OPENOODA_HOME/cards/spec.md" "spec"
   else
     # Download to .tmp then rename on success (same atomic pattern as
     # fetch_and_verify): a failed refresh must never clobber a spec we
     # already hold.
-    step_status "fetching language specification (openOODA/spec.md)"
-    if curl -sSL --connect-timeout 10 --max-time 60 -o "$OPENOODA_HOME/spec.oot.tmp" "https://raw.githubusercontent.com/openOODA/openOODA/master/spec.md" 2>/dev/null && [[ -s "$OPENOODA_HOME/spec.oot.tmp" ]]; then
-      mv -f "$OPENOODA_HOME/spec.oot.tmp" "$OPENOODA_HOME/spec.oot" 2>/dev/null || warn "spec rename failed; keeping previous spec.oot"
+    step_status "fetching language specification (openOODA/cards/spec.md)"
+    if curl -sSL --connect-timeout 10 --max-time 60 -o "$OPENOODA_HOME/cards/spec.md.tmp" "https://raw.githubusercontent.com/openOODA/openOODA/master/cards/spec.md" 2>/dev/null && [[ -s "$OPENOODA_HOME/cards/spec.md.tmp" ]]; then
+      mv -f "$OPENOODA_HOME/cards/spec.md.tmp" "$OPENOODA_HOME/cards/spec.md" 2>/dev/null || warn "spec rename failed; keeping previous cards/spec.md"
     else
-      rm -f "$OPENOODA_HOME/spec.oot.tmp" 2>/dev/null || true
-      if [[ -s "$OPENOODA_HOME/spec.oot" ]]; then
-        warn "spec refresh failed; keeping existing spec.oot"
+      rm -f "$OPENOODA_HOME/cards/spec.md.tmp" 2>/dev/null || true
+      if [[ -s "$OPENOODA_HOME/cards/spec.md" ]]; then
+        warn "spec refresh failed; keeping existing cards/spec.md"
       else
-        warn "spec fetch failed; ooda spec and agent tooling need network to populate spec.oot"
+        warn "spec fetch failed; ooda spec and agent tooling need network to populate cards/spec.md"
       fi
     fi
   fi
@@ -1693,7 +1693,7 @@ if [[ $DO_UNINSTALL -eq 1 ]]; then
     if [[ -L "$s" && "$(readlink "$s" 2>/dev/null)" == "$BIN_DIR/"* ]]; then rm -f "$s" 2>/dev/null || true; fi
   done
   # remove binaries, std, spec, and build sources (keep OPENOODA_HOME for logs)
-  rm -rf "$BIN_DIR" "$STD_DIR" "$OPENOODA_HOME/oodar" "$OPENOODA_HOME/spec.oot" "$OPENOODA_HOME/northstar.oot" 2>/dev/null || true
+  rm -rf "$BIN_DIR" "$STD_DIR" "$OPENOODA_HOME/oodar" "$OPENOODA_HOME/cards/spec.md" "$OPENOODA_HOME/AGENTS.md" 2>/dev/null || true
   # surgically remove the # openOODA section from shell rc files
   for rc in "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.zshrc"; do
     if [[ -f "$rc" ]] && grep -q '# openOODA' "$rc" 2>/dev/null; then
