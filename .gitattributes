@@ -1,0 +1,3 @@
+# GitHub Linguist Language Recognition for OODA (.oo / .oot)
+*.oo linguist-language=OODA linguist-detectable=true
+*.oot linguist-language=OODA linguist-documentation=true

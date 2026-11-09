@@ -131,23 +131,23 @@ else
 fi
 _log() { printf '[%s] %s\n' "$(date -Iseconds 2>/dev/null || date)" "$*" >&3 2>/dev/null || true; }
 
-# The 6 L0 toolchain repos live in the openOODA-core org: ooda is the canonical
+# The 7 L0 binary/archive repos live in the openOODA-core org (plus oostd): ooda is the canonical
 # CLI (it absorbed cli/oocli; tui/ootui and oostd-hw are retired). The
 # openOODA/<repo> and openOODA/openOODA umbrella URLs 404 for these assets.
 # Resolution order is a local dist file, then `gh release download` from
 # openOODA-core/<repo>, then the HTTPS asset URL on that same repo.
 RELEASES="https://github.com/openOODA-core"
-declare -A REPOS=([ooda]=ooda [oodac]=oodac [oodar]=oodar [oopm]=oopm [oolsp]=oolsp [oomcp]=oomcp)
+declare -A REPOS=([ooda]=ooda [oodac]=oodac [oodar]=oodar [oopm]=oopm [oolsp]=oolsp [oomcp]=oomcp [oohat]=oohat)
 # Dest names match the canonical L0 binary names. ASSETS is the release
 # stem when it differs: the hub publishes <pkg>-linux-x86_64 per binary and
 # liboodar.a verbatim; every asset verifies against the single master
 # SHA256SUMS at the install release, not per-file .sha256 sidecars.
-declare -A BINARIES=([ooda]=ooda [oodac]=oodac [oodar]=liboodar.a [oopm]=oopm [oolsp]=oolsp [oomcp]=oomcp)
+declare -A BINARIES=([ooda]=ooda [oodac]=oodac [oodar]=liboodar.a [oopm]=oopm [oolsp]=oolsp [oomcp]=oomcp [oohat]=oohat)
 declare -A ASSETS=([oodar]=liboodar.a)
 # SOURCE_MAIN: repo-root-relative build entry per component, used only by
 # --from-source. oodac has no entry: `oodac build oodac/main.oo` refuses
 # (unique_fns), so from-source keeps the bootstrap compiler as the product.
-declare -A SOURCE_MAIN=([ooda]=ooda/main.oo [oopm]=oopm/cli/main.oo [oolsp]=oolsp/cli/main.oo [oomcp]=oomcp/cli/main.oo)
+declare -A SOURCE_MAIN=([ooda]=ooda/main.oo [oopm]=oopm/cli/main.oo [oolsp]=oolsp/cli/main.oo [oomcp]=oomcp/cli/main.oo [oohat]=oohat/main.oo)
 
 # --- color --------------------------------------------------------------------
 
@@ -309,6 +309,7 @@ print_preamble() {
   printf '    oopm     ~/.openooda/bin/oopm\n'
   printf '    oolsp    ~/.openooda/bin/oolsp\n'
   printf '    oomcp    ~/.openooda/bin/oomcp\n'
+  printf '    oohat    ~/.openooda/bin/oohat\n'
   printf '    spec     ~/.openooda/cards/spec.md (spec.md Quick Card)\n'
   if [[ "${FROM_SOURCE:-0}" == "1" ]]; then
     printf '\n  %sEstimated time: 3-8 minutes (local builds). Press Ctrl-C to cancel.%s\n\n' "$DIM" "$RESET"
@@ -1002,7 +1003,7 @@ resolve_source_dir() {
   [[ -n "$d" ]] || { err "from-source: cannot resolve dir: $SOURCE_DIR"; return 1; }
   local missing=()
   local s
-  for s in ooda/main.oo oopm/cli/main.oo oolsp/cli/main.oo oomcp/cli/main.oo oodar/scripts/Makefile openOODA/AGENTS.md openOODA/cards/spec.md; do
+  for s in ooda/main.oo oopm/cli/main.oo oolsp/cli/main.oo oomcp/cli/main.oo oohat/main.oo oodar/scripts/Makefile openOODA/AGENTS.md openOODA/cards/spec.md; do
     [[ -f "$d/$s" ]] || missing+=("$s")
   done
   [[ -f "$d/oostd/anchor.oo" || -f "$d/oostd/ANCHOR.oo" ]] || missing+=("oostd/anchor.oo")
@@ -1375,7 +1376,7 @@ post_flight() {
   export OODA_FS_READDIR="${OODA_FS_READDIR:-$HOME/.openooda:/etc:/usr}"
   export OODA_FS_WRITEDIR="${OODA_FS_WRITEDIR:-$HOME}"
   local fail=0
-  local bins=(ooda oodac oopm oolsp oomcp)
+  local bins=(ooda oodac oopm oolsp oomcp oohat)
   for bin in "${bins[@]}"; do
     # Verify by output, not exit code: some tools exit nonzero on --help
     # (opm) or under non-tty stdout (ooda), and a silent stub that exits 0
@@ -1435,7 +1436,7 @@ do_install() {
   if [[ "$FROM_SOURCE" == "1" ]]; then
     step_status "resolving source checkout"
     resolve_source_dir || return 1
-    for key in ooda oodac oodar oopm oolsp oomcp; do
+    for key in ooda oodac oodar oopm oolsp oomcp oohat; do
       step_status "installing $key from source"
       case "$key" in
         oodac) install_oodac_from_source || return 1;;
@@ -1446,7 +1447,7 @@ do_install() {
   else
     step_status "loading version pins"
     load_pins
-    for key in ooda oodac oodar oopm oolsp oomcp; do
+    for key in ooda oodac oodar oopm oolsp oomcp oohat; do
       step_status "installing $key"
       install_component "$key" || return 1
     done

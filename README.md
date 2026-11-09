@@ -8,7 +8,7 @@ Universal installer, OS ISO & Buildbox distribution hub, and native package mana
 curl -fsSL https://openOODA.org/install.sh | bash
 ```
 
-Installs the `L0` core toolchain (`ooda`, `oodac`, `oopm`, `oolsp`, `oomcp`, `liboodar.a`, and `oostd`) into `~/.openooda/bin` and verifies every binary against [`SHA256SUMS`](https://github.com/openOODA/install/releases/download/hub/SHA256SUMS).
+Installs the `L0` core toolchain (`ooda`, `oodac`, `oopm`, `oolsp`, `oomcp`, `oohat`, `liboodar.a`, and `oostd`) into `~/.openooda/bin` and verifies every binary against [`SHA256SUMS`](https://github.com/openOODA/install/releases/download/hub/SHA256SUMS).
 
 ## Live Bootable ISO & Buildbox (`install@hub`)
 
