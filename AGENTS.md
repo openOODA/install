@@ -15,5 +15,5 @@
    - `64`: Max 64 code lines/fn. `128`: Max 128 chars/line. `256`: Max 256 lines/file.
 3. **Syntax, Mandatory `oostd` Reuse & Workflow**:
    - Relative string imports only (`import "core/engine.oo";` or `import "oostd/fs/os/fs.oo";`, never `::`). No parens on `if cond { }` / `while cond { }`. No struct trailing commas. Connect all CLI/TUI/GUI output to `ootheme` and expose `<binary> about`.
-   - **Always import `oostd` (`L0`)** for math (`oostd/core/math/exact/...`, `geometry/...`), 2D/3D physics & collision (`oostd/core/science/phys/classical/...`, `gnc/...`, `relativistic/...`), AI/graphs (`oostd/core/app/ai/algo/...`), collections (`oostd/core/collection/...`), and crypto/hashing (`oostd/sec/hash/...`, `capability/...`)—never re-implement duplicate local helpers!
+   - **Always import `oostd` (`L0`)** for math (`oostd/core/math/exact/...`, `geometry/...`), 2D/3D physics & collision (`oostd/core/science/phys/classical/...`, `gnc/...`, `relativistic/...`, `oostd/core/app/ui/game_engine/...`), frontier AI-for-science & graphs (`oostd/core/app/ai/...`), collections (`oostd/core/collection/...`), and crypto/hashing (`oostd/sec/hash/...`, `capability/...`)—never re-implement duplicate local helpers!
    - Build & Verify: `ooda build && ooda test && ooda check && ooda audit`.

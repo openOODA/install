@@ -10,7 +10,7 @@ curl -fsSL https://openOODA.org/install.sh | bash
 
 Installs the `L0` core toolchain (`ooda`, `oodac`, `oopm`, `oolsp`, `oomcp`, `oohat`, `liboodar.a`, and `oostd`) into `~/.openooda/bin` and verifies every binary against [`SHA256SUMS`](https://github.com/openOODA/install/releases/download/hub/SHA256SUMS).
 
-`oostd` ships the expanded scientific & mathematical discovery library: `oostd/core/math/{exact,geometry,blas,fft,algebra,graph_topology}/...`, `oostd/core/proofs/...`, `oostd/core/science/{phys,chem,bio,comm,econ}/...`, `oostd/core/app/ai/algo/...`, `oostd/core/collection/...`, and `oostd/sec/{hash,capability,pqc,symmetric}/...`.
+`oostd` ships the expanded scientific & mathematical discovery library: `oostd/core/math/{exact,geometry,blas,fft,algebra,graph_topology}/...`, `oostd/core/proofs/...`, `oostd/core/science/{phys,chem,bio,comm,econ}/...`, frontier AI-for-science `oostd/core/app/ai/...`, 2D/3D engine physics `oostd/core/app/ui/game_engine/...` (`collision_{aabb,circle,gjk,sat}` + `ecs_*`), `oostd/core/collection/...`, and `oostd/sec/{hash,capability,pqc,symmetric}/...`.
 
 ## Live Bootable ISO & Buildbox (`install@hub`)
 
