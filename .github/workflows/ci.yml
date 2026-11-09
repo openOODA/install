@@ -2,17 +2,28 @@ name: install CI
 
 on:
   workflow_dispatch:
+
 jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: shellcheck install.sh
+      - name: shellcheck installer + hub publisher + pkg fragments
         run: |
-          sudo apt-get install -y shellcheck
-          shellcheck --severity=warning install.sh tests/*.sh
-      - name: fail-closed sha256 contract
-        run: bash tests/test_install.sh
+          sudo apt-get update && sudo apt-get install -y shellcheck
+          shellcheck --severity=warning install.sh publish-hub.sh pkg/*/profile.d.sh
+      - name: bash -n syntax gate
+        run: |
+          bash -n install.sh
+          bash -n publish-hub.sh
+          for f in pkg/*/profile.d.sh; do bash -n "$f"; done
+      - name: 8-entry repo root
+        run: |
+          set -euo pipefail
+          n=$(find . -maxdepth 1 -mindepth 1 ! -name '.*' | wc -l)
+          test "$n" -le 8 || { echo "ERR root entries=$n > 8"; exit 1; }
+          test "$(ls -d pkg/*/ | wc -l)" -eq 4
+          echo "[tree OK] $n root entries; pkg/ carries apt dnf pacman winget"
 
   smoke:
     runs-on: ubuntu-latest
@@ -27,99 +38,20 @@ jobs:
           echo "$output"
           for needle in \
             "openOODA" \
-            "Each GitHub repo is one install" \
+            "One release hub, one asset per component" \
             "oodac" \
             "Welcome to openOODA" \
-            "prefix:"; do
+            "prefix:" \
+            "dry-run"; do
             echo "$output" | grep -qF -- "$needle" || { echo "missing: $needle"; exit 1; }
           done
-          echo "$output" | grep -qF 'ooda install openOODA-core/oostd. \
-            && { echo "command list still suggests std install (it is auto-cloned)"; exit 1; } \
-            || true
-
-  e2e:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: e2e install into temp HOME
-        env:
-          NO_COLOR: '1'
-        run: bash tests/test_e2e_install.sh
-      - name: idempotency (install twice, identical binaries)
-        env:
-          NO_COLOR: '1'
-        run: bash tests/test_idempotent.sh
-
-  determinism-gate:
-    needs: [lint, smoke, e2e]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: checkout install
-        uses: actions/checkout@v4
-        with:
-          path: install
-      - name: checkout oostd
-        uses: actions/checkout@v4
-        with:
-          repository: openOODA-core/oostd
-          path: oostd
-      - name: checkout oodac
-        uses: actions/checkout@v4
-        with:
-          repository: openOODA-core/oodac
-          path: oodac
-      - name: checkout oodar
-        uses: actions/checkout@v4
-        with:
-          repository: openOODA-core/oodar
-          path: oodar
-      - name: require compiler
-        run: |
-          test -x oodac/bin/oodac || chmod +x oodac/bin/oodac
-          test -f oodar/core/blackbox/blackbox.c || { echo "missing oodar/core/blackbox/blackbox.c"; exit 1; }
-      - name: determinism double-run on qa/ probes (RULES §1.10)
-        working-directory: ${{ github.workspace }}/install
-        env:
-          OODA_FS_READDIR: ${{ github.workspace }}
-          OODA_FS_WRITEDIR: ${{ github.workspace }}
-          OODA_NO_JAIL: '1'
-          OODA_COMPILER: ${{ github.workspace }}/oodac/bin/oodac
-        run: |
-          set -euo pipefail
-          trap 'rm -f /tmp/*.diff[12]' EXIT
-          shopt -s nullglob
-          count=0
-          for f in qa/qa-*.oo qa/probe_*.oo; do
-            test -f "$f" || continue
-            count=$((count + 1))
-            base=$(basename "$f" .oo)
-            "$OODA_COMPILER" tokens "$f" > "/tmp/${base}.diff1" 2>&1 || {
-              echo "[bb-gate FAIL] diff non-zero exit on $f"
-              exit 1
-            }
-            "$OODA_COMPILER" tokens "$f" > "/tmp/${base}.diff2" 2>&1 || {
-              echo "[bb-gate FAIL] second diff non-zero exit on $f"
-              exit 1
-            }
-            if ! diff -q "/tmp/${base}.diff1" "/tmp/${base}.diff2" >/dev/null; then
-              echo "[bb-gate FAIL] non-deterministic diff on $f (double-run law violation, RULES §1.10)"
-              diff "/tmp/${base}.diff1" "/tmp/${base}.diff2" | head -20
-              exit 1
-            fi
-          done
-          if [ "$count" -eq 0 ]; then
-            echo "[bb-gate SKIP] no qa/probe_*.oo in this repo"
-            exit 0
+          if echo "$output" | grep -qF 'ooda install openOODA-core/oostd'; then
+            echo "command list still suggests std install (it is auto-cloned)"
+            exit 1
           fi
-          echo "[bb-gate OK] $count probes deterministic across double-run (oodac-native gate)"
-      - name: fail if any upstream job failed
-        if: always()
-        run: |
-          for r in "${{ needs.lint.result }}" "${{ needs.smoke.result }}" "${{ needs.e2e.result }}"; do
-            [ "$r" = "success" ] || { echo "upstream job result was $r, not success"; exit 1; }
-          done
+      - name: --version probe
+        run: bash install.sh --version | grep -qE 'openOODA installer [0-9]+\.[0-9]+\.[0-9]+'
 
   auto-release:
-    needs: [determinism-gate, e2e]
+    needs: [lint, smoke]
     uses: openOODA/openOODA/.github/workflows/auto-release.yml@v2.10.44

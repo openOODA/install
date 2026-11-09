@@ -67,7 +67,7 @@ Options:
                       from the openOODA/install release, SHA256SUMS-verified)
   --group @GROUP      install a Fedora-style group profile from
                       catalog/groups.oot (@core @kernel @os @tools @de
-                      @apps @games @cloud @agents @all); repeatable
+                      @apps @games @cloud @agents @workstation @all); repeatable
   NO_COLOR=1          disable color
   OPENOODA_DRY_RUN=1  same as --dry-run
   OPENOODA_YES=1      same as --yes
@@ -136,7 +136,6 @@ _log() { printf '[%s] %s\n' "$(date -Iseconds 2>/dev/null || date)" "$*" >&3 2>/
 # openOODA/<repo> and openOODA/openOODA umbrella URLs 404 for these assets.
 # Resolution order is a local dist file, then `gh release download` from
 # openOODA-core/<repo>, then the HTTPS asset URL on that same repo.
-RELEASES="https://github.com/openOODA-core"
 declare -A REPOS=([ooda]=ooda [oodac]=oodac [oodar]=oodar [oopm]=oopm [oolsp]=oolsp [oomcp]=oomcp [oohat]=oohat)
 # Dest names match the canonical L0 binary names. ASSETS is the release
 # stem when it differs: the hub publishes <pkg>-linux-x86_64 per binary and
@@ -867,7 +866,7 @@ install_component() {
 # package ships as <name>-linux-x86_64 beside the six L0 components, all
 # covered by the one master SHA256SUMS. --pkg installs one package;
 # --group expands a Fedora-style @group profile from catalog/groups.oot
-# (@core @kernel @os @tools @de @apps @games @cloud @agents @all).
+# (@core @kernel @os @tools @de @apps @games @cloud @agents @workstation @all).
 
 GROUPS_OOT=""
 GROUPS_OOT_TRIED=0

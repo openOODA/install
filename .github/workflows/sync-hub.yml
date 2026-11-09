@@ -10,17 +10,16 @@
 
 name: sync-hub
 
+# Fleet law: workflow_dispatch ONLY — zero GitHub CI/CD auto-triggers
+# (no push:, pull_request:, schedule:, or repository_dispatch:).
+
 on:
-  schedule:
-    - cron: "*/30 * * * *"
   workflow_dispatch:
     inputs:
       package:
         description: "Package to force-rebuild (name or 'all')"
         required: false
         default: "all"
-  repository_dispatch:
-    types: [sync-hub]
 
 concurrency:
   group: sync-hub
