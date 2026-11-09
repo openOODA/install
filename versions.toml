@@ -1,9 +1,6 @@
 # openOODA version overrides for install.sh.
 #
-# Each L0 toolchain binary publishes from its openOODA-core/<repo> release
-# (or a local dist file, or `gh release download`). A pin value is a tag on
-# that component repo. Default: latest release. Example:
-# oodac = "v0.11.63"
-# oodar = "v4.0.90"
-# std clones openOODA-core/oostd; its pin is a git ref on that repo:
-# std = "v1.0.88"
+# All L0–L7 binaries publish to the single canonical release hub at
+# https://github.com/openOODA/install/releases/tag/hub (verified against the
+# master SHA256SUMS manifest). Default tag is "hub".
+# std clones openOODA-core/oostd (default: master branch).

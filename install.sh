@@ -467,13 +467,10 @@ release_url_for() {
   local key="$1" name="$2"
   local tag="${PINS[$key]:-latest}"
   if [[ "$tag" == "latest" ]]; then
-    printf '%s\n' "https://github.com/openOODA/catalog/releases/latest/download/${name}"
     printf '%s\n' "https://github.com/openOODA/install/releases/latest/download/${name}"
-    printf '%s\n' "${RELEASES}/${REPOS[$key]}/releases/latest/download/${name}"
+    printf '%s\n' "https://github.com/openOODA/install/releases/download/hub/${name}"
   else
-    printf '%s\n' "https://github.com/openOODA/catalog/releases/download/${tag}/${name}"
     printf '%s\n' "https://github.com/openOODA/install/releases/download/${tag}/${name}"
-    printf '%s\n' "${RELEASES}/${REPOS[$key]}/releases/download/${tag}/${name}"
   fi
 }
 
@@ -525,24 +522,28 @@ local_dist_file() {
 install_from_gh() {
   local key="$1" dest="$2"
   command -v gh >/dev/null 2>&1 || return 1
-  local repo="${REPOS[$key]}" tag="${PINS[$key]:-}"
-  local -a tagargs=()
-  local wd name size
-  [[ -n "$tag" && "$tag" != "latest" ]] && tagargs=(--tag "$tag")
+  local tag="${PINS[$key]:-hub}"
+  [[ "$tag" == "latest" || -z "$tag" ]] && tag="hub"
+  local wd name
   wd=$(mktemp -d 2>/dev/null || echo "/tmp/openooda-gh-$$-$key")
+  sums_ensure || true
   while IFS= read -r name; do
     [[ -n "$name" ]] || continue
-    rm -f "$wd/$name" "$wd/$name.sha256"
-    if gh release download --repo "openOODA-core/$repo" "${tagargs[@]}" \
-        --pattern "$name" --pattern "$name.sha256" --dir "$wd" --clobber >/dev/null 2>&1 \
+    rm -f "$wd/$name"
+    if gh release download "$tag" --repo "openOODA/install" \
+        --pattern "$name" --dir "$wd" --clobber >/dev/null 2>&1 \
         && [[ -s "$wd/$name" ]]; then
-      if [[ ! -s "$wd/$name.sha256" ]]; then
+      local expected actual
+      expected=$(sums_lookup "$name" || true)
+      if [[ -z "$expected" ]]; then
         rm -rf "$wd"
-        err "$key: release asset $name has no SHA-256 sidecar; refuse unsigned install"
+        err "$key: asset $name missing from master SHA256SUMS; refuse unsigned install"
         return 2
       fi
-      if ! sha256_check "$wd/$name" "$wd/$name.sha256" "$key"; then
+      actual=$(sha256sum "$wd/$name" 2>/dev/null | awk '{print $1}')
+      if [[ "$actual" != "$expected" ]]; then
         rm -rf "$wd"
+        err "$key: SHA-256 mismatch for $name"
         return 2
       fi
       mv -f "$wd/$name" "$dest"
