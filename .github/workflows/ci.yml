@@ -17,13 +17,14 @@ jobs:
           bash -n install.sh
           bash -n publish-hub.sh
           for f in pkg/*/profile.d.sh; do bash -n "$f"; done
-      - name: 8-entry repo root
+      - name: canonical repo root
         run: |
           set -euo pipefail
-          n=$(find . -maxdepth 1 -mindepth 1 ! -name '.*' | wc -l)
-          test "$n" -le 8 || { echo "ERR root entries=$n > 8"; exit 1; }
+          want="AGENTS.md Makefile README.md VERSION anchor.oo core install.sh pkg publish-hub.sh tests versions.toml"
+          have=$(find . -maxdepth 1 -mindepth 1 ! -name '.*' -printf '%f\n' | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')
+          test "$have" = "$want" || { echo "ERR root drift: [$have] != [$want]"; exit 1; }
           test "$(ls -d pkg/*/ | wc -l)" -eq 4
-          echo "[tree OK] $n root entries; pkg/ carries apt dnf pacman winget"
+          echo "[tree OK] 11 canonical root entries; pkg/ carries apt dnf pacman winget"
 
   smoke:
     runs-on: ubuntu-latest

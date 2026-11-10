@@ -4,13 +4,16 @@
 //          four package-manager payload dirs are non-empty, and install.sh keeps its required
 //          fail-closed shape.
 // Setup: Explicit FsReadCap; bounded reads of VERSION, pkg/{apt,dnf,pacman,winget}, and
-//        install.sh; canonical oostd str_extra parse_int_digits for the semver fields.
+//        install.sh; canonical oostd str_extra parse_int_digits for the semver fields; the
+//        script-surface contracts live on the sibling install_script.oo page.
 // Beats:
 //   1. ins_ver_ok parses "X.Y.Z" into three non-negative digit fields.
 //   2. ins_pkg_ok proves every package-manager dir exists and carries payload files.
-//   3. ins_script_shape enforces the shebang, set -e, and do_install entry points.
+//   3. ins_repo_ok folds VERSION, payloads, versions.toml, and the full install.sh contract
+//      (shape, flags, L0 binary map, SHA256SUMS gate, VERSION alignment) into one verdict.
 
 import "oostd/core/primitives/str_extra.oo";
+import "install_script.oo";
 
 pub fn ins_ver_num(ver: String) -> Int {
     let v: String = str_trim(ver);
@@ -56,11 +59,6 @@ pub fn ins_pkg_ok(fs: &FsReadCap) -> Bool {
         ins_dir_nonempty(fs, "pkg/pacman") && ins_dir_nonempty(fs, "pkg/winget");
 }
 
-pub fn ins_script_shape(src: String) -> Bool {
-    return str_starts_with(str_trim(src), "#!") && str_contains(src, "set -e") &&
-        str_contains(src, "do_install") && str_contains(src, "ensure_sysdep");
-}
-
 pub fn ins_repo_ok(fs: &FsReadCap) -> Bool {
     let vr: Result[String, String] = oo_read_file(fs, "VERSION");
     if vr.is_err() { return false; }
@@ -71,5 +69,5 @@ pub fn ins_repo_ok(fs: &FsReadCap) -> Bool {
     let sr: Result[String, String] = oo_read_file(fs, "install.sh");
     if sr.is_err() { return false; }
     let src: String = match sr { Ok(s) => s, Err(_) => "" };
-    return ins_script_shape(src);
+    return ins_script_ok(src, ver);
 }

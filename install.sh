@@ -57,6 +57,8 @@ Options:
   --keep-stale        don't remove stale openooda binaries in legacy shadow locations (~/.local/bin)
   --clean-stale       same as default — remove stale openooda binaries in legacy shadow locations
   --uninstall         remove binaries and std
+  --selftest-sha      prove the SHA-256 sidecar gate refuses missing/empty/
+                      forged digests and accepts a match, then exit
   --from-source[=DIR] build + install from a local checkout instead of
                       downloading release binaries (also OPENOODA_SOURCE=DIR).
                       Bare --from-source auto-detects the checkout when this
@@ -78,6 +80,14 @@ DASHDASH=0
 EXPECT_ARG=""
 declare -a PKG_LIST=() GROUP_LIST=()
 for arg in "$@"; do
+  # Fail closed on a dangling option-argument: when --pkg or --group is
+  # waiting for its operand, a following flag-shaped token is a parse
+  # error, never a silent re-parse (e.g. `--pkg --group x` must not let
+  # x land in GROUP_LIST while the pkg slot vanishes).
+  if [[ -n "$EXPECT_ARG" && "$arg" == -* ]]; then
+    printf 'install.sh: --%s requires an argument\n' "$EXPECT_ARG" >&2
+    exit 1
+  fi
   case "$arg" in
     --pkg) EXPECT_ARG="pkg";;
     --pkg=*) PKG_LIST+=("${arg#--pkg=}");;
@@ -533,7 +543,7 @@ install_from_gh() {
         --pattern "$name" --dir "$wd" --clobber >/dev/null 2>&1 \
         && [[ -s "$wd/$name" ]]; then
       local expected actual
-      expected=$(sums_lookup "$name" || true)
+      expected=$(sums_expected "$name" || true)
       if [[ -z "$expected" ]]; then
         rm -rf "$wd"
         err "$key: asset $name missing from master SHA256SUMS; refuse unsigned install"

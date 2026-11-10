@@ -1,14 +1,17 @@
 // # Install Repo Refusal Suite - Negative-Trust Assertions
 //
 // Logline: Negative-trust assertions that malformed semvers, missing payload dirs, shape-broken
-//          scripts, and path traversal are refused by the repo conformance checker.
-// Setup: Imports the repo conformance checker; FsReadCap bounds every read inside the jail.
+//          scripts, forged flag surfaces, drifted binary maps, dead checksum call sites, forged
+//          fallback versions, and path traversal are refused by the conformance checkers.
+// Setup: Imports the repo + script conformance checkers; FsReadCap bounds every read in the jail.
 // Beats:
 //   1. Two-field, four-field, empty, and non-numeric version strings are refused.
-//   2. Missing package-manager dirs and scripts lacking the fail-closed shape are refused.
+//   2. Scripts missing a canonical flag, an L0 map key, the SHA256SUMS gate, or carrying the
+//      forbidden sums_lookup call site are refused.
 //   3. Parent-directory traversal reads are refused by the fs jail.
 
 import "core/install_check.oo";
+import "core/install_script.oo";
 
 fn t_expect(cond: Bool, label: String, p: Int) -> Int {
     if cond {
@@ -29,6 +32,20 @@ fn t_refuse(fs: &FsReadCap) -> Int {
     p = t_expect(!ins_script_shape("#!/bin/sh\necho hi\n") &&
         !ins_script_shape("set -e\ndo_install() { :; }\n") &&
         !ins_script_shape("#!/bin/sh\nset -e\n"), "shape-broken script refused", p);
+    let forged: String = "--help) --help --version) --version --dry-run) --dry-run " +
+        "--from-source= --from-source --pkg= --pkg --group= --group --uninstall) --uninstall";
+    p = t_expect(!ins_flags_ok(forged), "script missing one canonical flag refused", p);
+    p = t_expect(!ins_flag_ok("--selftest-sha) x;;", "--selftest-sha"),
+        "parsed-but-undocumented flag refused", p);
+    p = t_expect(!ins_bins_ok("[ooda]=ooda [oodac]=oodac") && !ins_bins_ok(""),
+        "drifted L0 binary map refused", p);
+    let sums_src: String = "HUB_SUMS_URL download/SHA256SUMS sums_ensure sums_expected( " +
+        "sha256sum shasum refuse unsigned install refuse unsigned install refuse unsigned install";
+    p = t_expect(ins_sums_ok(sums_src) && !ins_sums_ok(sums_src + " sums_lookup"),
+        "dead sums_lookup call refused", p);
+    p = t_expect(!ins_sums_ok("#!/bin/sh\nset -euo pipefail\n"), "unsigned script refused", p);
+    p = t_expect(!ins_ver_aligned("/VERSION echo \"9.9.9\"", "0.2.6"),
+        "forged fallback version refused", p);
     p = t_expect(!ins_ver_ok(".." + "/0.1"), "traversal ver refused", p);
     let r: Result[String, String] = oo_read_file(fs, ".." + "/.." + "/etc/" + "passwd");
     p = t_expect(r.is_err(), "traversal read refused", p);
@@ -37,10 +54,10 @@ fn t_refuse(fs: &FsReadCap) -> Int {
 
 pub fn main(fs: &FsReadCap, _args: List[String]) -> Result[Int, String] {
     let p: Int = t_refuse(fs);
-    if p == 6 {
-        println("PASS: refusal suite (6/6 assertions)");
+    if p == 12 {
+        println("PASS: refusal suite (12/12 assertions)");
         return Ok(0);
     }
-    println("FAIL: refusal suite (" + p.to_string() + "/6 assertions)");
+    println("FAIL: refusal suite (" + p.to_string() + "/12 assertions)");
     return Ok(2);
 }

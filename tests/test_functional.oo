@@ -1,14 +1,18 @@
 // # Install Repo Functional Suite - Positive-Trust Assertions
 //
 // Logline: Positive assertions that the installer repository ships a parseable semver VERSION, all
-//          four package-manager payload dirs, and a fail-closed install.sh.
-// Setup: Imports the repo conformance checker; FsReadCap bounds every read inside the jail.
+//          four package-manager payload dirs, and a fail-closed install.sh carrying every
+//          canonical flag, the L0 binary map, the master SHA256SUMS gate, and a VERSION-aligned
+//          embedded fallback.
+// Setup: Imports the repo + script conformance checkers; FsReadCap bounds every read in the jail.
 // Beats:
 //   1. ins_ver_ok accepts real X.Y.Z semver strings.
 //   2. ins_pkg_ok proves apt/dnf/pacman/winget dirs carry payloads.
-//   3. ins_repo_ok folds VERSION, payloads, versions.toml, and install.sh into one verdict.
+//   3. ins_flags_ok, ins_bins_ok, ins_sums_ok, and ins_ver_aligned prove the install.sh contract.
+//   4. ins_repo_ok folds VERSION, payloads, versions.toml, and install.sh into one verdict.
 
 import "core/install_check.oo";
+import "core/install_script.oo";
 
 fn t_expect(cond: Bool, label: String, p: Int) -> Int {
     if cond {
@@ -23,21 +27,28 @@ fn t_install(fs: &FsReadCap) -> Int {
     let mut p: Int = 0;
     p = t_expect(ins_ver_ok("0.2.6") && ins_ver_ok("12.0.99"), "semver accepts", p);
     let vr: Result[String, String] = oo_read_file(fs, "VERSION");
-    p = t_expect(vr.is_ok() && ins_ver_ok(match vr { Ok(s) => s, Err(_) => "" }),
-        "VERSION file parses", p);
+    let ver: String = match vr { Ok(s) => s, Err(_) => "" };
+    p = t_expect(vr.is_ok() && ins_ver_ok(ver), "VERSION file parses", p);
     p = t_expect(ins_pkg_ok(fs), "all four pkg managers non-empty", p);
     p = t_expect(oo_path_exists(fs, "versions.toml") && oo_path_exists(fs, "install.sh") &&
         oo_path_exists(fs, "publish-hub.sh"), "shipped files present", p);
+    let sr: Result[String, String] = oo_read_file(fs, "install.sh");
+    let src: String = match sr { Ok(s) => s, Err(_) => "" };
+    p = t_expect(sr.is_ok() && ins_script_shape(src), "install.sh fail-closed shape", p);
+    p = t_expect(ins_flags_ok(src), "all eight canonical flags parsed + documented", p);
+    p = t_expect(ins_bins_ok(src), "L0 binary map ooda..oohat + liboodar.a", p);
+    p = t_expect(ins_sums_ok(src), "master SHA256SUMS gate wired", p);
+    p = t_expect(ins_ver_aligned(src, ver), "embedded fallback == VERSION", p);
     p = t_expect(ins_repo_ok(fs), "repo conformance verdict", p);
     return p;
 }
 
 pub fn main(fs: &FsReadCap, _args: List[String]) -> Result[Int, String] {
     let p: Int = t_install(fs);
-    if p == 5 {
-        println("PASS: functional suite (5/5 assertions)");
+    if p == 10 {
+        println("PASS: functional suite (10/10 assertions)");
         return Ok(0);
     }
-    println("FAIL: functional suite (" + p.to_string() + "/5 assertions)");
+    println("FAIL: functional suite (" + p.to_string() + "/10 assertions)");
     return Ok(2);
 }

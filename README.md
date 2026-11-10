@@ -25,4 +25,8 @@ Published directly on [`openOODA/install@hub`](https://github.com/openOODA/insta
 - [`install.sh`](install.sh) — POSIX bootstrap installer
 - [`publish-hub.sh`](publish-hub.sh) — Stages and publishes all 105 binaries, `ooda-os-x86_64.iso`, `ooda-buildbox-x86_64.tar.gz`, and `SHA256SUMS` to `install@hub`
 - [`versions.toml`](versions.toml) — Canonical version matrix across `L0`–`L7`
+- [`VERSION`](VERSION) — Installer semver, aligned with the embedded `install.sh` fallback
+- [`Makefile`](Makefile) — `make build && make test` conformance gate (`make check` for oodac + `bash -n`)
+- [`core/`](core) — `install_check.oo` repo-fold checker + `install_script.oo` install.sh contract
+- [`tests/`](tests) — Functional (10) and refusal (12) assertion suites
 - [`pkg/`](pkg) — Distro repository metadata for `apt/`, `dnf/`, `pacman/`, and `winget/`

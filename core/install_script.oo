@@ -1,0 +1,74 @@
+// # Install Script Surface Conformance Checker
+//
+// Logline: Verify the install.sh contract: the fail-closed shell shape, all eight canonical flags
+//          parsed and documented, the seven-key L0 binary map, and the master SHA256SUMS gate.
+// Setup: Pure string analysis over the install.sh source text; every check fails closed on forged,
+//          truncated, or drifted scripts. VERSION alignment binds the embedded curl|bash fallback
+//          to the VERSION file so the installer's self-report stays in lockstep with openOODA.
+// Beats:
+//   1. ins_count folds a needle into an occurrence census via str_split.
+//   2. ins_flags_ok demands each canonical flag appear in the arg-parse case and the usage text.
+//   3. ins_bins_ok pins the L0 component map and the oodar -> liboodar.a archive binding.
+//   4. ins_sums_ok proves the master SHA256SUMS channel plus the refuse-unsigned gates, and bars
+//      the dead sums_lookup call site from ever returning.
+//   5. ins_script_ok folds every contract into one verdict for ins_repo_ok.
+
+fn ins_count(src: String, needle: String) -> Int {
+    if bytes_len(needle) == 0 { return 0; }
+    return list_len(str_split(src, needle)) - 1;
+}
+
+pub fn ins_script_shape(src: String) -> Bool {
+    return str_starts_with(str_trim(src), "#!") && str_contains(src, "set -euo pipefail") &&
+        str_contains(src, "do_install") && str_contains(src, "ensure_sysdep");
+}
+
+pub fn ins_flag_ok(src: String, flag: String) -> Bool {
+    if ins_count(src, flag) < 2 { return false; }
+    return str_contains(src, flag + ")") || str_contains(src, flag + "=") ||
+        str_contains(src, flag + "|");
+}
+
+pub fn ins_flags_ok(src: String) -> Bool {
+    let flags: List[String] = str_split(
+        "--help --version --dry-run --from-source --pkg --group --uninstall --selftest-sha", " ");
+    let mut i: Int = 0;
+    while i < list_len(flags) {
+        if !ins_flag_ok(src, list_get(flags, i)) { return false; }
+        i = i + 1;
+    }
+    return true;
+}
+
+pub fn ins_bins_ok(src: String) -> Bool {
+    let keys: List[String] = str_split("ooda oodac oodar oopm oolsp oomcp oohat", " ");
+    let mut i: Int = 0;
+    while i < list_len(keys) {
+        if !str_contains(src, "[" + list_get(keys, i) + "]=") { return false; }
+        i = i + 1;
+    }
+    if !str_contains(src, "[oodar]=liboodar.a") { return false; }
+    return str_contains(src, "for key in ooda oodac oodar oopm oolsp oomcp oohat");
+}
+
+pub fn ins_sums_ok(src: String) -> Bool {
+    if !str_contains(src, "HUB_SUMS_URL") || !str_contains(src, "download/SHA256SUMS") {
+        return false;
+    }
+    if !str_contains(src, "sums_ensure") || !str_contains(src, "sums_expected(") { return false; }
+    if !str_contains(src, "sha256sum") || !str_contains(src, "shasum") { return false; }
+    if ins_count(src, "refuse unsigned install") < 3 { return false; }
+    return ins_count(src, "sums_lookup") == 0;
+}
+
+pub fn ins_ver_aligned(src: String, ver: String) -> Bool {
+    let v: String = str_trim(ver);
+    if bytes_len(v) == 0 { return false; }
+    if !str_contains(src, "/VERSION") { return false; }
+    return str_contains(src, "echo \"" + v + "\"");
+}
+
+pub fn ins_script_ok(src: String, ver: String) -> Bool {
+    return ins_script_shape(src) && ins_flags_ok(src) && ins_bins_ok(src) &&
+        ins_sums_ok(src) && ins_ver_aligned(src, ver);
+}
