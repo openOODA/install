@@ -703,9 +703,39 @@ fetch_and_verify() {
 # Mirrors fetch_and_verify: runs in background subshell, parent spins on the pid.
 fetch_repo() {
   local url="$1" dest="$2" verify="$3" branch="$4" wd="$5"
+  if [[ "$verify" == "anchor.oo" ]]; then
+    local asset="oostd-${OS}-${ARCH}.tar.gz"
+    local tb="$wd/$asset"
+    sums_ensure || true
+    local exp; exp="$(sums_expected "$asset")"
+    if command -v gh >/dev/null 2>&1; then
+      gh release download "$HUB_RELEASE_TAG" -R "openOODA/install" --pattern "$asset" --output "$tb" --clobber >/dev/null 2>&1 || true
+    fi
+    if [[ ! -s "$tb" ]]; then
+      curl -fsSL --connect-timeout 10 --max-time 120 -o "$tb" "https://github.com/openOODA/install/releases/latest/download/$asset" 2>/dev/null || true
+    fi
+    if [[ -s "$tb" && -n "$exp" ]]; then
+      local act
+      if command -v sha256sum >/dev/null 2>&1; then
+        act=$(sha256sum "$tb" | awk '{print $1}')
+      else
+        act=$(shasum -a 256 "$tb" | awk '{print $1}')
+      fi
+      if [[ "$act" == "$exp" ]]; then
+        mkdir -p "$dest"
+        tar -xzf "$tb" -C "$dest" >/dev/null 2>&1 || true
+      fi
+    fi
+    rm -f "$tb"
+    if [[ -f "$dest/$verify" ]]; then
+      echo "ok" > "$wd/status"
+      return 0
+    fi
+  fi
   local args=(--depth 1)
   [[ -n "$branch" ]] && args+=(--branch "$branch")
-  git clone "${args[@]}" "$url" "$dest" >/dev/null 2>&1
+  git clone "${args[@]}" "$url" "$dest" >/dev/null 2>&1 || \
+    git clone "${args[@]}" "${url/https:\/\/github.com\//git@github.com:}.git" "$dest" >/dev/null 2>&1 || true
   if [[ -f "$dest/$verify" ]]; then
     echo "ok" > "$wd/status"
   else

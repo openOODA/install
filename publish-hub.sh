@@ -165,6 +165,7 @@ stage_images() {
   [[ -f "$STAGE/oosh-linux-x86_64" ]] && cp -f "$STAGE/oosh-linux-x86_64" "$iso_dir/bin/oosh"
   if [[ -x "$ROOT/openOODA-apps/ooflash/bin/ooflash" ]]; then
     "$ROOT/openOODA-apps/ooflash/bin/ooflash" pack-iso "$iso_dir" -o "$STAGE/ooda-os-x86_64.iso" >/dev/null 2>&1 || true
+    rm -f "$STAGE/ooda-os-x86_64.iso.manifest"
   fi
   rm -rf "$iso_dir"
   if [[ -s "$STAGE/ooda-os-x86_64.iso" ]]; then
