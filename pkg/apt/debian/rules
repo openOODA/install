@@ -23,5 +23,5 @@ override_dh_auto_install:
 	# Bundle oostd library (git clone of openOODA-core/oostd at build time).
 	git clone --depth 1 https://github.com/openOODA-core/oostd debian/openooda/usr/lib/openooda/oostd
 	rm -rf debian/openooda/usr/lib/openooda/oostd/.git
-	# Login-shell hint for OODA_STD_ROOT.
+	# Login-shell hint for OODA_OOSTD_ROOT.
 	install -m 0644 debian/profile.d.sh debian/openooda/etc/profile.d/openooda.sh

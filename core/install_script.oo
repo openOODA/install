@@ -48,7 +48,8 @@ pub fn ins_bins_ok(src: String) -> Bool {
         i = i + 1;
     }
     if !str_contains(src, "[oodar]=liboodar.a") { return false; }
-    if !str_contains(src, "STD_DIR=\"$OPENOODA_HOME/oostd\"") { return false; }
+    if !str_contains(src, "OOSTD_DIR=\"$OPENOODA_HOME/oostd\"") { return false; }
+    if !str_contains(src, "OODA_OOSTD_ROOT=") { return false; }
     return str_contains(src, "for key in ooda oodac oodar oopm oolsp oomcp oohat");
 }
 
