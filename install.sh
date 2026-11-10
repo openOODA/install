@@ -1378,7 +1378,7 @@ assert_path_resolution() {
 
 restart_stale_servers() {
   local pids
-  pids=$(ps aux 2>/dev/null | grep -E 'oomcp|oolsp|ooda-mcp --stdio|ooda-lsp --stdio' | grep -v grep | awk '{print $2}') || true
+  pids=$(ps aux 2>/dev/null | grep -E 'oomcp (serve|--stdio)|oolsp (serve|--stdio)|ooda-mcp --stdio|ooda-lsp --stdio' | grep -v grep | awk '{print $2}') || true
   if [[ -n "$pids" ]]; then
     info "stale servers: $pids (old binaries in memory, new on disk) — kill to pick up new build"
     # shellcheck disable=SC2086
