@@ -99,6 +99,7 @@ find_repo() {  # $1 = package name → prints repo dir or nothing
 # binary is ooda-lsp; oodar's product is the liboodar.a archive.
 bin_candidates() {
   case "$1" in
+    oodac)  printf 'oodac.real\noodac\n';;
     oodar)  printf 'liboodar.a\n';;
     oolsp)  printf 'oolsp\nooda-lsp\n';;
     oofs)   printf 'oofs\noofs-linux-x86_64\noocp\noocp-linux-x86_64\n';;
@@ -229,6 +230,11 @@ prune_assets() {
   while IFS= read -r n; do
     [[ -n "$n" ]] || continue
     case "$n" in
+      ooagent-hud-*|ooquota-*|ootui-*|oocli-*|oocap-*)
+        say "deleting retired package asset $n"
+        [[ "$DRY_RUN" == "1" ]] || \
+          gh release delete-asset "$RELEASE_TAG" "$n" -R "$RELEASE_REPO" -y >/dev/null 2>&1 || true
+        ;;
       SHA256SUMS|SHA256SUMS.sig|liboodar.a|oostd-linux-x86_64.tar.gz|ooda-os-x86_64.iso|ooda-buildbox-x86_64.tar.gz|*-linux-x86_64) ;;
       *)
         say "deleting legacy asset $n"
