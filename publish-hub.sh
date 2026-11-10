@@ -112,7 +112,7 @@ bin_candidates() {
 locate_binary() {  # $1 = repo dir, $2 = package name → prints path or nothing
   local repo="$1" pkg="$2" cand rel
   while IFS= read -r cand; do
-    for rel in "dist/$cand" "bin/$cand" "scripts/lib/$cand" "$cand"; do
+    for rel in "dist/$cand" "bin/$cand" "core/lib/$cand" "scripts/lib/$cand" "$cand"; do
       [[ -f "$repo/$rel" && -s "$repo/$rel" ]] && { printf '%s\n' "$repo/$rel"; return 0; }
     done
   done < <(bin_candidates "$pkg")
