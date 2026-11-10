@@ -23,7 +23,7 @@ case "$OPENOODA_HOME" in \~|\~/*)
   ;;
 esac
 BIN_DIR="$OPENOODA_HOME/bin"
-STD_DIR="$OPENOODA_HOME/std"
+STD_DIR="$OPENOODA_HOME/oostd"
 DRY_RUN="${OPENOODA_DRY_RUN:-0}"
 LOG_FILE="$OPENOODA_HOME/install.log"
 NO_MODIFY_SHELL=0
@@ -314,7 +314,7 @@ print_preamble() {
   printf '    ooda     ~/.openooda/bin/ooda\n'
   printf '    oodac    ~/.openooda/bin/oodac\n'
   printf '    oodar    ~/.openooda/bin/liboodar.a\n'
-  printf '    std      ~/.openooda/std\n'
+  printf '    oostd    ~/.openooda/oostd\n'
   printf '    oopm     ~/.openooda/bin/oopm\n'
   printf '    oolsp    ~/.openooda/bin/oolsp\n'
   printf '    oomcp    ~/.openooda/bin/oomcp\n'
@@ -1165,9 +1165,9 @@ install_std_from_source() {
     err "std sync failed (no anchor.oo in source std)"
     return 1
   fi
-  rm -rf "$STD_DIR" 2>/dev/null || true
-  mv -f "$STD_DIR.new" "$STD_DIR" 2>/dev/null || { err "std sync failed (rename)"; return 1; }
-  ok "std synced from source"
+  rm -rf "$STD_DIR" "$OPENOODA_HOME/std" 2>/dev/null || true
+  mv -f "$STD_DIR.new" "$STD_DIR" 2>/dev/null || { err "oostd sync failed (rename)"; return 1; }
+  ok "oostd synced from source"
 }
 
 install_file_from_source() {
@@ -1193,7 +1193,7 @@ setup_shell_rc() {
   if [[ $NO_MODIFY_SHELL -eq 1 ]]; then skip "shell rc: --no-modify-shell, not editing"; return 0; fi
   if [[ "$DRY_RUN" == "1" ]]; then ok "[dry-run] would update shell rc (.bashrc, .bash_profile, .zshrc)"; return 0; fi
   local l1='export PATH="$HOME/.openooda/bin:$PATH"'
-  local l2='export OODA_STD_ROOT="$HOME/.openooda/std"'
+  local l2='export OODA_STD_ROOT="$HOME/.openooda/oostd"'
   local l3='export OODA_COMPILER="$HOME/.openooda/bin/oodac"'
   # Jail must include /etc (resolv.conf, nsswitch, ssl) and /usr (libnss)
   # or `ooda update`'s child curl cannot resolve DNS. Never expand
@@ -1211,6 +1211,10 @@ setup_shell_rc() {
     if grep -q '\.local/bin/oodac' "$rc" 2>/dev/null; then
       sed -i 's|.*\.local/bin/oodac.*|'"$l3"'|' "$rc" 2>/dev/null || true
       ok "$(basename "$rc") fixed OODA_COMPILER -> ~/.openooda/bin/oodac"
+    fi
+    if grep -q '\.openooda/std' "$rc" 2>/dev/null; then
+      sed -i 's|\.openooda/std|.openooda/oostd|g' "$rc" 2>/dev/null || true
+      ok "$(basename "$rc") migrated OODA_STD_ROOT -> ~/.openooda/oostd"
     fi
     if grep -Fqx "$l1" "$rc" 2>/dev/null; then
       info "$(basename "$rc") already has openOODA exports"
@@ -1524,19 +1528,26 @@ do_install() {
     step_status "[dry-run] skipping std clone"
     skip "[dry-run] skipping std clone"
   elif [[ "$FROM_SOURCE" == "1" ]]; then
-    step_status "syncing std from source"
+    step_status "syncing oostd from source"
     install_std_from_source || return 1
-  elif [[ ! -f "$STD_DIR/core/anchor.oo" && ! -f "$STD_DIR/anchor.oo" && ! -f "$STD_DIR/ANCHOR.oo" ]]; then
-    step_status "installing std"
-    local wd; wd=$(mktemp -d 2>/dev/null || echo "/tmp/openooda-std-$$")
-    ( fetch_repo "https://github.com/openOODA-core/oostd" "$STD_DIR" "core/anchor.oo" "${PINS[std]:-}" "$wd" ) &
-    spinner $!
-    wait $! 2>/dev/null || true
-    local status; status=$(cat "$wd/status" 2>/dev/null || echo "fail")
-    rm -rf "$wd"
-    if [[ "$status" != "ok" ]]; then
-      err "std clone failed; check $STD_DIR"
-      return 1
+  else
+    if [[ -d "$OPENOODA_HOME/std" && ! -d "$STD_DIR" ]]; then
+      mv -f "$OPENOODA_HOME/std" "$STD_DIR" 2>/dev/null || true
+    elif [[ -d "$OPENOODA_HOME/std" && -d "$STD_DIR" ]]; then
+      rm -rf "$OPENOODA_HOME/std" 2>/dev/null || true
+    fi
+    if [[ ! -f "$STD_DIR/core/anchor.oo" && ! -f "$STD_DIR/anchor.oo" && ! -f "$STD_DIR/ANCHOR.oo" ]]; then
+      step_status "installing oostd"
+      local wd; wd=$(mktemp -d 2>/dev/null || echo "/tmp/openooda-std-$$")
+      ( fetch_repo "https://github.com/openOODA-core/oostd" "$STD_DIR" "core/anchor.oo" "${PINS[std]:-}" "$wd" ) &
+      spinner $!
+      wait $! 2>/dev/null || true
+      local status; status=$(cat "$wd/status" 2>/dev/null || echo "fail")
+      rm -rf "$wd"
+      if [[ "$status" != "ok" ]]; then
+        err "oostd install failed; check $STD_DIR"
+        return 1
+      fi
     fi
   fi
 
@@ -1721,8 +1732,8 @@ if [[ $DO_UNINSTALL -eq 1 ]]; then
   for s in /usr/local/bin/ooda /usr/local/bin/oodac /usr/local/bin/opm /usr/local/bin/ooda-lsp /usr/local/bin/ooda-mcp /usr/local/bin/bb; do
     if [[ -L "$s" && "$(readlink "$s" 2>/dev/null)" == "$BIN_DIR/"* ]]; then rm -f "$s" 2>/dev/null || true; fi
   done
-  # remove binaries, std, spec, and build sources (keep OPENOODA_HOME for logs)
-  rm -rf "$BIN_DIR" "$STD_DIR" "$OPENOODA_HOME/oodar" "$OPENOODA_HOME/cards/spec.md" "$OPENOODA_HOME/AGENTS.md" 2>/dev/null || true
+  # remove binaries, oostd, spec, and build sources (keep OPENOODA_HOME for logs)
+  rm -rf "$BIN_DIR" "$STD_DIR" "$OPENOODA_HOME/std" "$OPENOODA_HOME/oodar" "$OPENOODA_HOME/cards/spec.md" "$OPENOODA_HOME/AGENTS.md" 2>/dev/null || true
   # surgically remove the # openOODA section from shell rc files
   for rc in "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.zshrc"; do
     if [[ -f "$rc" ]] && grep -q '# openOODA' "$rc" 2>/dev/null; then

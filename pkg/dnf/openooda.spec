@@ -28,8 +28,8 @@ for f in %{_sourcedir}/../dist/*-linux-*; do
       install -m 0755 "$f" "%{buildroot}/usr/bin/$b" ;;
   esac
 done
-git clone --depth 1 https://github.com/openOODA-core/std %{buildroot}/usr/lib/openooda/std
-rm -rf %{buildroot}/usr/lib/openooda/std/.git
+git clone --depth 1 https://github.com/openOODA-core/oostd %{buildroot}/usr/lib/openooda/oostd
+rm -rf %{buildroot}/usr/lib/openooda/oostd/.git
 install -m 0644 %{_sourcedir}/profile.d.sh %{buildroot}/etc/profile.d/openooda.sh
 
 %files

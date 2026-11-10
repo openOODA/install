@@ -175,7 +175,7 @@ stage_images() {
 
   # 2. Stage ooda-buildbox-x86_64.tar.gz (hermetic L0 buildbox container rootfs)
   local bb_dir="$STAGE/buildbox-root"
-  mkdir -p "$bb_dir/bin" "$bb_dir/lib" "$bb_dir/std"
+  mkdir -p "$bb_dir/bin" "$bb_dir/lib" "$bb_dir/oostd"
   for c in ooda oodac oopm oolsp oomcp oocontainer oohat oosh; do
     [[ -f "$STAGE/${c}-linux-x86_64" ]] && cp -f "$STAGE/${c}-linux-x86_64" "$bb_dir/bin/$c" && chmod 0755 "$bb_dir/bin/$c"
   done
