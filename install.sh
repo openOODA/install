@@ -1043,7 +1043,7 @@ resolve_source_dir() {
   [[ -n "$d" ]] || { err "from-source: cannot resolve dir: $SOURCE_DIR"; return 1; }
   local missing=()
   local s
-  for s in ooda/main.oo oopm/cli/main.oo oolsp/cli/main.oo oomcp/cli/main.oo oohat/main.oo oodar/scripts/Makefile openOODA/AGENTS.md openOODA/cards/spec.md; do
+  for s in ooda/main.oo oopm/cli/main.oo oolsp/cli/main.oo oomcp/cli/main.oo oohat/main.oo oodar/Makefile openOODA/AGENTS.md openOODA/cards/spec.md; do
     [[ -f "$d/$s" ]] || missing+=("$s")
   done
   [[ -f "$d/oostd/core/anchor.oo" || -f "$d/oostd/anchor.oo" || -f "$d/oostd/ANCHOR.oo" ]] || missing+=("oostd/core/anchor.oo")
@@ -1137,9 +1137,9 @@ install_oodar_from_source() {
   step_status "building liboodar.a from source"
   local log="$OPENOODA_HOME/build-oodar.log" jobs
   jobs=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
-  if ( cd "$SRC_DIR/oodar/scripts" && make -j"$jobs" all >"$log" 2>&1 ); then
-    [[ -s "$SRC_DIR/oodar/scripts/lib/liboodar.a" ]] || { err "oodar: make succeeded but liboodar.a is missing"; return 1; }
-    cp -f "$SRC_DIR/oodar/scripts/lib/liboodar.a" "$BIN_DIR/liboodar.a.tmp" 2>/dev/null \
+  if ( cd "$SRC_DIR/oodar" && make -j"$jobs" build >"$log" 2>&1 ); then
+    [[ -s "$SRC_DIR/oodar/core/lib/liboodar.a" ]] || { err "oodar: make succeeded but liboodar.a is missing"; return 1; }
+    cp -f "$SRC_DIR/oodar/core/lib/liboodar.a" "$BIN_DIR/liboodar.a.tmp" 2>/dev/null \
       && mv -f "$BIN_DIR/liboodar.a.tmp" "$BIN_DIR/liboodar.a" 2>/dev/null \
       && chmod +x "$BIN_DIR/liboodar.a" 2>/dev/null
     local size; size=$(wc -c < "$BIN_DIR/liboodar.a" 2>/dev/null || echo 0)

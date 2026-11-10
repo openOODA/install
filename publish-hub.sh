@@ -185,6 +185,19 @@ stage_images() {
   rm -rf "$bb_dir"
   chmod 0644 "$STAGE/ooda-buildbox-x86_64.tar.gz"
   say "staged ooda-buildbox-x86_64.tar.gz (hermetic buildbox container bundle)"
+
+  # 3. Stage openooda root binary + codex bundle (AGENTS.md + cards/)
+  if [[ -d "$ROOT/openOODA/openOODA" ]]; then
+    [[ -x "$ROOT/openOODA/openOODA/bin/openooda" ]] || ( cd "$ROOT/openOODA/openOODA" && make build >/dev/null 2>&1 ) || true
+    if [[ -s "$ROOT/openOODA/openOODA/bin/openooda" ]]; then
+      cp -f "$ROOT/openOODA/openOODA/bin/openooda" "$STAGE/openooda-linux-x86_64"
+      chmod 0644 "$STAGE/openooda-linux-x86_64"
+      say "staged openooda-linux-x86_64 <- $ROOT/openOODA/openOODA/bin/openooda"
+    fi
+    ( cd "$ROOT/openOODA/openOODA" && tar -czf "$STAGE/openooda-codex-linux-x86_64.tar.gz" AGENTS.md cards )
+    chmod 0644 "$STAGE/openooda-codex-linux-x86_64.tar.gz"
+    say "staged openooda-codex-linux-x86_64.tar.gz <- $ROOT/openOODA/openOODA (AGENTS.md + cards)"
+  fi
 }
 
 gen_sums() {
@@ -236,7 +249,7 @@ prune_assets() {
         [[ "$DRY_RUN" == "1" ]] || \
           gh release delete-asset "$RELEASE_TAG" "$n" -R "$RELEASE_REPO" -y >/dev/null 2>&1 || true
         ;;
-      SHA256SUMS|SHA256SUMS.sig|liboodar.a|oostd-linux-x86_64.tar.gz|ooda-os-x86_64.iso|ooda-buildbox-x86_64.tar.gz|*-linux-x86_64) ;;
+      SHA256SUMS|SHA256SUMS.sig|liboodar.a|oostd-linux-x86_64.tar.gz|openooda-codex-linux-x86_64.tar.gz|ooda-os-x86_64.iso|ooda-buildbox-x86_64.tar.gz|*-linux-x86_64) ;;
       *)
         say "deleting legacy asset $n"
         [[ "$DRY_RUN" == "1" ]] || \
