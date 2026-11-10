@@ -703,7 +703,7 @@ fetch_and_verify() {
 # Mirrors fetch_and_verify: runs in background subshell, parent spins on the pid.
 fetch_repo() {
   local url="$1" dest="$2" verify="$3" branch="$4" wd="$5"
-  if [[ "$verify" == "anchor.oo" ]]; then
+  if [[ "$verify" == "core/anchor.oo" || "$verify" == "anchor.oo" ]]; then
     local asset="oostd-${OS}-${ARCH}.tar.gz"
     local tb="$wd/$asset"
     sums_ensure || true
@@ -727,7 +727,7 @@ fetch_repo() {
       fi
     fi
     rm -f "$tb"
-    if [[ -f "$dest/$verify" ]]; then
+    if [[ -f "$dest/core/anchor.oo" || -f "$dest/$verify" ]]; then
       echo "ok" > "$wd/status"
       return 0
     fi
@@ -736,7 +736,7 @@ fetch_repo() {
   [[ -n "$branch" ]] && args+=(--branch "$branch")
   git clone "${args[@]}" "$url" "$dest" >/dev/null 2>&1 || \
     git clone "${args[@]}" "${url/https:\/\/github.com\//git@github.com:}.git" "$dest" >/dev/null 2>&1 || true
-  if [[ -f "$dest/$verify" ]]; then
+  if [[ -f "$dest/core/anchor.oo" || -f "$dest/$verify" ]]; then
     echo "ok" > "$wd/status"
   else
     echo "fail" > "$wd/status"
@@ -1046,7 +1046,7 @@ resolve_source_dir() {
   for s in ooda/main.oo oopm/cli/main.oo oolsp/cli/main.oo oomcp/cli/main.oo oohat/main.oo oodar/scripts/Makefile openOODA/AGENTS.md openOODA/cards/spec.md; do
     [[ -f "$d/$s" ]] || missing+=("$s")
   done
-  [[ -f "$d/oostd/anchor.oo" || -f "$d/oostd/ANCHOR.oo" ]] || missing+=("oostd/anchor.oo")
+  [[ -f "$d/oostd/core/anchor.oo" || -f "$d/oostd/anchor.oo" || -f "$d/oostd/ANCHOR.oo" ]] || missing+=("oostd/core/anchor.oo")
   if [[ ${#missing[@]} -gt 0 ]]; then
     err "from-source: $d is not an openOODA checkout (missing: ${missing[*]})"
     return 1
@@ -1160,7 +1160,7 @@ install_std_from_source() {
   fi
   rm -rf "$STD_DIR.new" 2>/dev/null || true
   cp -a "$SRC_DIR/oostd" "$STD_DIR.new" 2>/dev/null || { err "std sync failed (copy)"; return 1; }
-  if [[ ! -f "$STD_DIR.new/anchor.oo" && ! -f "$STD_DIR.new/ANCHOR.oo" ]]; then
+  if [[ ! -f "$STD_DIR.new/core/anchor.oo" && ! -f "$STD_DIR.new/anchor.oo" && ! -f "$STD_DIR.new/ANCHOR.oo" ]]; then
     rm -rf "$STD_DIR.new" 2>/dev/null || true
     err "std sync failed (no anchor.oo in source std)"
     return 1
@@ -1538,10 +1538,10 @@ do_install() {
   elif [[ "$FROM_SOURCE" == "1" ]]; then
     step_status "syncing std from source"
     install_std_from_source || return 1
-  elif [[ ! -f "$STD_DIR/anchor.oo" && ! -f "$STD_DIR/ANCHOR.oo" ]]; then
+  elif [[ ! -f "$STD_DIR/core/anchor.oo" && ! -f "$STD_DIR/anchor.oo" && ! -f "$STD_DIR/ANCHOR.oo" ]]; then
     step_status "installing std"
     local wd; wd=$(mktemp -d 2>/dev/null || echo "/tmp/openooda-std-$$")
-    ( fetch_repo "https://github.com/openOODA-core/oostd" "$STD_DIR" "anchor.oo" "${PINS[std]:-}" "$wd" ) &
+    ( fetch_repo "https://github.com/openOODA-core/oostd" "$STD_DIR" "core/anchor.oo" "${PINS[std]:-}" "$wd" ) &
     spinner $!
     wait $! 2>/dev/null || true
     local status; status=$(cat "$wd/status" 2>/dev/null || echo "fail")
