@@ -1,0 +1,46 @@
+// # Install Repo Refusal Suite - Negative-Trust Assertions
+//
+// Logline: Negative-trust assertions that malformed semvers, missing payload dirs, shape-broken
+//          scripts, and path traversal are refused by the repo conformance checker.
+// Setup: Imports the repo conformance checker; FsReadCap bounds every read inside the jail.
+// Beats:
+//   1. Two-field, four-field, empty, and non-numeric version strings are refused.
+//   2. Missing package-manager dirs and scripts lacking the fail-closed shape are refused.
+//   3. Parent-directory traversal reads are refused by the fs jail.
+
+import "core/install_check.oo";
+
+fn t_expect(cond: Bool, label: String, p: Int) -> Int {
+    if cond {
+        println("ok " + label);
+        return p + 1;
+    }
+    println("FAIL " + label);
+    return p;
+}
+
+fn t_refuse(fs: &FsReadCap) -> Int {
+    let mut p: Int = 0;
+    p = t_expect(!ins_ver_ok("1.2") && !ins_ver_ok("1.2.3.4") && !ins_ver_ok(""),
+        "short long empty ver refused", p);
+    p = t_expect(!ins_ver_ok("x.y.z") && !ins_ver_ok("1..3"), "non-numeric ver refused", p);
+    p = t_expect(!ins_dir_nonempty(fs, "pkg/nosuchpm") && !ins_dir_nonempty(fs, "VERSION"),
+        "missing dir + file-as-dir refused", p);
+    p = t_expect(!ins_script_shape("#!/bin/sh\necho hi\n") &&
+        !ins_script_shape("set -e\ndo_install() { :; }\n") &&
+        !ins_script_shape("#!/bin/sh\nset -e\n"), "shape-broken script refused", p);
+    p = t_expect(!ins_ver_ok(".." + "/0.1"), "traversal ver refused", p);
+    let r: Result[String, String] = oo_read_file(fs, ".." + "/.." + "/etc/" + "passwd");
+    p = t_expect(r.is_err(), "traversal read refused", p);
+    return p;
+}
+
+pub fn main(fs: &FsReadCap, _args: List[String]) -> Result[Int, String] {
+    let p: Int = t_refuse(fs);
+    if p == 6 {
+        println("PASS: refusal suite (6/6 assertions)");
+        return Ok(0);
+    }
+    println("FAIL: refusal suite (" + p.to_string() + "/6 assertions)");
+    return Ok(2);
+}

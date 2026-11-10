@@ -1,0 +1,43 @@
+// # Install Repo Functional Suite - Positive-Trust Assertions
+//
+// Logline: Positive assertions that the installer repository ships a parseable semver VERSION, all
+//          four package-manager payload dirs, and a fail-closed install.sh.
+// Setup: Imports the repo conformance checker; FsReadCap bounds every read inside the jail.
+// Beats:
+//   1. ins_ver_ok accepts real X.Y.Z semver strings.
+//   2. ins_pkg_ok proves apt/dnf/pacman/winget dirs carry payloads.
+//   3. ins_repo_ok folds VERSION, payloads, versions.toml, and install.sh into one verdict.
+
+import "core/install_check.oo";
+
+fn t_expect(cond: Bool, label: String, p: Int) -> Int {
+    if cond {
+        println("ok " + label);
+        return p + 1;
+    }
+    println("FAIL " + label);
+    return p;
+}
+
+fn t_install(fs: &FsReadCap) -> Int {
+    let mut p: Int = 0;
+    p = t_expect(ins_ver_ok("0.2.6") && ins_ver_ok("12.0.99"), "semver accepts", p);
+    let vr: Result[String, String] = oo_read_file(fs, "VERSION");
+    p = t_expect(vr.is_ok() && ins_ver_ok(match vr { Ok(s) => s, Err(_) => "" }),
+        "VERSION file parses", p);
+    p = t_expect(ins_pkg_ok(fs), "all four pkg managers non-empty", p);
+    p = t_expect(oo_path_exists(fs, "versions.toml") && oo_path_exists(fs, "install.sh") &&
+        oo_path_exists(fs, "publish-hub.sh"), "shipped files present", p);
+    p = t_expect(ins_repo_ok(fs), "repo conformance verdict", p);
+    return p;
+}
+
+pub fn main(fs: &FsReadCap, _args: List[String]) -> Result[Int, String] {
+    let p: Int = t_install(fs);
+    if p == 5 {
+        println("PASS: functional suite (5/5 assertions)");
+        return Ok(0);
+    }
+    println("FAIL: functional suite (" + p.to_string() + "/5 assertions)");
+    return Ok(2);
+}

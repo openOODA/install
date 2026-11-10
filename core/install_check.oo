@@ -1,0 +1,75 @@
+// # Install Repo Conformance Checker
+//
+// Logline: Verify the installer repository's own contract: VERSION parses as semver digits, the
+//          four package-manager payload dirs are non-empty, and install.sh keeps its required
+//          fail-closed shape.
+// Setup: Explicit FsReadCap; bounded reads of VERSION, pkg/{apt,dnf,pacman,winget}, and
+//        install.sh; canonical oostd str_extra parse_int_digits for the semver fields.
+// Beats:
+//   1. ins_ver_ok parses "X.Y.Z" into three non-negative digit fields.
+//   2. ins_pkg_ok proves every package-manager dir exists and carries payload files.
+//   3. ins_script_shape enforces the shebang, set -e, and do_install entry points.
+
+import "oostd/core/primitives/str_extra.oo";
+
+pub fn ins_ver_num(ver: String) -> Int {
+    let v: String = str_trim(ver);
+    let parts: List[String] = str_split(v, ".");
+    if list_len(parts) != 3 { return 0 - 1; }
+    let mut i: Int = 0;
+    let mut num: Int = 0;
+    while i < 3 {
+        let tok: String = list_get(parts, i);
+        let tn: Int = bytes_len(tok);
+        if tn == 0 || tn > 3 { return 0 - 1; }
+        let mut j: Int = 0;
+        while j < tn {
+            let b: Int = byte_at(tok, j);
+            if b < 48 || b > 57 { return 0 - 1; }
+            j = j + 1;
+        }
+        num = num * 1000 + parse_int_digits(tok);
+        i = i + 1;
+    }
+    return num;
+}
+
+pub fn ins_ver_ok(ver: String) -> Bool {
+    return ins_ver_num(ver) >= 0;
+}
+
+pub fn ins_dir_nonempty(fs: &FsReadCap, dir: String) -> Bool {
+    if !oo_fs_is_dir(fs, dir) { return false; }
+    let ents: List[String] = oo_fs_read_dir(fs, dir);
+    let mut n: Int = 0;
+    let mut i: Int = 0;
+    while i < list_len(ents) {
+        let name: String = list_get(ents, i);
+        if name != "." && name != ".." { n = n + 1; }
+        i = i + 1;
+    }
+    return n > 0;
+}
+
+pub fn ins_pkg_ok(fs: &FsReadCap) -> Bool {
+    return ins_dir_nonempty(fs, "pkg/apt") && ins_dir_nonempty(fs, "pkg/dnf") &&
+        ins_dir_nonempty(fs, "pkg/pacman") && ins_dir_nonempty(fs, "pkg/winget");
+}
+
+pub fn ins_script_shape(src: String) -> Bool {
+    return str_starts_with(str_trim(src), "#!") && str_contains(src, "set -e") &&
+        str_contains(src, "do_install") && str_contains(src, "ensure_sysdep");
+}
+
+pub fn ins_repo_ok(fs: &FsReadCap) -> Bool {
+    let vr: Result[String, String] = oo_read_file(fs, "VERSION");
+    if vr.is_err() { return false; }
+    let ver: String = match vr { Ok(s) => s, Err(_) => "" };
+    if !ins_ver_ok(ver) { return false; }
+    if !ins_pkg_ok(fs) { return false; }
+    if !oo_path_exists(fs, "versions.toml") { return false; }
+    let sr: Result[String, String] = oo_read_file(fs, "install.sh");
+    if sr.is_err() { return false; }
+    let src: String = match sr { Ok(s) => s, Err(_) => "" };
+    return ins_script_shape(src);
+}

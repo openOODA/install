@@ -1,0 +1,11 @@
+// # Install Root Anchor - Repo Conformance Surface
+//
+// Logline: Re-exports the installer repository's own conformance checker as the repo anchor page.
+// Setup: VERSION carries the semver; pkg/ carries apt/dnf/pacman/winget payloads; install.sh is the
+//        canonical fail-closed installer.
+// Beats:
+//   1. core/install_check.oo owns the semver, payload-dir, and script-shape checks.
+//   2. tests/test_functional.oo proves the shipped tree conforms.
+//   3. tests/test_refusal.oo proves forged versions, empty dirs, and shape-broken scripts refuse.
+
+import "core/install_check.oo";

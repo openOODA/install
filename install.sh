@@ -1419,16 +1419,15 @@ do_install() {
   step_status "checking environment (pre-flight done)"
   # step 1b: system deps the toolchain shells out to (a C compiler for builds, git for sources).
   if [[ "$DRY_RUN" == "1" ]]; then
-    step_status "[dry-run] skipping sysdep ensure (gcc, git)"
-    skip "[dry-run] skipping sysdep ensure (gcc, git)"
+    step_status "[dry-run] skipping sysdep ensure (clang, git)"
+    skip "[dry-run] skipping sysdep ensure (clang, git)"
   elif [[ "$FROM_SOURCE" == "1" ]]; then
-    step_status "ensuring make + cc + clang are installed (from-source builds)"
+    step_status "ensuring make + clang are installed (from-source builds)"
     ensure_sysdep make make || return 1
-    ensure_sysdep cc "gcc" || return 1
     ensure_sysdep clang clang || return 1
   else
-    step_status "ensuring gcc/git are installed"
-    ensure_sysdep "gcc" "gcc" || return 1
+    step_status "ensuring clang/git are installed"
+    ensure_sysdep clang clang || return 1
     ensure_sysdep git git || return 1
   fi
 
