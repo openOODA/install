@@ -1417,18 +1417,18 @@ do_install() {
   trap 'dump_results || true' EXIT
   # pre-flight already ran before the subshell; no need to repeat
   step_status "checking environment (pre-flight done)"
-  # step 1b: system deps the toolchain shells out to (gcc for builds, git for sources).
+  # step 1b: system deps the toolchain shells out to (a C compiler for builds, git for sources).
   if [[ "$DRY_RUN" == "1" ]]; then
     step_status "[dry-run] skipping sysdep ensure (gcc, git)"
     skip "[dry-run] skipping sysdep ensure (gcc, git)"
   elif [[ "$FROM_SOURCE" == "1" ]]; then
     step_status "ensuring make + cc + clang are installed (from-source builds)"
     ensure_sysdep make make || return 1
-    ensure_sysdep cc gcc || return 1
+    ensure_sysdep cc "gcc" || return 1
     ensure_sysdep clang clang || return 1
   else
-    step_status "ensuring gcc + git are installed"
-    ensure_sysdep gcc gcc || return 1
+    step_status "ensuring gcc/git are installed"
+    ensure_sysdep "gcc" "gcc" || return 1
     ensure_sysdep git git || return 1
   fi
 
