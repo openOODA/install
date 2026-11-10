@@ -709,7 +709,7 @@ fetch_repo() {
     sums_ensure || true
     local exp; exp="$(sums_expected "$asset")"
     if command -v gh >/dev/null 2>&1; then
-      gh release download "$HUB_RELEASE_TAG" -R "openOODA/install" --pattern "$asset" --output "$tb" --clobber >/dev/null 2>&1 || true
+      gh release download "hub" --repo "openOODA/install" --pattern "$asset" --output "$tb" --clobber >/dev/null 2>&1 || true
     fi
     if [[ ! -s "$tb" ]]; then
       curl -fsSL --connect-timeout 10 --max-time 120 -o "$tb" "https://github.com/openOODA/install/releases/latest/download/$asset" 2>/dev/null || true
