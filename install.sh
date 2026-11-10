@@ -1376,21 +1376,9 @@ assert_path_resolution() {
   fi
 }
 
-refresh_grok_shims() {
-  local shim_dir="$BIN_DIR"
-  local py_lsp="$shim_dir/ooda-lsp-grok"
-  local py_mcp="$shim_dir/ooda-mcp-grok"
-  for shim in "$py_lsp" "$py_mcp"; do
-    if [[ -f "$shim" ]]; then
-      touch "$shim" 2>/dev/null || true
-      info "refreshed $(basename "$shim") shim mtime"
-    fi
-  done
-}
-
 restart_stale_servers() {
   local pids
-  pids=$(ps aux 2>/dev/null | grep -E 'ooda-mcp --stdio|ooda-lsp --stdio|ooda-lsp-grok|ooda-mcp-grok' | grep -v grep | awk '{print $2}') || true
+  pids=$(ps aux 2>/dev/null | grep -E 'oomcp|oolsp|ooda-mcp --stdio|ooda-lsp --stdio' | grep -v grep | awk '{print $2}') || true
   if [[ -n "$pids" ]]; then
     info "stale servers: $pids (old binaries in memory, new on disk) — kill to pick up new build"
     # shellcheck disable=SC2086
@@ -1400,7 +1388,7 @@ restart_stale_servers() {
     for pid in $pids; do wait "$pid" 2>/dev/null || true; done
     ok "stale servers reaped (zombies cleared)"
   else
-    info "no stale ooda-mcp/lsp servers found"
+    info "no stale oomcp/oolsp servers found"
   fi
   if ! command -v oodac >/dev/null 2>&1 || [[ "$(command -v oodac 2>/dev/null)" != "$BIN_DIR/oodac" ]]; then
     warn "run: source ~/.bashrc (or restart shell) to pick up new PATH"
@@ -1432,7 +1420,7 @@ post_flight() {
     # still keys off the captured banner, so a silent stub or a binary
     # with no banner still fails verification.
     helpline=$("$BIN_DIR/$bin" --help 2>&1 | head -n 1 || true)
-    if [[ -x "$BIN_DIR/$bin" ]] && printf '%s' "$helpline" | grep -qiE 'openooda|usage|tui|flags' 2>/dev/null; then
+    if [[ -x "$BIN_DIR/$bin" ]] && printf '%s' "$helpline" | grep -qiE "openooda|ooda|usage|tui|flags|$bin" 2>/dev/null; then
       ok "verified: $bin --help"
     elif [[ -x "$BIN_DIR/$bin" && -n "$helpline" ]]; then
       warn "verify: $bin ran but --help banner unrecognized: ${helpline:0:60}"
@@ -1596,6 +1584,7 @@ do_install() {
     # fetch_and_verify): a failed refresh must never clobber a spec we
     # already hold.
     step_status "fetching language specification (openOODA/cards/spec.md)"
+    mkdir -p "$OPENOODA_HOME/cards" 2>/dev/null || true
     if curl -sSL --connect-timeout 10 --max-time 60 -o "$OPENOODA_HOME/cards/spec.md.tmp" "https://raw.githubusercontent.com/openOODA/openOODA/master/cards/spec.md" 2>/dev/null && [[ -s "$OPENOODA_HOME/cards/spec.md.tmp" ]]; then
       mv -f "$OPENOODA_HOME/cards/spec.md.tmp" "$OPENOODA_HOME/cards/spec.md" 2>/dev/null || warn "spec rename failed; keeping previous cards/spec.md"
     else
@@ -1630,9 +1619,9 @@ do_install() {
   step_status "cleaning stale shadow binaries (legacy ~/.local/bin layout)"
   clean_stale_shadow_binaries
 
-  # step 5: shim refresh + stale servers
-  step_status "refreshing shims and restarting stale servers"
-  if [[ "$DRY_RUN" != "1" ]]; then refresh_grok_shims; restart_stale_servers; fi
+  # step 5: restart stale servers
+  step_status "restarting stale servers"
+  if [[ "$DRY_RUN" != "1" ]]; then restart_stale_servers; fi
 
   # step 6: post-flight
   step_status "verifying all binaries (post-flight check)"
