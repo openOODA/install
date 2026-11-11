@@ -151,7 +151,7 @@ jobs:
             --pattern 'oodac-linux-x86_64' --pattern 'liboodar.a' --clobber
           mv -f "$BOOTSTRAP/oodac-linux-x86_64" "$BOOTSTRAP/oodac"
           chmod +x "$BOOTSTRAP/oodac"
-          git clone --depth 1 https://github.com/openOODA-core/oostd.git "$BOOTSTRAP/oostd" >/dev/null 2>&1
+          git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/openOODA-core/oostd.git" "$BOOTSTRAP/oostd" >/dev/null 2>&1
           test -f "$BOOTSTRAP/oostd/anchor.oo" && echo "bootstrap ready"
 
       - name: Build changed repos and stage stripped binaries
