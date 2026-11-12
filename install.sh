@@ -153,6 +153,21 @@ declare -A REPOS=([ooda]=ooda [oodac]=oodac [oodar]=oodar [oopm]=oopm [oolsp]=oo
 # SHA256SUMS at the install release, not per-file .sha256 sidecars.
 declare -A BINARIES=([ooda]=ooda [oodac]=oodac [oodar]=liboodar.a [oopm]=oopm [oolsp]=oolsp [oomcp]=oomcp [oohat]=oohat)
 declare -A ASSETS=([oodar]=liboodar.a)
+# Binary-pool packages whose hub artifact is NOT a plain
+# <name>-linux-x86_64 executable. The pool ships 104 plain binaries plus
+# three archives (oostd runtime, buildbox, orientation codex) and one ISO.
+# A group profile that names one of these must resolve to its real asset
+# instead of failing on "no SHA256SUMS entry for <name>-linux-x86_64".
+# oodar is absent on purpose: it ships as liboodar.a and is owned by
+# install_component (the L0 path), never by the pool.
+declare -A PKG_ASSET=([oostd]="oostd-linux-x86_64.tar.gz")
+# Install strategy: "binary" (default) lands an executable in $BIN_DIR;
+# "archive" unpacks a verified tarball into its own runtime root.
+declare -A PKG_KIND=([oostd]="archive")
+# Runtime root for archive packages, relative to $OPENOODA_HOME.
+declare -A PKG_ARCHIVE_ROOT=([oostd]="oostd")
+# File that must exist in the unpacked archive for the install to count.
+declare -A PKG_ARCHIVE_ANCHOR=([oostd]="core/anchor.oo")
 # SOURCE_MAIN: repo-root-relative build entry per component, used only by
 # --from-source. oodac has no entry: `oodac build oodac/main.oo` refuses
 # (unique_fns), so from-source keeps the bootstrap compiler as the product.
@@ -960,6 +975,25 @@ expand_group() {
   printf '%s\n' $out | awk 'NF && !seen[$0]++'
 }
 
+# pkg_asset_name: the hub release asset that carries a pool package.
+# Every package is <name>-linux-x86_64 except the archive-backed few,
+# which name their real asset in PKG_ASSET.
+pkg_asset_name() {
+  local name="$1"
+  if [[ -n "${PKG_ASSET[$name]:-}" ]]; then
+    printf '%s\n' "${PKG_ASSET[$name]}"
+  else
+    printf '%s-linux-x86_64\n' "$name"
+  fi
+}
+
+# pkg_kind: "binary" (default) or "archive".
+pkg_kind() { printf '%s\n' "${PKG_KIND[$1]:-binary}"; }
+
+# pkg_is_archive: true when the package is not a $BIN_DIR executable, so
+# the post-install path-resolution assertion has nothing to check for it.
+pkg_is_archive() { [[ "${PKG_KIND[$1]:-binary}" == "archive" ]]; }
+
 # install_pkg: one binary-pool package — <name>-linux-x86_64 from the hub
 # release, verified against the master SHA256SUMS before it lands in
 # $BIN_DIR. Refuses closed on bad names, missing sums entries, and any
@@ -973,7 +1007,14 @@ install_pkg() {
   # L0 component names are owned by install_component; --pkg covers the
   # wider pool. Installing an L0 name here would skip local-dist/gh paths.
   case " ${!REPOS[@]} " in *" $name "*) return 0;; esac
-  asset="${name}-linux-x86_64"
+  # Archive-backed packages (oostd) ship as a tarball, not an executable.
+  # Route them to the unpack path first so the asset name we look up in
+  # SHA256SUMS is the asset the hub actually publishes.
+  if pkg_is_archive "$name"; then
+    install_pkg_archive "$name" || return 1
+    return 0
+  fi
+  asset="$(pkg_asset_name "$name")"
   dest="$BIN_DIR/$name"
   printf '  %s%s%s (pool)\n' "$BOLD" "$name" "$RESET"
   if [[ "$DRY_RUN" == "1" ]]; then
@@ -1010,6 +1051,90 @@ install_pkg() {
   local size mb; size=$(wc -c < "$dest" 2>/dev/null || echo 0)
   mb=$(awk -v s="$size" 'BEGIN{printf "%.1f", s/1048576}')
   ok "installed $name (${mb} MB, SHA256SUMS verified)"
+  INSTALLED+=("$name")
+  BYTES=$((BYTES + size))
+  rm -rf "$tmp"
+  return 0
+}
+
+# install_pkg_archive: a pool package that ships as a tarball rather than
+# a plain executable (oostd, the runtime std). The archive is verified
+# against the master SHA256SUMS — no unsigned installs — then unpacked into
+# its own runtime root under $OPENOODA_HOME. The unpack is checked for the
+# package's anchor file before the install counts as done, and the previous
+# runtime root is only dropped once the new one is staged.
+install_pkg_archive() {
+  local name="$1" asset expected actual url tmp stage dest_root old_root
+  asset="$(pkg_asset_name "$name")"
+  dest_root="$OPENOODA_HOME/${PKG_ARCHIVE_ROOT[$name]:-$name}"
+  printf '  %s%s%s (archive)\n' "$BOLD" "$name" "$RESET"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    ok "[dry-run] would unpack $asset into $dest_root"
+    INSTALLED+=("$name")
+    return 0
+  fi
+  # From-source installs own the runtime root (install_oostd_from_source);
+  # unpacking the release tarball here would fight it.
+  if [[ "$FROM_SOURCE" == "1" ]]; then
+    skip "$name: archive package — the source tree owns $dest_root"
+    return 0
+  fi
+  sums_ensure || { err "pkg $name: cannot fetch master SHA256SUMS; refuse unsigned install"; return 1; }
+  expected="$(sums_expected "$asset")"
+  if [[ -z "$expected" ]]; then
+    err "pkg $name: no SHA256SUMS entry for $asset; refuse unsigned install"
+    return 1
+  fi
+  url="https://github.com/openOODA/install/releases/latest/download/$asset"
+  tmp=$(mktemp -d 2>/dev/null || echo "/tmp/openooda-pkg-$$-$name")
+  if ! curl -fsSL --connect-timeout 10 --max-time 300 -o "$tmp/$asset" "$url" 2>/dev/null \
+      || [[ ! -s "$tmp/$asset" ]]; then
+    rm -rf "$tmp"
+    err "pkg $name: download failed ($asset)"
+    return 1
+  fi
+  if command -v sha256sum >/dev/null 2>&1; then
+    actual=$(sha256sum "$tmp/$asset" | awk '{print $1}')
+  else
+    actual=$(shasum -a 256 "$tmp/$asset" | awk '{print $1}')
+  fi
+  if [[ "$actual" != "$expected" ]]; then
+    rm -rf "$tmp"
+    err "pkg $name: SHA256SUMS mismatch (expected ${expected:0:16}..., got ${actual:0:16}...)"
+    return 1
+  fi
+  # Unpack to a staging dir next to the runtime root (same filesystem, so
+  # the swap below is a rename, not a copy) and check the anchor before
+  # anything lands in the live root.
+  stage="$dest_root.staging.$$"
+  rm -rf "$stage" 2>/dev/null || true
+  mkdir -p "$stage"
+  if ! tar -xzf "$tmp/$asset" -C "$stage" 2>/dev/null; then
+    rm -rf "$tmp" "$stage"
+    err "pkg $name: cannot unpack $asset"
+    return 1
+  fi
+  local anchor="${PKG_ARCHIVE_ANCHOR[$name]:-}"
+  if [[ -n "$anchor" && ! -f "$stage/$anchor" ]]; then
+    rm -rf "$tmp" "$stage"
+    err "pkg $name: unpacked archive is missing $anchor"
+    return 1
+  fi
+  mkdir -p "$(dirname "$dest_root")" 2>/dev/null || true
+  old_root="$dest_root.old.$$"
+  if [[ -e "$dest_root" ]]; then
+    mv -f "$dest_root" "$old_root" 2>/dev/null || rm -rf "$dest_root" 2>/dev/null || true
+  fi
+  if ! mv -f "$stage" "$dest_root" 2>/dev/null; then
+    rm -rf "$tmp" "$stage"
+    [[ -e "$old_root" ]] && mv -f "$old_root" "$dest_root" 2>/dev/null || true
+    err "pkg $name: cannot place $dest_root"
+    return 1
+  fi
+  rm -rf "$old_root" 2>/dev/null || true
+  local size mb; size=$(wc -c < "$tmp/$asset" 2>/dev/null || echo 0)
+  mb=$(awk -v s="$size" 'BEGIN{printf "%.1f", s/1048576}')
+  ok "installed $name (${mb} MB, SHA256SUMS verified, unpacked to $dest_root)"
   INSTALLED+=("$name")
   BYTES=$((BYTES + size))
   rm -rf "$tmp"
@@ -1280,24 +1405,64 @@ warn_for_other_shells() {
 # clean_stale_shadow_binaries: remove openooda binaries in legacy shadow
 # locations (currently ~/.local/bin) that predate the ~/.openooda/bin
 # layout. These binaries can shadow the install when PATH order is wrong.
+# The candidate set is every package name the hub publishes (from
+# catalog/groups.oot), plus the legacy hardcoded names as a floor — the
+# old list knew only 7 names and missed every modern oo* duplicate.
 # Default: remove (with warning, logged to $LOG_FILE). --keep-stale skips
 # removal but the post-install assert_path_resolution still catches the
 # shadow and fails closed.
 clean_stale_shadow_binaries() {
   [[ "${DRY_RUN:-0}" == "1" ]] && { ok "[dry-run] would clean stale openooda binaries in legacy locations"; return 0; }
-  local targets=("ooda" "oodac" "ooda-lsp" "ooda-mcp" "opm" "bb" "oodac.bak")
+  local -a candidates=()
+  local c
+  for c in "${!REPOS[@]}"; do candidates+=("$c"); done
+  # Legacy names from the pre-~/.openooda/bin layouts. Kept as a floor so
+  # a failed catalog fetch still cleans the old shadows.
+  candidates+=("ooda-lsp" "ooda-mcp" "opm" "bb" "oodac.bak")
+  # The catalog is the authoritative package list. A failed fetch is not
+  # fatal here: we fall back to the floor above.
+  groups_oot_load >/dev/null 2>&1 || true
+  if ((${#GDEF[@]})); then
+    local g
+    for g in "${!GDEF[@]}"; do
+      local members m
+      members="$(expand_group "@$g" 2>/dev/null || true)"
+      while IFS= read -r m; do
+        [[ -n "$m" ]] && candidates+=("$m")
+      done <<< "$members"
+    done
+  fi
+  # Dedupe: the group definitions overlap heavily (@all contains every
+  # other group).
+  local -A seen_c=()
+  local -a targets=()
+  for c in "${candidates[@]}"; do
+    [[ -n "$c" && -z "${seen_c[$c]:-}" ]] || continue
+    seen_c[$c]=1
+    targets+=("$c")
+  done
   local removed=0 kept=0
+  local -a blocked=()
   for shadow_dir in "$HOME/.local/bin" /usr/local/bin; do
     [[ -d "$shadow_dir" ]] || continue
     for b in "${targets[@]}"; do
       local f="$shadow_dir/$b"
       [[ -e "$f" ]] || continue
+      [[ -d "$f" ]] && continue
       # Skip shims we created in /usr/local/bin (those are our own; we
       # only remove them in --uninstall, not here).
       if [[ "$shadow_dir" == "/usr/local/bin" ]]; then
         if [[ -L "$f" && "$(readlink -f "$f" 2>/dev/null)" == "$BIN_DIR/"* ]]; then
           continue  # this is one of our own shims
         fi
+      fi
+      # Never remove a link that points into one of our own install
+      # roots: it is our own layout, not a stale duplicate.
+      if [[ -L "$f" ]]; then
+        local tgt; tgt="$(readlink -f "$f" 2>/dev/null || true)"
+        case "$tgt" in
+          "$BIN_DIR/"*|"$HOME/.openooda/bin/"*) continue;;
+        esac
       fi
       if [[ "$KEEP_STALE" == "1" ]]; then
         warn "shadow: $f is a stale openooda binary (--keep-stale, not removing)"
@@ -1309,12 +1474,30 @@ clean_stale_shadow_binaries() {
           removed=$((removed + 1))
         else
           warn "could not remove $f (permission denied?)"
+          blocked+=("$f")
         fi
       fi
     done
   done
   if [[ $removed -gt 0 ]]; then
     ok "removed $removed stale openooda binary(ies) from legacy locations"
+  fi
+  # The shell caches command locations in its hash table. A shadow we
+  # just removed would still resolve via that cache, so the path
+  # assertion would report a shadow that no longer exists.
+  hash -r 2>/dev/null || true
+  # A shadow we could not remove (root-owned leftovers from an install
+  # that ran as root) still shadows this install on PATH. Fail closed
+  # here, before the binaries are used, and hand back the exact command
+  # that clears it — the installer never escalates to root on its own.
+  if ((${#blocked[@]})); then
+    err "stale openooda binaries remain in legacy locations and shadow this install:"
+    local b
+    for b in "${blocked[@]}"; do
+      printf '    %s\n' "$b" >&2
+    done
+    err "fix: sudo rm -f ${blocked[*]}"
+    return 1
   fi
   return 0
 }
@@ -1329,11 +1512,18 @@ clean_stale_shadow_binaries() {
 assert_path_resolution() {
   [[ "${DRY_RUN:-0}" == "1" ]] && { ok "[dry-run] would assert command -v == \$BIN_DIR"; return 0; }
   [[ -r "${RESULTS_FILE:-}" ]] || { warn "assert_path_resolution: RESULTS_FILE missing, skipping"; return 0; }
+  # The shell caches command locations; a shadow the cleanup just removed
+  # would still resolve through that cache. Clear it before asserting.
+  hash -r 2>/dev/null || true
   # shellcheck source=/dev/null
   . "$RESULTS_FILE" 2>/dev/null || true
   local fail=0 checked=0
   for key in "${INSTALLED[@]:-}"; do
     [[ -n "$key" ]] || continue
+    # Archive packages (oostd) are a runtime root, not a $BIN_DIR
+    # executable: there is no `command -v` to resolve, so the path
+    # assertion does not apply to them.
+    pkg_is_archive "$key" && continue
     local bin_name="${BINARIES[$key]:-$key}"
     local dest="$BIN_DIR/$bin_name"
     dest="${dest/#\~/$HOME}"
@@ -1366,7 +1556,7 @@ assert_path_resolution() {
     else
       err "PATH shadow: '$bin_name' resolves to '$resolved' (expected '$dest')"
       err "  a stale openooda binary is shadowing the install"
-      err "  fix: remove the shadowing binary, or re-run with --keep-stale to silence the cleanup"
+      err "  fix: remove the shadowing binary (sudo rm -f '$resolved' if it is root-owned)"
       fail=1
     fi
   done
@@ -1619,8 +1809,10 @@ do_install() {
   # (~/.local/bin from a prior install layout) so the install wins
   # regardless of PATH order. Opt-out via --keep-stale; the post-install
   # assert_path_resolution still catches the shadow in that case.
+  # A shadow we could not remove (root-owned leftover) fails here: it
+  # still shadows the install, and the error names the exact fix.
   step_status "cleaning stale shadow binaries (legacy ~/.local/bin layout)"
-  clean_stale_shadow_binaries
+  clean_stale_shadow_binaries || return 1
 
   # step 5: restart stale servers
   step_status "restarting stale servers"
