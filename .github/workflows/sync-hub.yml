@@ -78,8 +78,8 @@ jobs:
             done
             printf '%s\n' $out | awk 'NF && !seen[$0]++'
           }
-          expand all | grep -vx oostd > /tmp/pkgs.txt
-          echo "canonical buildable packages: $(wc -l < /tmp/pkgs.txt)"
+          expand all > /tmp/pkgs.txt
+          echo "canonical packages: $(wc -l < /tmp/pkgs.txt)"
 
           ORGS="openOODA-core openOODA-kernel openOODA-OS openOODA-tools openOODA-DE openOODA-apps openOODA-cloud openOODA-agents"
           : > /tmp/repo-map.txt
@@ -125,7 +125,9 @@ jobs:
           : > /tmp/changed.txt
           while read -r pkg repo sha; do
             old="$(jq -r --arg k "$repo" '.[$k] // empty' "$LEDGER")"
-            asset="$pkg-linux-x86_64"; [ "$pkg" = "oodar" ] && asset="liboodar.a"
+            asset="$pkg-linux-x86_64"
+            [ "$pkg" = "oodar" ] && asset="liboodar.a"
+            [ "$pkg" = "oostd" ] && asset="oostd-linux-x86_64.tar.gz"
             need=0
             if [ -n "$FORCED" ] && { [ "$FORCED" = "all" ] || [ "$FORCED" = "$pkg" ]; }; then need=1; fi
             if [ "$old" != "$sha" ]; then need=1; fi
@@ -152,13 +154,24 @@ jobs:
           mv -f "$BOOTSTRAP/oodac-linux-x86_64" "$BOOTSTRAP/oodac"
           chmod +x "$BOOTSTRAP/oodac"
           git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/openOODA-core/oostd.git" "$BOOTSTRAP/oostd" >/dev/null 2>&1
-          test -f "$BOOTSTRAP/oostd/anchor.oo" && echo "bootstrap ready"
+          test -f "$BOOTSTRAP/oostd/core/anchor.oo" && echo "bootstrap ready"
 
       - name: Build changed repos and stage stripped binaries
         if: steps.resolve.outputs.skip == 'false'
         run: |
           set -uo pipefail
           mkdir -p "$WORK_ROOT" "$OUT_ROOT"
+          bin_candidates() {
+            case "$1" in
+              oodac)  printf 'oodac.real\noodac\n';;
+              oodar)  printf 'liboodar.a\n';;
+              oolsp)  printf 'oolsp\nooda-lsp\n';;
+              oofs)   printf 'oofs\noofs-linux-x86_64\noocp\noocp-linux-x86_64\n';;
+              oohw)   printf 'oohw\noohw-linux-x86_64\noohwinfo\noohwinfo-linux-x86_64\n';;
+              ooperm) printf 'ooperm\nooperm-linux-x86_64\noochmod\noochmod-linux-x86_64\n';;
+              *)      printf '%s\n%s-linux-x86_64\n' "$1" "$1";;
+            esac
+          }
           while read -r pkg repo sha; do
             [ -z "$pkg" ] && continue
             echo "=== build $pkg ($repo)"
@@ -167,33 +180,45 @@ jobs:
               echo "warn: clone failed for $repo"; continue
             fi
             cd "$WORK_ROOT/$pkg"
+            if [ "$pkg" = "oostd" ]; then
+              if [ -f core/anchor.oo ] && tar --exclude='.git' --exclude='.ooda-cache' --exclude='bin' --exclude='dist' \
+                  -czf "$OUT_ROOT/oostd-linux-x86_64.tar.gz.tmp" . && [ -s "$OUT_ROOT/oostd-linux-x86_64.tar.gz.tmp" ]; then
+                chmod 0644 "$OUT_ROOT/oostd-linux-x86_64.tar.gz.tmp"
+                mv -f "$OUT_ROOT/oostd-linux-x86_64.tar.gz.tmp" "$OUT_ROOT/oostd-linux-x86_64.tar.gz"
+                echo "staged oostd -> oostd-linux-x86_64.tar.gz"
+              else
+                rm -f "$OUT_ROOT/oostd-linux-x86_64.tar.gz.tmp"
+                echo "error: failed to stage oostd archive" >&2
+                exit 1
+              fi
+              cd /
+              rm -rf "$WORK_ROOT/$pkg"
+              continue
+            fi
             if [ -f Makefile ]; then
-              OODA_COMPILER="$BOOTSTRAP/oodac" OO_LIST_AMBIENT_QUOTA=34359738368 OODA_NO_JAIL=1 \
+              OODAC="$BOOTSTRAP/oodac" OODA_COMPILER="$BOOTSTRAP/oodac" OODAC_BIN="$BOOTSTRAP/oodac" \
+                OODA_OOSTD_ROOT="$BOOTSTRAP/oostd" OODA_OODAR_ROOT="$BOOTSTRAP" \
+                OO_LIST_AMBIENT_QUOTA=34359738368 OODA_NO_JAIL=1 \
                 make build >/dev/null 2>&1 || \
-              OODA_COMPILER="$BOOTSTRAP/oodac" OO_LIST_AMBIENT_QUOTA=34359738368 OODA_NO_JAIL=1 \
+              OODAC="$BOOTSTRAP/oodac" OODA_COMPILER="$BOOTSTRAP/oodac" OODAC_BIN="$BOOTSTRAP/oodac" \
+                OODA_OOSTD_ROOT="$BOOTSTRAP/oostd" OODA_OODAR_ROOT="$BOOTSTRAP" \
+                OO_LIST_AMBIENT_QUOTA=34359738368 OODA_NO_JAIL=1 \
                 make >/dev/null 2>&1 || true
             fi
             bin=""
-            for cand in "dist/$pkg" "bin/$pkg" "scripts/lib/$pkg" "$pkg"; do
-              [ -f "$cand" ] && [ -s "$cand" ] && { bin="$cand"; break; }
-            done
-            if [ -z "$bin" ] && [ "$pkg" = "oolsp" ]; then
-              for cand in "dist/oolsp" "dist/ooda-lsp" "bin/oolsp" "bin/ooda-lsp"; do
-                [ -f "$cand" ] && [ -s "$cand" ] && { bin="$cand"; break; }
+            while IFS= read -r cand; do
+              for rel in "dist/$cand" "bin/$cand" "core/lib/$cand" "scripts/lib/$cand" "$cand"; do
+                if [ -f "$rel" ] && [ -s "$rel" ]; then bin="$rel"; break 2; fi
               done
-            fi
-            if [ -z "$bin" ] && [ "$pkg" = "oodar" ]; then
-              for cand in "scripts/lib/liboodar.a" "dist/liboodar.a" "liboodar.a"; do
-                [ -f "$cand" ] && [ -s "$cand" ] && { bin="$cand"; break; }
-              done
-            fi
+            done < <(bin_candidates "$pkg")
             if [ -n "$bin" ]; then
               asset="$pkg-linux-x86_64"; [ "$pkg" = "oodar" ] && asset="liboodar.a"
               cp -f "$WORK_ROOT/$pkg/$bin" "$OUT_ROOT/$asset"
               if [ "$pkg" != "oodar" ]; then strip --strip-all "$OUT_ROOT/$asset"; fi
               echo "built $pkg -> $asset"
             else
-              echo "warn: no binary produced for $pkg"
+              echo "error: no binary produced for $pkg" >&2
+              exit 1
             fi
             cd /
             rm -rf "$WORK_ROOT/$pkg"
@@ -205,24 +230,33 @@ jobs:
         run: |
           set -euo pipefail
           TAG="$(gh api repos/$RELEASE_REPO/releases/latest -q .tag_name)"
-          mkdir -p "$OUT_ROOT"
-          gh release download "$TAG" -R "$RELEASE_REPO" -D "$OUT_ROOT" --clobber || true
-          # keep only the canonical pool: <pkg>-linux-x86_64 for every buildable pkg + liboodar.a
+          mkdir -p "$OUT_ROOT" /tmp/prev-out
+          gh release download "$TAG" -R "$RELEASE_REPO" -D /tmp/prev-out --clobber
+          cp -f "$OUT_ROOT"/* /tmp/prev-out/
           : > /tmp/keep-assets.txt
           while read -r pkg; do
-            asset="$pkg-linux-x86_64"; [ "$pkg" = "oodar" ] && asset="liboodar.a"
+            asset="$pkg-linux-x86_64"
+            [ "$pkg" = "oodar" ] && asset="liboodar.a"
+            [ "$pkg" = "oostd" ] && asset="oostd-linux-x86_64.tar.gz"
             printf '%s\n' "$asset" >> /tmp/keep-assets.txt
           done < /tmp/pkgs.txt
-          for f in "$OUT_ROOT"/*; do
+          printf '%s\n' \
+            "openooda-linux-x86_64" \
+            "openooda-codex-linux-x86_64.tar.gz" \
+            "ooda-os-x86_64.iso" \
+            "ooda-buildbox-x86_64.tar.gz" >> /tmp/keep-assets.txt
+          for f in /tmp/prev-out/*; do
             [ -e "$f" ] || continue
             base="$(basename "$f")"
             if ! grep -qx "$base" /tmp/keep-assets.txt; then rm -f "$f"; fi
           done
-          rm -f "$OUT_ROOT"/SHA256SUMS "$OUT_ROOT"/SHA256SUMS.sig
-          ( cd "$OUT_ROOT" && find . -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort | xargs -r sha256sum > SHA256SUMS )
-          ( cd "$OUT_ROOT" && sha256sum -c SHA256SUMS --quiet ) && echo "sums self-check OK"
+          rm -f /tmp/prev-out/SHA256SUMS /tmp/prev-out/SHA256SUMS.sig
+          ( cd /tmp/prev-out && find . -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort | xargs -r sha256sum > "$OUT_ROOT/SHA256SUMS" )
+          ( cd /tmp/prev-out && sha256sum -c "$OUT_ROOT/SHA256SUMS" --quiet ) && echo "sums self-check OK"
+          rm -rf /tmp/prev-out
+          test -s "$OUT_ROOT/SHA256SUMS"
           gh release upload "$TAG" "$OUT_ROOT"/* --clobber -R "$RELEASE_REPO"
-          echo "published $(find "$OUT_ROOT" -maxdepth 1 -type f | wc -l) assets"
+          echo "published $(find "$OUT_ROOT" -maxdepth 1 -type f | wc -l) updated assets"
 
       - name: Update catalog COMMIT_LEDGER and SHA256SUMS
         if: steps.resolve.outputs.skip == 'false'
