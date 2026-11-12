@@ -233,6 +233,10 @@ jobs:
               asset="$pkg-linux-x86_64"; [ "$pkg" = "oodar" ] && asset="liboodar.a"
               cp -f "$WORK_ROOT/$pkg/$bin" "$OUT_ROOT/$asset"
               if [ "$pkg" != "oodar" ]; then strip --strip-all "$OUT_ROOT/$asset"; fi
+              if [ "$pkg" = "oodar" ] && [ -f "$WORK_ROOT/$pkg/dist/oodar" ]; then
+                cp -f "$WORK_ROOT/$pkg/dist/oodar" "$OUT_ROOT/oodar-linux-x86_64"
+                strip --strip-all "$OUT_ROOT/oodar-linux-x86_64"
+              fi
               printf '%s %s %s\n' "$pkg" "$repo" "$sha" >> /tmp/built.txt
               echo "built $pkg -> $asset"
             else
@@ -260,6 +264,7 @@ jobs:
             printf '%s\n' "$asset" >> /tmp/keep-assets.txt
           done < /tmp/pkgs.txt
           printf '%s\n' \
+            "oodar-linux-x86_64" \
             "openooda-linux-x86_64" \
             "openooda-codex-linux-x86_64.tar.gz" \
             "ooda-os-x86_64.iso" \
