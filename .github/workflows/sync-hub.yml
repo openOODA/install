@@ -81,10 +81,20 @@ jobs:
           expand all > /tmp/pkgs.txt
           echo "canonical packages: $(wc -l < /tmp/pkgs.txt)"
 
+          FORCED="${{ inputs.package }}"
+          [ "$FORCED" = "null" ] && FORCED=""
+          gh_retry() {
+            local tries=0
+            until "$@"; do
+              tries=$((tries+1))
+              [ "$tries" -ge 4 ] && return 1
+              sleep $((tries * 4))
+            done
+          }
           ORGS="openOODA-core openOODA-kernel openOODA-OS openOODA-tools openOODA-DE openOODA-apps openOODA-cloud openOODA-agents"
           : > /tmp/repo-map.txt
           for org in $ORGS; do
-            gh api "orgs/$org/repos?per_page=100" --paginate -q '.[].name' | while read -r r; do
+            gh_retry gh api "orgs/$org/repos?per_page=100" --paginate -q '.[].name' | while read -r r; do
               printf '%s %s/%s\n' "$r" "$org" "$r" >> /tmp/repo-map.txt
             done
           done
@@ -93,11 +103,12 @@ jobs:
             if grep -qx "$name" /tmp/pkgs.txt; then REPO_OF[$name]="$orgrepo"; fi
           done < /tmp/repo-map.txt
 
-          # One GraphQL query for every mapped repo's master SHA.
+          # Query master SHA (only the target repo when single-package dispatch).
           {
             echo 'query {'
             i=0
             for pkg in $(cat /tmp/pkgs.txt); do
+              if [ -n "$FORCED" ] && [ "$FORCED" != "all" ] && [ "$pkg" != "$FORCED" ]; then continue; fi
               repo="${REPO_OF[$pkg]:-}"
               [ -z "$repo" ] && continue
               org="${repo%%/*}"; name="${repo##*/}"
@@ -107,7 +118,7 @@ jobs:
             done
             echo '}'
           } > /tmp/shas.graphql
-          gh api graphql -f query="$(cat /tmp/shas.graphql)" > /tmp/shas.json
+          gh_retry gh api graphql -f query="$(cat /tmp/shas.graphql)" > /tmp/shas.json
           : > /tmp/current-sha.txt
           while read -r i pkg repo; do
             sha="$(jq -r ".data.r$i.object.oid // empty" /tmp/shas.json)"
