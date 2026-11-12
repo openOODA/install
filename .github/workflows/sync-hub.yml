@@ -115,7 +115,7 @@ jobs:
           done < /tmp/gql-index.txt
 
           LEDGER=/tmp/COMMIT_LEDGER.json
-          if [ -f catalog/COMMIT_LEDGER ]; then cp catalog/COMMIT_LEDGER "$LEDGER"; else echo '{}' > "$LEDGER"; fi
+          if [ -f COMMIT_LEDGER ]; then cp COMMIT_LEDGER "$LEDGER"; else echo '{}' > "$LEDGER"; fi
           TAG="$(gh api repos/$RELEASE_REPO/releases/latest -q .tag_name)"
           echo "release tag: $TAG"
           gh release view "$TAG" -R "$RELEASE_REPO" --json assets -q '.assets[].name' | sort > /tmp/release-assets.txt
@@ -129,9 +129,13 @@ jobs:
             [ "$pkg" = "oodar" ] && asset="liboodar.a"
             [ "$pkg" = "oostd" ] && asset="oostd-linux-x86_64.tar.gz"
             need=0
-            if [ -n "$FORCED" ] && { [ "$FORCED" = "all" ] || [ "$FORCED" = "$pkg" ]; }; then need=1; fi
-            if [ "$old" != "$sha" ]; then need=1; fi
-            if ! grep -qx "$asset" /tmp/release-assets.txt; then need=1; fi
+            if [ -n "$FORCED" ] && [ "$FORCED" != "all" ]; then
+              [ "$FORCED" = "$pkg" ] && need=1
+            else
+              [ "$FORCED" = "all" ] && need=1
+              [ "$old" != "$sha" ] && need=1
+              grep -qx "$asset" /tmp/release-assets.txt || need=1
+            fi
             if [ "$need" = "1" ]; then printf '%s %s %s\n' "$pkg" "$repo" "$sha" >> /tmp/changed.txt; fi
           done < /tmp/current-sha.txt
 
@@ -153,6 +157,9 @@ jobs:
             --pattern 'oodac-linux-x86_64' --pattern 'liboodar.a' --clobber
           mv -f "$BOOTSTRAP/oodac-linux-x86_64" "$BOOTSTRAP/oodac"
           chmod +x "$BOOTSTRAP/oodac"
+          mkdir -p "$HOME/.openooda/bin"
+          cp -f "$BOOTSTRAP/liboodar.a" "$HOME/.openooda/bin/liboodar.a"
+          cp -f "$BOOTSTRAP/oodac" "$HOME/.openooda/bin/oodac"
           git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/openOODA-core/oostd.git" "$BOOTSTRAP/oostd" >/dev/null 2>&1
           test -f "$BOOTSTRAP/oostd/core/anchor.oo" && echo "bootstrap ready"
 
@@ -161,6 +168,7 @@ jobs:
         run: |
           set -uo pipefail
           mkdir -p "$WORK_ROOT" "$OUT_ROOT"
+          : > /tmp/built.txt
           bin_candidates() {
             case "$1" in
               oodac)  printf 'oodac.real\noodac\n';;
@@ -185,6 +193,7 @@ jobs:
                   -czf "$OUT_ROOT/oostd-linux-x86_64.tar.gz.tmp" . && [ -s "$OUT_ROOT/oostd-linux-x86_64.tar.gz.tmp" ]; then
                 chmod 0644 "$OUT_ROOT/oostd-linux-x86_64.tar.gz.tmp"
                 mv -f "$OUT_ROOT/oostd-linux-x86_64.tar.gz.tmp" "$OUT_ROOT/oostd-linux-x86_64.tar.gz"
+                printf '%s %s %s\n' "$pkg" "$repo" "$sha" >> /tmp/built.txt
                 echo "staged oostd -> oostd-linux-x86_64.tar.gz"
               else
                 rm -f "$OUT_ROOT/oostd-linux-x86_64.tar.gz.tmp"
@@ -194,6 +203,12 @@ jobs:
               cd /
               rm -rf "$WORK_ROOT/$pkg"
               continue
+            fi
+            if [ "$pkg" = "ooda" ] && [ ! -d "$WORK_ROOT/oodac" ]; then
+              if ! git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/openOODA-core/oodac.git" "$WORK_ROOT/oodac" >/dev/null 2>&1; then
+                echo "error: helper clone failed for openOODA-core/oodac" >&2
+                exit 1
+              fi
             fi
             if [ -f Makefile ]; then
               OODAC="$BOOTSTRAP/oodac" OODA_COMPILER="$BOOTSTRAP/oodac" OODAC_BIN="$BOOTSTRAP/oodac" \
@@ -215,13 +230,14 @@ jobs:
               asset="$pkg-linux-x86_64"; [ "$pkg" = "oodar" ] && asset="liboodar.a"
               cp -f "$WORK_ROOT/$pkg/$bin" "$OUT_ROOT/$asset"
               if [ "$pkg" != "oodar" ]; then strip --strip-all "$OUT_ROOT/$asset"; fi
+              printf '%s %s %s\n' "$pkg" "$repo" "$sha" >> /tmp/built.txt
               echo "built $pkg -> $asset"
             else
               echo "error: no binary produced for $pkg" >&2
               exit 1
             fi
             cd /
-            rm -rf "$WORK_ROOT/$pkg"
+            rm -rf "$WORK_ROOT/$pkg" "$WORK_ROOT/oodac"
           done < /tmp/changed.txt
           echo "build pass complete"
 
@@ -274,7 +290,7 @@ jobs:
               p = line.split()
               if len(p) == 2:
                   pkg2repo[p[0]] = p[1]
-          for line in open('/tmp/current-sha.txt'):
+          for line in open('/tmp/built.txt'):
               p = line.split()
               if len(p) == 3:
                   pkg, repo, sha = p
