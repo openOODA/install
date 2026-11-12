@@ -157,10 +157,12 @@ jobs:
             --pattern 'oodac-linux-x86_64' --pattern 'liboodar.a' --clobber
           mv -f "$BOOTSTRAP/oodac-linux-x86_64" "$BOOTSTRAP/oodac"
           chmod +x "$BOOTSTRAP/oodac"
-          mkdir -p "$HOME/.openooda/bin"
+          cp -f "$BOOTSTRAP/liboodar.a" "$BOOTSTRAP/liboodar-core.a"
+          mkdir -p "$HOME/.openooda/bin" "$WORK_ROOT"
           cp -f "$BOOTSTRAP/liboodar.a" "$HOME/.openooda/bin/liboodar.a"
           cp -f "$BOOTSTRAP/oodac" "$HOME/.openooda/bin/oodac"
           git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/openOODA-core/oostd.git" "$BOOTSTRAP/oostd" >/dev/null 2>&1
+          ln -sfn "$BOOTSTRAP/oostd" "$WORK_ROOT/oostd"
           test -f "$BOOTSTRAP/oostd/core/anchor.oo" && echo "bootstrap ready"
 
       - name: Build changed repos and stage stripped binaries
@@ -202,6 +204,7 @@ jobs:
               fi
               cd /
               rm -rf "$WORK_ROOT/$pkg"
+              ln -sfn "$BOOTSTRAP/oostd" "$WORK_ROOT/oostd"
               continue
             fi
             if [ "$pkg" = "ooda" ] && [ ! -d "$WORK_ROOT/oodac" ]; then
@@ -212,12 +215,12 @@ jobs:
             fi
             if [ -f Makefile ]; then
               OODAC="$BOOTSTRAP/oodac" OODA_COMPILER="$BOOTSTRAP/oodac" OODAC_BIN="$BOOTSTRAP/oodac" \
-                OODA_OOSTD_ROOT="$BOOTSTRAP/oostd" OODA_OODAR_ROOT="$BOOTSTRAP" \
-                OO_LIST_AMBIENT_QUOTA=34359738368 OODA_NO_JAIL=1 \
+                OODA_OOSTD_ROOT="$BOOTSTRAP/oostd" OODA_OODAR_ROOT="$BOOTSTRAP" OODAR_ROOT="$BOOTSTRAP" \
+                BOOTSTRAP_FIXED_POINT=0 OO_LIST_AMBIENT_QUOTA=34359738368 OODA_NO_JAIL=1 \
                 make build >/dev/null 2>&1 || \
               OODAC="$BOOTSTRAP/oodac" OODA_COMPILER="$BOOTSTRAP/oodac" OODAC_BIN="$BOOTSTRAP/oodac" \
-                OODA_OOSTD_ROOT="$BOOTSTRAP/oostd" OODA_OODAR_ROOT="$BOOTSTRAP" \
-                OO_LIST_AMBIENT_QUOTA=34359738368 OODA_NO_JAIL=1 \
+                OODA_OOSTD_ROOT="$BOOTSTRAP/oostd" OODA_OODAR_ROOT="$BOOTSTRAP" OODAR_ROOT="$BOOTSTRAP" \
+                BOOTSTRAP_FIXED_POINT=0 OO_LIST_AMBIENT_QUOTA=34359738368 OODA_NO_JAIL=1 \
                 make >/dev/null 2>&1 || true
             fi
             bin=""
