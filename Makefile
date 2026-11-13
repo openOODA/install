@@ -39,6 +39,9 @@ test: build
 	@rc=0; bash install.sh --bogus-flag-zzz >/dev/null 2>&1 || rc=$$?; [ "$$rc" = "1" ] && echo "PASS: unknown flag refused (exit 1)"
 	@rc=0; bash install.sh --pkg >/dev/null 2>&1 || rc=$$?; [ "$$rc" = "1" ] && echo "PASS: --pkg missing arg refused (exit 1)"
 	@rc=0; bash install.sh --pkg --group >/dev/null 2>&1 || rc=$$?; [ "$$rc" = "1" ] && echo "PASS: --pkg swallowed flag refused (exit 1)"
+	@grep -q 'shell-init fish | source' install.sh && echo "PASS: installer ships fish shell-init"
+	@grep -q 'shell-init pwsh | Out-String' install.sh && echo "PASS: installer ships pwsh shell-init"
+	@grep -q 'shell-init nu > ' install.sh && echo "PASS: installer ships nu shell-init"
 	@echo "ALL TESTS PASSED"
 
 check:
