@@ -9,6 +9,8 @@
 # Set OPENOODA_YES=1 to auto-answer y to all prompts (non-interactive).
 
 set -euo pipefail
+export GIT_TERMINAL_PROMPT=0
+export GIT_ASKPASS=/bin/false
 
 # Child shells spawned by `ooda update` sometimes get HOME=~ (literal).
 HOME="${HOME:-/home/$(id -un)}"
@@ -749,8 +751,8 @@ fetch_repo() {
   fi
   local args=(--depth 1)
   [[ -n "$branch" ]] && args+=(--branch "$branch")
-  git clone "${args[@]}" "$url" "$dest" >/dev/null 2>&1 || \
-    git clone "${args[@]}" "${url/https:\/\/github.com\//git@github.com:}.git" "$dest" >/dev/null 2>&1 || true
+  GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/bin/false git clone "${args[@]}" "$url" "$dest" </dev/null >/dev/null 2>&1 || \
+    GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="ssh -o BatchMode=yes" git clone "${args[@]}" "${url/https:\/\/github.com\//git@github.com:}.git" "$dest" </dev/null >/dev/null 2>&1 || true
   if [[ -f "$dest/core/anchor.oo" || -f "$dest/$verify" ]]; then
     echo "ok" > "$wd/status"
   else
@@ -1356,6 +1358,31 @@ setup_shell_rc() {
     grep -q '^export OODA_SPEC=' "$rc" 2>/dev/null || printf '%s\n' "$l9" >> "$rc"
     grep -q '^export OO_LIST_AMBIENT_QUOTA=' "$rc" 2>/dev/null || printf '%s\n' "$l7" >> "$rc"
   done
+  local nu_env="$XDG_CONFIG_HOME/nushell/env.nu"
+  if [[ -f "$nu_env" ]] || [[ -d "$XDG_CONFIG_HOME/nushell" ]] || command -v nu >/dev/null 2>&1; then
+    mkdir -p "$XDG_CONFIG_HOME/nushell" 2>/dev/null || true
+    touch "$nu_env" 2>/dev/null || true
+    if [[ -f "$nu_env" ]] && ! grep -q '# openOODA' "$nu_env" 2>/dev/null; then
+      [[ -f "$nu_env.bak.openooda" ]] || cp -p "$nu_env" "$nu_env.bak.openooda" 2>/dev/null || true
+      cat >> "$nu_env" <<'NU_EOF'
+
+# openOODA
+$env.PATH = ($env.PATH | split row (char esep) | prepend $"($env.HOME)/.openooda/bin" | uniq)
+$env.OODA_OOSTD_ROOT = $"($env.HOME)/.openooda/oostd"
+$env.OODA_COMPILER = $"($env.HOME)/.openooda/bin/oodac"
+$env.OODA_FS_READDIR = $"($env.HOME)/.openooda:/etc:/usr"
+$env.OODA_FS_WRITEDIR = $"($env.HOME)"
+$env.OODACODEX = $"($env.HOME)/.openooda/AGENTS.md"
+$env.OODASPEC = $"($env.HOME)/.openooda/cards/spec.md"
+$env.OODA_SPEC = $"($env.HOME)/.openooda/cards/spec.md"
+$env.OO_LIST_AMBIENT_QUOTA = "8589934592"
+# end openOODA
+NU_EOF
+      ok "nushell env.nu updated"
+    else
+      info "nushell env.nu already has openOODA exports"
+    fi
+  fi
 }
 
 # merge_readdir_line: ensure ~/.openooda:/etc:/usr are on OODA_FS_READDIR
@@ -1926,6 +1953,11 @@ if [[ $DO_UNINSTALL -eq 1 ]]; then
       ok "surgically removed openOODA section from $(basename "$rc")"
     fi
   done
+  local nu_env="$XDG_CONFIG_HOME/nushell/env.nu"
+  if [[ -f "$nu_env" ]] && grep -q '# openOODA' "$nu_env" 2>/dev/null; then
+    sed -i '/^# openOODA$/,/^# end openOODA$/d' "$nu_env" 2>/dev/null || true
+    ok "surgically removed openOODA section from env.nu"
+  fi
   ok "uninstall complete"
   exit 0
 fi
