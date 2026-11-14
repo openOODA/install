@@ -215,8 +215,27 @@ stage_images() {
 
 gen_sums() {
   ( cd "$STAGE" && find . -maxdepth 1 -type f ! -name 'SHA256SUMS*' -printf '%f\n' \
-      | LC_ALL=C sort | xargs sha256sum > SHA256SUMS )
-  [[ -s "$STAGE/SHA256SUMS" ]] || die "SHA256SUMS generation produced nothing"
+      | LC_ALL=C sort | xargs sha256sum > SHA256SUMS.new )
+  [[ -s "$STAGE/SHA256SUMS.new" ]] || die "SHA256SUMS generation produced nothing"
+  # Merge with the live hub sums so a single-package publish never shrinks
+  # the master file (regression: partial STAGE used to clobber it). Keep old
+  # entries only for assets still on the hub; staged files get fresh hashes.
+  local prev="$STAGE/.hub_SHA256SUMS.prev" live="$STAGE/.hub_assets.live"
+  if [[ "$DRY_RUN" != "1" ]] && command -v gh >/dev/null 2>&1 && \
+      gh release download "$RELEASE_TAG" -R "$RELEASE_REPO" --pattern 'SHA256SUMS' \
+        --clobber -O "$prev" >/dev/null 2>&1 && [[ -s "$prev" ]] && \
+      gh release view "$RELEASE_TAG" -R "$RELEASE_REPO" --json assets \
+        -q '.assets[].name' >"$live" 2>/dev/null && [[ -s "$live" ]]; then
+    awk 'NR==FNR { fresh[$2]=1; next } !($2 in fresh)' \
+      "$STAGE/SHA256SUMS.new" "$prev" | \
+      awk 'NR==FNR { live[$1]=1; next } ($2 in live)' "$live" - | \
+      cat - "$STAGE/SHA256SUMS.new" | LC_ALL=C sort -k2 > "$STAGE/SHA256SUMS"
+    say "merged $(wc -l <"$STAGE/SHA256SUMS") master sums entries with live hub state"
+  else
+    mv -f "$STAGE/SHA256SUMS.new" "$STAGE/SHA256SUMS"
+    say "no live hub sums to merge (dry run or first publish); shipping staged sums only"
+  fi
+  rm -f "$STAGE/SHA256SUMS.new" "$prev" "$live"
   if [[ -n "${OO_MINISIGN_KEY:-}" && -f "${OO_MINISIGN_KEY}" ]] && command -v minisign >/dev/null 2>&1; then
     ( cd "$STAGE" && minisign -S -s "$OO_MINISIGN_KEY" -m SHA256SUMS -x SHA256SUMS.sig ) && \
       ok "signed SHA256SUMS -> SHA256SUMS.sig" || warn "minisign failed; shipping unsigned sums"
