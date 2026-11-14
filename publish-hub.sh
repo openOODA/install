@@ -151,6 +151,19 @@ stage_pkg() {  # $1 = package name
   cp -f "$bin" "$STAGE/$asset"
   chmod 0644 "$STAGE/$asset"
   say "staged $asset <- $bin"
+  # Sibling persona binaries (bin/<pkg>-<persona>) colocate with the main
+  # asset: multi-binary tools exec their siblings at runtime (oodeploy
+  # forwards build/infer/sched under ProcessCap). Test binaries never match
+  # this glob (test_* stem), and repos without siblings stage nothing extra.
+  local repo sib sibbase
+  repo="$(find_repo "$pkg")" || return 0
+  for sib in "$repo"/bin/"$pkg"-*; do
+    [[ -f "$sib" && -x "$sib" ]] || continue
+    sibbase="$(basename "$sib")"
+    cp -f "$sib" "$STAGE/${sibbase}-linux-x86_64"
+    chmod 0644 "$STAGE/${sibbase}-linux-x86_64"
+    say "staged ${sibbase}-linux-x86_64 <- $sib"
+  done
 }
 
 stage_images() {
