@@ -7,6 +7,10 @@
 //   1. core/install_check.oo owns the semver, payload-dir, and repo-fold checks.
 //   2. core/install_script.oo owns the install.sh flag, binary-map, SHA256SUMS, and version-alignment checks.
 //   3. tests/test_functional.oo proves the shipped tree conforms; tests/test_refusal.oo proves forged scripts refuse.
+//   4. Stay comment-only: no code lives on this page.
+//   5. Hold the sixteen-line page floor with these doc beats.
 
 import "core/install_check.oo";
 import "core/install_script.oo";
+
+// The anchor stays import-only.
