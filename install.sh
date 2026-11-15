@@ -41,7 +41,7 @@ XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 # fallback below is this script's own version at authoring time, kept in
 # sync by the bump bot (see bump-version.yml), so offline curl|bash shows
 # the right version. Display-only: downloads always use releases/latest.
-VERSION="$(cat "$(dirname "${BASH_SOURCE[0]:-$0}")/VERSION" 2>/dev/null || curl -sSL --max-time 3 "https://raw.githubusercontent.com/openOODA/install/master/VERSION" 2>/dev/null || echo "0.2.8")"
+VERSION="$(cat "$(dirname "${BASH_SOURCE[0]:-$0}")/VERSION" 2>/dev/null || curl -sSL --max-time 3 "https://raw.githubusercontent.com/openOODA/install/master/VERSION" 2>/dev/null || echo "0.2.9")"
 VERSION="$(printf '%s' "$VERSION" | tr -d '\r\n ' | head -c 20)"
 [[ -z "$VERSION" ]] && VERSION="?"
 
@@ -173,7 +173,7 @@ declare -A PKG_ARCHIVE_ANCHOR=([oostd]="core/anchor.oo")
 # SOURCE_MAIN: repo-root-relative build entry per component, used only by
 # --from-source. oodac has no entry: `oodac build oodac/main.oo` refuses
 # (unique_fns), so from-source keeps the bootstrap compiler as the product.
-declare -A SOURCE_MAIN=([ooda]=ooda/main.oo [oopm]=oopm/cli/main.oo [oolsp]=oolsp/cli/main.oo [oomcp]=oomcp/cli/main.oo [oohat]=oohat/main.oo)
+declare -A SOURCE_MAIN=([ooda]=ooda/cli/main.oo [oopm]=oopm/cli/main.oo [oolsp]=oolsp/cli/main.oo [oomcp]=oomcp/cli/main.oo [oohat]=oohat/main.oo)
 
 # --- color --------------------------------------------------------------------
 
@@ -1163,7 +1163,7 @@ resolve_source_dir() {
   [[ -n "$d" ]] || { err "from-source: cannot resolve dir: $SOURCE_DIR"; return 1; }
   local missing=()
   local s
-  for s in ooda/main.oo oopm/cli/main.oo oolsp/cli/main.oo oomcp/cli/main.oo oohat/main.oo oodar/Makefile openOODA/AGENTS.md openOODA/cards/spec.md; do
+  for s in ooda/cli/main.oo oopm/cli/main.oo oolsp/cli/main.oo oomcp/cli/main.oo oohat/main.oo oodar/Makefile openOODA/AGENTS.md openOODA/cards/spec.md; do
     [[ -f "$d/$s" ]] || missing+=("$s")
   done
   [[ -f "$d/oostd/core/anchor.oo" || -f "$d/oostd/anchor.oo" || -f "$d/oostd/ANCHOR.oo" ]] || missing+=("oostd/core/anchor.oo")
@@ -1279,7 +1279,7 @@ install_oostd_from_source() {
     return 0
   fi
   rm -rf "$OOSTD_DIR.new" 2>/dev/null || true
-  cp -a "$SRC_DIR/oostd" "$OOSTD_DIR.new" 2>/dev/null || { err "oostd sync failed (copy)"; return 1; }
+  cp -rL "$SRC_DIR/oostd" "$OOSTD_DIR.new" 2>/dev/null || { err "oostd sync failed (copy)"; return 1; }
   if [[ ! -f "$OOSTD_DIR.new/core/anchor.oo" && ! -f "$OOSTD_DIR.new/anchor.oo" && ! -f "$OOSTD_DIR.new/ANCHOR.oo" ]]; then
     rm -rf "$OOSTD_DIR.new" 2>/dev/null || true
     err "oostd sync failed (no anchor.oo in source oostd)"
