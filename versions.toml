@@ -3,4 +3,4 @@
 # All L0–L7 binaries publish to the single canonical release hub at
 # https://github.com/openOODA/install/releases/tag/hub (verified against the
 # master SHA256SUMS manifest). Default tag is "hub".
-# std clones openOODA-core/oostd (default: master branch).
+# oostd unpacks oostd-linux-x86_64.tar.gz from openOODA/install@hub into $OPENOODA_HOME/oostd.

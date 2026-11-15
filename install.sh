@@ -41,7 +41,7 @@ XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 # fallback below is this script's own version at authoring time, kept in
 # sync by the bump bot (see bump-version.yml), so offline curl|bash shows
 # the right version. Display-only: downloads always use releases/latest.
-VERSION="$(cat "$(dirname "${BASH_SOURCE[0]:-$0}")/VERSION" 2>/dev/null || curl -sSL --max-time 3 "https://raw.githubusercontent.com/openOODA/install/master/VERSION" 2>/dev/null || echo "0.2.6")"
+VERSION="$(cat "$(dirname "${BASH_SOURCE[0]:-$0}")/VERSION" 2>/dev/null || curl -sSL --max-time 3 "https://raw.githubusercontent.com/openOODA/install/master/VERSION" 2>/dev/null || echo "0.2.7")"
 VERSION="$(printf '%s' "$VERSION" | tr -d '\r\n ' | head -c 20)"
 [[ -z "$VERSION" ]] && VERSION="?"
 
@@ -929,14 +929,12 @@ GROUPS_OOT=""
 GROUPS_OOT_TRIED=0
 declare -A GDEF=()
 
-# Fetch groups.oot once per run. catalog.openooda.org serves the repo tree
-# on GitHub Pages; raw.githubusercontent is the fallback.
+# Fetch groups.oot once per run from openOODA/catalog on GitHub.
 groups_oot_load() {
   [[ "$GROUPS_OOT_TRIED" == "1" ]] && return 0
   GROUPS_OOT_TRIED=1
   local u
   for u in \
-    "https://catalog.openooda.org/groups.oot" \
     "https://raw.githubusercontent.com/openOODA/catalog/master/groups.oot"
   do
     GROUPS_OOT=$(curl -fsSL --connect-timeout 8 --max-time 20 "$u" 2>/dev/null || true)
@@ -1376,7 +1374,7 @@ setup_shell_rc() {
       ok "$(basename "$rc") updated"
     fi
     # Merge jail dirs into an existing READDIR. Never clobber extra
-    # developer paths (e.g. $HOME/Projects/openOODA:/tmp).
+    # developer paths (e.g. $OODA_POLYROOT/openOODA:/tmp).
     merge_readdir_line "$rc"
     grep -Fqx "$l5" "$rc" 2>/dev/null || printf '%s\n' "$l5" >> "$rc"
     grep -q '^export OODACODEX=' "$rc" 2>/dev/null || printf '%s\n' "$l6" >> "$rc"
@@ -1872,7 +1870,7 @@ do_install() {
     # fetch_and_verify): a failed refresh must never clobber a codex we
     # already hold — MCP servers fail closed without OODACODEX.
     step_status "fetching orientation codex (openOODA/AGENTS.md)"
-    if curl -sSL --connect-timeout 10 --max-time 60 -o "$OPENOODA_HOME/AGENTS.md.tmp" "https://raw.githubusercontent.com/openOODA/openOODA/master/AGENTS.md" 2>/dev/null && [[ -s "$OPENOODA_HOME/AGENTS.md.tmp" ]]; then
+    if curl -fsSL --connect-timeout 10 --max-time 60 -o "$OPENOODA_HOME/AGENTS.md.tmp" "https://raw.githubusercontent.com/openOODA/openOODA/master/AGENTS.md" 2>/dev/null && [[ -s "$OPENOODA_HOME/AGENTS.md.tmp" ]]; then
       mv -f "$OPENOODA_HOME/AGENTS.md.tmp" "$OPENOODA_HOME/AGENTS.md" 2>/dev/null || warn "codex rename failed; keeping previous AGENTS.md"
     else
       rm -f "$OPENOODA_HOME/AGENTS.md.tmp" 2>/dev/null || true
@@ -1892,6 +1890,7 @@ do_install() {
     skip "[dry-run] skipping spec fetch"
   elif [[ "$FROM_SOURCE" == "1" ]]; then
     step_status "copying language specification from source"
+    mkdir -p "$OPENOODA_HOME/cards" 2>/dev/null || true
     install_file_from_source "openOODA/cards/spec.md" "$OPENOODA_HOME/cards/spec.md" "spec"
   else
     # Download to .tmp then rename on success (same atomic pattern as
@@ -1899,7 +1898,7 @@ do_install() {
     # already hold.
     step_status "fetching language specification (openOODA/cards/spec.md)"
     mkdir -p "$OPENOODA_HOME/cards" 2>/dev/null || true
-    if curl -sSL --connect-timeout 10 --max-time 60 -o "$OPENOODA_HOME/cards/spec.md.tmp" "https://raw.githubusercontent.com/openOODA/openOODA/master/cards/spec.md" 2>/dev/null && [[ -s "$OPENOODA_HOME/cards/spec.md.tmp" ]]; then
+    if curl -fsSL --connect-timeout 10 --max-time 60 -o "$OPENOODA_HOME/cards/spec.md.tmp" "https://raw.githubusercontent.com/openOODA/openOODA/master/cards/spec.md" 2>/dev/null && [[ -s "$OPENOODA_HOME/cards/spec.md.tmp" ]]; then
       mv -f "$OPENOODA_HOME/cards/spec.md.tmp" "$OPENOODA_HOME/cards/spec.md" 2>/dev/null || warn "spec rename failed; keeping previous cards/spec.md"
     else
       rm -f "$OPENOODA_HOME/cards/spec.md.tmp" 2>/dev/null || true
@@ -1907,6 +1906,48 @@ do_install() {
         warn "spec refresh failed; keeping existing cards/spec.md"
       else
         warn "spec fetch failed; ooda spec and agent tooling need network to populate cards/spec.md"
+      fi
+    fi
+  fi
+
+  # step 3e: capability table (oolsp/oohat read ~/.openooda/cards/cap_table.oot).
+  if [[ "$DRY_RUN" == "1" ]]; then
+    step_status "[dry-run] skipping cap_table.oot fetch"
+    skip "[dry-run] skipping cap_table.oot fetch"
+  elif [[ "$FROM_SOURCE" == "1" ]]; then
+    step_status "copying capability table from source"
+    mkdir -p "$OPENOODA_HOME/cards" 2>/dev/null || true
+    install_file_from_source "oodar/core/sec/cap/cap_table.oot" "$OPENOODA_HOME/cards/cap_table.oot" "cap_table"
+  else
+    # openOODA-core/oodar is private; public installs fetch cap_table.oot from openOODA/install@hub.
+    step_status "fetching capability table (hub/cap_table.oot)"
+    mkdir -p "$OPENOODA_HOME/cards" 2>/dev/null || true
+    sums_ensure || true
+    local cap_exp="" cap_act=""
+    cap_exp="$(sums_expected "cap_table.oot" || true)"
+    if [[ -z "$cap_exp" ]]; then
+      warn "cap_table checksum missing in SHA256SUMS; skipping unverified download"
+    elif curl -fsSL --connect-timeout 10 --max-time 60 -o "$OPENOODA_HOME/cards/cap_table.oot.tmp" "https://github.com/openOODA/install/releases/download/hub/cap_table.oot" 2>/dev/null && [[ -s "$OPENOODA_HOME/cards/cap_table.oot.tmp" ]]; then
+      if command -v sha256sum >/dev/null 2>&1; then
+        cap_act=$(sha256sum "$OPENOODA_HOME/cards/cap_table.oot.tmp" | awk '{print $1}')
+      else
+        cap_act=$(shasum -a 256 "$OPENOODA_HOME/cards/cap_table.oot.tmp" | awk '{print $1}')
+      fi
+      if [[ "$cap_act" == "$cap_exp" ]]; then
+        if ! mv -f "$OPENOODA_HOME/cards/cap_table.oot.tmp" "$OPENOODA_HOME/cards/cap_table.oot" 2>/dev/null; then
+          rm -f "$OPENOODA_HOME/cards/cap_table.oot.tmp" 2>/dev/null || true
+          warn "cap_table rename failed; keeping previous cards/cap_table.oot"
+        fi
+      else
+        rm -f "$OPENOODA_HOME/cards/cap_table.oot.tmp" 2>/dev/null || true
+        warn "cap_table SHA256 mismatch; keeping existing cards/cap_table.oot"
+      fi
+    else
+      rm -f "$OPENOODA_HOME/cards/cap_table.oot.tmp" 2>/dev/null || true
+      if [[ -s "$OPENOODA_HOME/cards/cap_table.oot" ]]; then
+        warn "cap_table refresh failed; keeping existing cards/cap_table.oot"
+      else
+        warn "cap_table fetch failed; oolsp/oohat cap_table lookup needs network to populate cards/cap_table.oot"
       fi
     fi
   fi
@@ -2038,7 +2079,7 @@ if [[ $DO_UNINSTALL -eq 1 ]]; then
     if [[ -L "$s" && "$(readlink "$s" 2>/dev/null)" == "$BIN_DIR/"* ]]; then rm -f "$s" 2>/dev/null || true; fi
   done
   # remove binaries, oostd, spec, and build sources (keep OPENOODA_HOME for logs)
-  rm -rf "$BIN_DIR" "$OOSTD_DIR" "$OPENOODA_HOME/oodar" "$OPENOODA_HOME/cards/spec.md" "$OPENOODA_HOME/AGENTS.md" 2>/dev/null || true
+  rm -rf "$BIN_DIR" "$OOSTD_DIR" "$OPENOODA_HOME/oodar" "$OPENOODA_HOME/cards/spec.md" "$OPENOODA_HOME/cards/cap_table.oot" "$OPENOODA_HOME/AGENTS.md" 2>/dev/null || true
   # surgically remove the # openOODA section from shell rc files
   for rc in "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.zshrc"; do
     if [[ -f "$rc" ]] && grep -q '# openOODA' "$rc" 2>/dev/null; then

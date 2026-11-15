@@ -44,7 +44,7 @@ fn t_refuse(fs: &FsReadCap) -> Int {
     p = t_expect(ins_sums_ok(sums_src) && !ins_sums_ok(sums_src + " sums_lookup"),
         "dead sums_lookup call refused", p);
     p = t_expect(!ins_sums_ok("#!/bin/sh\nset -euo pipefail\n"), "unsigned script refused", p);
-    p = t_expect(!ins_ver_aligned("/VERSION echo \"9.9.9\"", "0.2.6"),
+    p = t_expect(!ins_ver_aligned("/VERSION echo \"9.9.9\"", "0.2.7"),
         "forged fallback version refused", p);
     p = t_expect(!ins_ver_ok(".." + "/0.1"), "traversal ver refused", p);
     let r: Result[String, String] = oo_read_file(fs, ".." + "/.." + "/etc/" + "passwd");

@@ -4,9 +4,9 @@
 #   bash publish-hub.sh [pkg ...]
 #
 # With no arguments, publishes every canonical package in
-# /Projects/openOODA/catalog/groups.oot (@all expansion). Named arguments
+# $OODA_POLYROOT/openOODA/catalog/groups.oot (@all expansion). Named arguments
 # publish only those packages. For each package the script locates the
-# repo under /Projects/openOODA-*/, builds it with `make build` when no
+# repo under $OODA_POLYROOT/openOODA-*/, builds it with `make build` when no
 # binary is present, stages it as <name>-linux-x86_64 (liboodar.a keeps
 # its name), regenerates the single master SHA256SUMS (+ SHA256SUMS.sig
 # when a minisign key is available), copies SHA256SUMS into the catalog
@@ -16,14 +16,14 @@
 # exactly one active Release remains.
 #
 # Env:
-#   OO_PROJECTS_ROOT  default /Projects
+#   OO_PROJECTS_ROOT  default $HOME/openOODA-src
 #   OO_MINISIGN_KEY   path to minisign secret for SHA256SUMS.sig
 #   OO_HUB_RELEASE    release tag on openOODA/install (default: hub)
 #   OO_DRY_RUN=1      stage + print, skip gh upload/delete
 
 set -euo pipefail
 
-ROOT="${OO_PROJECTS_ROOT:-/Projects}"
+ROOT="${OO_PROJECTS_ROOT:-${OODA_POLYROOT:-$HOME/openOODA-src}}"
 CATALOG="$ROOT/openOODA/catalog"
 GROUPS_FILE="$CATALOG/groups.oot"
 ORG_DIRS=(openOODA-core openOODA-kernel openOODA-OS openOODA-tools \
@@ -99,7 +99,7 @@ find_repo() {  # $1 = package name → prints repo dir or nothing
 # binary is ooda-lsp; oodar's product is the liboodar.a archive.
 bin_candidates() {
   case "$1" in
-    oodac)  printf 'oodac.real\noodac\n';;
+    oodac)  printf 'oodac\n';;
     oodar)  printf 'liboodar.a\n';;
     oolsp)  printf 'oolsp\nooda-lsp\n';;
     oofs)   printf 'oofs\noofs-linux-x86_64\noocp\noocp-linux-x86_64\n';;
@@ -210,6 +210,20 @@ stage_images() {
     ( cd "$ROOT/openOODA/openOODA" && tar -czf "$STAGE/openooda-codex-linux-x86_64.tar.gz" AGENTS.md cards )
     chmod 0644 "$STAGE/openooda-codex-linux-x86_64.tar.gz"
     say "staged openooda-codex-linux-x86_64.tar.gz <- $ROOT/openOODA/openOODA (AGENTS.md + cards)"
+  fi
+  # 4. Stage canonical capability table unconditionally so subset publishes keep hub complete.
+  local cap_src=""
+  if [[ -s "$ROOT/openOODA-core/oodar/core/sec/cap/cap_table.oot" ]]; then
+    cap_src="$ROOT/openOODA-core/oodar/core/sec/cap/cap_table.oot"
+  elif [[ -s "$ROOT/oodar/core/sec/cap/cap_table.oot" ]]; then
+    cap_src="$ROOT/oodar/core/sec/cap/cap_table.oot"
+  fi
+  if [[ -n "$cap_src" ]]; then
+    cp -f "$cap_src" "$STAGE/cap_table.oot"
+    chmod 0644 "$STAGE/cap_table.oot"
+    say "staged cap_table.oot <- $cap_src"
+  else
+    warn "cap_table.oot not found under $ROOT; keeping existing hub asset"
   fi
 }
 

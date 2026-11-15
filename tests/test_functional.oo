@@ -25,7 +25,7 @@ fn t_expect(cond: Bool, label: String, p: Int) -> Int {
 
 fn t_install(fs: &FsReadCap) -> Int {
     let mut p: Int = 0;
-    p = t_expect(ins_ver_ok("0.2.6") && ins_ver_ok("12.0.99"), "semver accepts", p);
+    p = t_expect(ins_ver_ok("0.2.7") && ins_ver_ok("12.0.99"), "semver accepts", p);
     let vr: Result[String, String] = oo_read_file(fs, "VERSION");
     let ver: String = match vr { Ok(s) => s, Err(_) => "" };
     p = t_expect(vr.is_ok() && ins_ver_ok(ver), "VERSION file parses", p);

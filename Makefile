@@ -1,17 +1,22 @@
 # install — repo conformance surface: build the .oo checkers, run both suites,
 # and smoke the install.sh flag contract end to end.
-OODA_COMPILER ?= /Projects/openOODA-core/oodac/bin/oodac
+OODA_COMPILER ?= $(HOME)/.openooda/bin/oodac
 export OODA_COMPILER
 OODAC_BIN ?= $(OODA_COMPILER)
 export OODAC_BIN
-OODA_READDIR ?= /Projects:/tmp:/usr:/lib:/lib64
+OODA_READDIR ?= $(HOME)/.openooda:$(CURDIR):/tmp:/usr:/lib:/lib64
 OODA_WRITEDIR ?= $(CURDIR):/tmp
 OO_LIST_AMBIENT_QUOTA ?= 8589934592
+OODA_OODAR_ROOT ?= $(HOME)/.openooda/bin
+export OODA_OODAR_ROOT
+OODA_OOSTD_ROOT ?= $(HOME)/.openooda/oostd
+export OODA_OOSTD_ROOT
 TF := .ooda-cache/test_functional
 TR := .ooda-cache/test_refusal
 ENV := OO_LIST_AMBIENT_QUOTA=$(OO_LIST_AMBIENT_QUOTA) OO_LINT_ROOTS=$(CURDIR) \
 	OODA_COMPILER=$(OODA_COMPILER) OODAC_BIN=$(OODAC_BIN) \
-	OODA_FS_READDIR=$(OODA_READDIR) OODA_FS_WRITEDIR=$(OODA_WRITEDIR) OODA_NO_JAIL=1
+	OODA_FS_READDIR=$(OODA_READDIR) OODA_FS_WRITEDIR=$(OODA_WRITEDIR) \
+	OODA_OODAR_ROOT=$(OODA_OODAR_ROOT) OODA_OOSTD_ROOT=$(OODA_OOSTD_ROOT) OODA_NO_JAIL=1
 SRC := $(shell find . -name '*.oo' -not -path './.git/*' -not -path './.ooda-cache/*' -not -path './bin/*' -not -path './dist/*' | sort)
 
 .PHONY: all build test check clean
