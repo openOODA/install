@@ -41,7 +41,7 @@ XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 # fallback below is this script's own version at authoring time, kept in
 # sync by the bump bot (see bump-version.yml), so offline curl|bash shows
 # the right version. Display-only: downloads always use releases/latest.
-VERSION="$(cat "$(dirname "${BASH_SOURCE[0]:-$0}")/VERSION" 2>/dev/null || curl -sSL --max-time 3 "https://raw.githubusercontent.com/openOODA/install/master/VERSION" 2>/dev/null || echo "0.2.7")"
+VERSION="$(cat "$(dirname "${BASH_SOURCE[0]:-$0}")/VERSION" 2>/dev/null || curl -sSL --max-time 3 "https://raw.githubusercontent.com/openOODA/install/master/VERSION" 2>/dev/null || echo "0.2.8")"
 VERSION="$(printf '%s' "$VERSION" | tr -d '\r\n ' | head -c 20)"
 [[ -z "$VERSION" ]] && VERSION="?"
 
@@ -933,13 +933,8 @@ declare -A GDEF=()
 groups_oot_load() {
   [[ "$GROUPS_OOT_TRIED" == "1" ]] && return 0
   GROUPS_OOT_TRIED=1
-  local u
-  for u in \
-    "https://raw.githubusercontent.com/openOODA/catalog/master/groups.oot"
-  do
-    GROUPS_OOT=$(curl -fsSL --connect-timeout 8 --max-time 20 "$u" 2>/dev/null || true)
-    [[ -n "$GROUPS_OOT" ]] && break
-  done
+  local u="https://raw.githubusercontent.com/openOODA/catalog/master/groups.oot"
+  GROUPS_OOT=$(curl -fsSL --connect-timeout 8 --max-time 20 "$u" 2>/dev/null || true)
   [[ -z "$GROUPS_OOT" ]] && return 1
   local line g rest
   while IFS= read -r line; do

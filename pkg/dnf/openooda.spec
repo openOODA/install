@@ -1,5 +1,5 @@
 Name:           openooda
-Version:        0.2.7
+Version:        0.2.8
 Release:        1%{?dist}
 Summary:        openOODA — Primary Systems Language for the AI Era
 URL:            https://openooda.org
@@ -38,6 +38,8 @@ install -m 0644 %{_sourcedir}/profile.d.sh %{buildroot}/etc/profile.d/openooda.s
 /etc/profile.d/openooda.sh
 
 %changelog
+* Sun Nov 15 2026 openOODA Authors <ops@openooda.org> - 0.2.8-1
+- Sync packaging with VERSION 0.2.8
 * Sun Nov 15 2026 openOODA Authors <ops@openooda.org> - 0.2.7-1
 - Sync packaging with VERSION 0.2.7
 * Fri Nov 06 2026 openOODA Authors <ops@openooda.org> - 0.2.6-1
