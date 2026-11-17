@@ -1,6 +1,6 @@
 # install — repo conformance surface: build the .oo checkers, run both suites,
 # and smoke the install.sh flag contract end to end.
-OODA_COMPILER ?= $(HOME)/.openooda/bin/oodac
+OODA_COMPILER ?= $(HOME)/.openooda/bin/ooda-compiler
 export OODA_COMPILER
 OODAC_BIN ?= $(OODA_COMPILER)
 export OODAC_BIN
@@ -9,14 +9,15 @@ OODA_WRITEDIR ?= $(CURDIR):/tmp
 OO_LIST_AMBIENT_QUOTA ?= 8589934592
 OODA_OODAR_ROOT ?= $(HOME)/.openooda/bin
 export OODA_OODAR_ROOT
-OODA_OOSTD_ROOT ?= $(HOME)/.openooda/oostd
-export OODA_OOSTD_ROOT
+unexport OODA_OOSTD_ROOT
+OODA_STANDARD_ROOT ?= $(HOME)/.openooda/ooda-standard
+export OODA_STANDARD_ROOT
 TF := .ooda-cache/test_functional
 TR := .ooda-cache/test_refusal
 ENV := OO_LIST_AMBIENT_QUOTA=$(OO_LIST_AMBIENT_QUOTA) OO_LINT_ROOTS=$(CURDIR) \
 	OODA_COMPILER=$(OODA_COMPILER) OODAC_BIN=$(OODAC_BIN) \
 	OODA_FS_READDIR=$(OODA_READDIR) OODA_FS_WRITEDIR=$(OODA_WRITEDIR) \
-	OODA_OODAR_ROOT=$(OODA_OODAR_ROOT) OODA_OOSTD_ROOT=$(OODA_OOSTD_ROOT) OODA_NO_JAIL=1
+	OODA_OODAR_ROOT=$(OODA_OODAR_ROOT) OODA_STANDARD_ROOT=$(OODA_STANDARD_ROOT) OODA_NO_JAIL=1
 SRC := $(shell find . -name '*.oo' -not -path './.git/*' -not -path './.ooda-cache/*' -not -path './bin/*' -not -path './dist/*' | sort)
 
 .PHONY: all build test check clean
@@ -51,7 +52,7 @@ test: build
 
 check:
 	@for f in $(SRC); do $(ENV) $(OODA_COMPILER) check "$$f" > /dev/null || exit 1; done
-	@echo "PASS: oodac check holds on all .oo files"
+	@echo "PASS: ooda-compiler check holds on all .oo files"
 	@bash -n install.sh && bash -n publish-hub.sh && for f in pkg/*/profile.d.sh; do bash -n "$$f"; done
 	@echo "PASS: bash -n on install.sh publish-hub.sh pkg profile fragments"
 

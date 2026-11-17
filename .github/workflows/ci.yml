@@ -44,13 +44,13 @@ jobs:
           for needle in \
             "openOODA" \
             "One release hub, one asset per component" \
-            "oodac" \
+            "ooda-compiler" \
             "Welcome to openOODA" \
             "prefix:" \
             "dry-run"; do
             echo "$output" | grep -qF -- "$needle" || { echo "missing: $needle"; exit 1; }
           done
-          if echo "$output" | grep -qF 'ooda install openOODA-core/oostd'; then
+          if echo "$output" | grep -qF 'ooda install openOODA-core/ooda-standard'; then
             echo "command list still suggests std install (it is auto-cloned)"
             exit 1
           fi

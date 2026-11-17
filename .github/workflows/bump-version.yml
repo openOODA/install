@@ -30,9 +30,9 @@ jobs:
           fi
           echo "$ver" > VERSION
           # keep embedded fallback in install.sh in sync so curl|bash offline still shows right version
-          if grep -q '|| echo "0\.' install.sh 2>/dev/null; then
-            sed -i "s/|| echo \"0\.[^\"]*\"/|| echo \"$ver\"/g" install.sh
-            sed -i "s/INSTALLER_VERSION=\"0\.[^\"]*\"/INSTALLER_VERSION=\"$ver\"/g" install.sh
+          if grep -qE '\|\| echo "[0-9]+\.' install.sh 2>/dev/null; then
+            sed -i -E 's/\|\| echo "[0-9]+\.[^"]*"/|| echo "'"$ver"'"/g' install.sh
+            sed -i -E 's/INSTALLER_VERSION="[0-9]+\.[^"]*"/INSTALLER_VERSION="'"$ver"'"/g' install.sh
           fi
           git config user.name "openOODA Auto-Release"
           git config user.email "ops@openooda.org"

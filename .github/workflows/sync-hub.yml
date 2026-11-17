@@ -91,7 +91,7 @@ jobs:
               sleep $((tries * 4))
             done
           }
-          ORGS="openOODA-core openOODA-kernel openOODA-OS openOODA-tools openOODA-DE openOODA-apps openOODA-cloud openOODA-agents"
+          ORGS="openOODA-core openOODA-system openOODA-apps"
           : > /tmp/repo-map.txt
           for org in $ORGS; do
             gh_retry gh api "orgs/$org/repos?per_page=100" --paginate -q '.[].name' | while read -r r; do
@@ -137,8 +137,8 @@ jobs:
           while read -r pkg repo sha; do
             old="$(jq -r --arg k "$repo" '.[$k] // empty' "$LEDGER")"
             asset="$pkg-linux-x86_64"
-            [ "$pkg" = "oodar" ] && asset="liboodar.a"
-            [ "$pkg" = "oostd" ] && asset="oostd-linux-x86_64.tar.gz"
+            [ "$pkg" = "ooda-runtime" ] && asset="liboodar.a"
+            [ "$pkg" = "ooda-standard" ] && asset="ooda-standard-linux-x86_64.tar.gz"
             need=0
             if [ -n "$FORCED" ] && [ "$FORCED" != "all" ]; then
               [ "$FORCED" = "$pkg" ] && need=1
@@ -165,16 +165,16 @@ jobs:
           TAG="$(gh api repos/$RELEASE_REPO/releases/latest -q .tag_name)"
           mkdir -p "$BOOTSTRAP"
           gh release download "$TAG" -R "$RELEASE_REPO" -D "$BOOTSTRAP" \
-            --pattern 'oodac-linux-x86_64' --pattern 'liboodar.a' --clobber
-          mv -f "$BOOTSTRAP/oodac-linux-x86_64" "$BOOTSTRAP/oodac"
-          chmod +x "$BOOTSTRAP/oodac"
+            --pattern 'ooda-compiler-linux-x86_64' --pattern 'liboodar.a' --clobber
+          mv -f "$BOOTSTRAP/ooda-compiler-linux-x86_64" "$BOOTSTRAP/ooda-compiler"
+          chmod +x "$BOOTSTRAP/ooda-compiler"
           cp -f "$BOOTSTRAP/liboodar.a" "$BOOTSTRAP/liboodar-core.a"
           mkdir -p "$HOME/.openooda/bin" "$WORK_ROOT"
           cp -f "$BOOTSTRAP/liboodar.a" "$HOME/.openooda/bin/liboodar.a"
-          cp -f "$BOOTSTRAP/oodac" "$HOME/.openooda/bin/oodac"
-          git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/openOODA-core/oostd.git" "$BOOTSTRAP/oostd" >/dev/null 2>&1
-          ln -sfn "$BOOTSTRAP/oostd" "$WORK_ROOT/oostd"
-          test -f "$BOOTSTRAP/oostd/core/anchor.oo" && echo "bootstrap ready"
+          cp -f "$BOOTSTRAP/ooda-compiler" "$HOME/.openooda/bin/ooda-compiler"
+          git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/openOODA-core/ooda-standard.git" "$BOOTSTRAP/ooda-standard" >/dev/null 2>&1
+          ln -sfn "$BOOTSTRAP/ooda-standard" "$WORK_ROOT/ooda-standard"
+          test -f "$BOOTSTRAP/ooda-standard/core/anchor.oo" && echo "bootstrap ready"
 
       - name: Build changed repos and stage stripped binaries
         if: steps.resolve.outputs.skip == 'false'
@@ -184,13 +184,14 @@ jobs:
           : > /tmp/built.txt
           bin_candidates() {
             case "$1" in
-              oodac)  printf 'oodac\n';;
-              oodar)  printf 'liboodar.a\n';;
-              oolsp)  printf 'oolsp\nooda-lsp\n';;
-              oofs)   printf 'oofs\noofs-linux-x86_64\noocp\noocp-linux-x86_64\n';;
-              oohw)   printf 'oohw\noohw-linux-x86_64\noohwinfo\noohwinfo-linux-x86_64\n';;
-              ooperm) printf 'ooperm\nooperm-linux-x86_64\noochmod\noochmod-linux-x86_64\n';;
-              *)      printf '%s\n%s-linux-x86_64\n' "$1" "$1";;
+              ooda-compiler)   printf 'ooda-compiler\noodac\n';;
+              ooda-runtime)    printf 'liboodar.a\n';;
+              ooda-language)   printf 'ooda-language\nooda-lsp\noolsp\n';;
+              ooda-bridge)     printf 'ooda-bridge\nooda-mcp\noomcp\n';;
+              ooda-filesystem) printf 'ooda-filesystem\nooda-filesystem-linux-x86_64\noofs\noofs-linux-x86_64\noocp\noocp-linux-x86_64\n';;
+              ooda-hardware)   printf 'ooda-hardware\nooda-hardware-linux-x86_64\noohw\noohw-linux-x86_64\noohwinfo\noohwinfo-linux-x86_64\n';;
+              ooda-disk)       printf 'ooda-disk\nooda-disk-linux-x86_64\nooperm\nooperm-linux-x86_64\noochmod\noochmod-linux-x86_64\n';;
+              *)               printf '%s\n%s-linux-x86_64\n' "$1" "$1";;
             esac
           }
           while read -r pkg repo sha; do
@@ -201,36 +202,36 @@ jobs:
               echo "warn: clone failed for $repo"; continue
             fi
             cd "$WORK_ROOT/$pkg"
-            if [ "$pkg" = "oostd" ]; then
+            if [ "$pkg" = "ooda-standard" ]; then
               if [ -f core/anchor.oo ] && tar --exclude='.git' --exclude='.ooda-cache' --exclude='bin' --exclude='dist' \
-                  -czf "$OUT_ROOT/oostd-linux-x86_64.tar.gz.tmp" . && [ -s "$OUT_ROOT/oostd-linux-x86_64.tar.gz.tmp" ]; then
-                chmod 0644 "$OUT_ROOT/oostd-linux-x86_64.tar.gz.tmp"
-                mv -f "$OUT_ROOT/oostd-linux-x86_64.tar.gz.tmp" "$OUT_ROOT/oostd-linux-x86_64.tar.gz"
+                  -czf "$OUT_ROOT/ooda-standard-linux-x86_64.tar.gz.tmp" . && [ -s "$OUT_ROOT/ooda-standard-linux-x86_64.tar.gz.tmp" ]; then
+                chmod 0644 "$OUT_ROOT/ooda-standard-linux-x86_64.tar.gz.tmp"
+                mv -f "$OUT_ROOT/ooda-standard-linux-x86_64.tar.gz.tmp" "$OUT_ROOT/ooda-standard-linux-x86_64.tar.gz"
                 printf '%s %s %s\n' "$pkg" "$repo" "$sha" >> /tmp/built.txt
-                echo "staged oostd -> oostd-linux-x86_64.tar.gz"
+                echo "staged ooda-standard -> ooda-standard-linux-x86_64.tar.gz"
               else
-                rm -f "$OUT_ROOT/oostd-linux-x86_64.tar.gz.tmp"
-                echo "error: failed to stage oostd archive" >&2
+                rm -f "$OUT_ROOT/ooda-standard-linux-x86_64.tar.gz.tmp"
+                echo "error: failed to stage ooda-standard archive" >&2
                 exit 1
               fi
               cd /
               rm -rf "$WORK_ROOT/$pkg"
-              ln -sfn "$BOOTSTRAP/oostd" "$WORK_ROOT/oostd"
+              ln -sfn "$BOOTSTRAP/ooda-standard" "$WORK_ROOT/ooda-standard"
               continue
             fi
-            if [ "$pkg" = "ooda" ] && [ ! -d "$WORK_ROOT/oodac" ]; then
-              if ! git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/openOODA-core/oodac.git" "$WORK_ROOT/oodac" >/dev/null 2>&1; then
-                echo "error: helper clone failed for openOODA-core/oodac" >&2
+            if [ "$pkg" = "ooda" ] && [ ! -d "$WORK_ROOT/ooda-compiler" ]; then
+              if ! git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/openOODA-core/ooda-compiler.git" "$WORK_ROOT/ooda-compiler" >/dev/null 2>&1; then
+                echo "error: helper clone failed for openOODA-core/ooda-compiler" >&2
                 exit 1
               fi
             fi
             if [ -f Makefile ]; then
-              OODAC="$BOOTSTRAP/oodac" OODA_COMPILER="$BOOTSTRAP/oodac" OODAC_BIN="$BOOTSTRAP/oodac" \
-                OODA_OOSTD_ROOT="$BOOTSTRAP/oostd" OODA_OODAR_ROOT="$BOOTSTRAP" OODAR_ROOT="$BOOTSTRAP" \
+              OODA_COMPILER="$BOOTSTRAP/ooda-compiler" OODA_COMPILER_BIN="$BOOTSTRAP/ooda-compiler" \
+                OODA_STANDARD_ROOT="$BOOTSTRAP/ooda-standard" OODA_RUNTIME_ROOT="$BOOTSTRAP" \
                 BOOTSTRAP_FIXED_POINT=0 OO_LIST_AMBIENT_QUOTA=34359738368 OODA_NO_JAIL=1 \
                 make build >/dev/null 2>&1 || \
-              OODAC="$BOOTSTRAP/oodac" OODA_COMPILER="$BOOTSTRAP/oodac" OODAC_BIN="$BOOTSTRAP/oodac" \
-                OODA_OOSTD_ROOT="$BOOTSTRAP/oostd" OODA_OODAR_ROOT="$BOOTSTRAP" OODAR_ROOT="$BOOTSTRAP" \
+              OODA_COMPILER="$BOOTSTRAP/ooda-compiler" OODA_COMPILER_BIN="$BOOTSTRAP/ooda-compiler" \
+                OODA_STANDARD_ROOT="$BOOTSTRAP/ooda-standard" OODA_RUNTIME_ROOT="$BOOTSTRAP" \
                 BOOTSTRAP_FIXED_POINT=0 OO_LIST_AMBIENT_QUOTA=34359738368 OODA_NO_JAIL=1 \
                 make >/dev/null 2>&1 || true
             fi
@@ -241,14 +242,14 @@ jobs:
               done
             done < <(bin_candidates "$pkg")
             if [ -n "$bin" ]; then
-              asset="$pkg-linux-x86_64"; [ "$pkg" = "oodar" ] && asset="liboodar.a"
+              asset="$pkg-linux-x86_64"; [ "$pkg" = "ooda-runtime" ] && asset="liboodar.a"
               cp -f "$WORK_ROOT/$pkg/$bin" "$OUT_ROOT/$asset"
-              if [ "$pkg" != "oodar" ]; then strip --strip-all "$OUT_ROOT/$asset"; fi
-              if [ "$pkg" = "oodar" ] && [ -f "$WORK_ROOT/$pkg/dist/oodar" ]; then
-                cp -f "$WORK_ROOT/$pkg/dist/oodar" "$OUT_ROOT/oodar-linux-x86_64"
-                strip --strip-all "$OUT_ROOT/oodar-linux-x86_64"
+              if [ "$pkg" != "ooda-runtime" ]; then strip --strip-all "$OUT_ROOT/$asset"; fi
+              if [ "$pkg" = "ooda-runtime" ] && [ -f "$WORK_ROOT/$pkg/dist/ooda-runtime" ]; then
+                cp -f "$WORK_ROOT/$pkg/dist/ooda-runtime" "$OUT_ROOT/ooda-runtime-linux-x86_64"
+                strip --strip-all "$OUT_ROOT/ooda-runtime-linux-x86_64"
               fi
-              if [ "$pkg" = "oodar" ] && [ -s "$WORK_ROOT/$pkg/core/sec/cap/cap_table.oot" ]; then
+              if [ "$pkg" = "ooda-runtime" ] && [ -s "$WORK_ROOT/$pkg/core/sec/cap/cap_table.oot" ]; then
                 cp -f "$WORK_ROOT/$pkg/core/sec/cap/cap_table.oot" "$OUT_ROOT/cap_table.oot"
               fi
               printf '%s %s %s\n' "$pkg" "$repo" "$sha" >> /tmp/built.txt
@@ -258,7 +259,7 @@ jobs:
               exit 1
             fi
             cd /
-            rm -rf "$WORK_ROOT/$pkg" "$WORK_ROOT/oodac"
+            rm -rf "$WORK_ROOT/$pkg" "$WORK_ROOT/ooda-compiler"
           done < /tmp/changed.txt
           echo "build pass complete"
 
@@ -273,12 +274,12 @@ jobs:
           : > /tmp/keep-assets.txt
           while read -r pkg; do
             asset="$pkg-linux-x86_64"
-            [ "$pkg" = "oodar" ] && asset="liboodar.a"
-            [ "$pkg" = "oostd" ] && asset="oostd-linux-x86_64.tar.gz"
+            [ "$pkg" = "ooda-runtime" ] && asset="liboodar.a"
+            [ "$pkg" = "ooda-standard" ] && asset="ooda-standard-linux-x86_64.tar.gz"
             printf '%s\n' "$asset" >> /tmp/keep-assets.txt
           done < /tmp/pkgs.txt
           printf '%s\n' \
-            "oodar-linux-x86_64" \
+            "ooda-runtime-linux-x86_64" \
             "cap_table.oot" \
             "openooda-linux-x86_64" \
             "openooda-codex-linux-x86_64.tar.gz" \

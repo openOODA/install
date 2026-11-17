@@ -15,9 +15,13 @@ its contract before any release advances.
    in the `case` loop AND documented in `usage()`; a dangling `--pkg`/`--group`
    operand refuses (`--pkg --group` exits 1), unknown flags exit 1, and
    trailing positionals after `--` refuse.
-2. **L0 binary map** — `REPOS`/`BINARIES` bind `ooda`, `oodac`,
-   `oodar`→`liboodar.a`, `oopm`, `oolsp`, `oomcp`, `oohat`; the install loop
-   `for key in ooda oodac oodar oopm oolsp oomcp oohat` is the canonical order.
+2. **L0 binary map** — `REPOS`/`BINARIES` bind `ooda`, `ooda-compiler`,
+   `ooda-runtime`→`liboodar.a`, `ooda-package`, `ooda-language`,
+   `ooda-bridge`, `ooda-verify`; the install loop
+   `for key in ooda ooda-compiler ooda-runtime ooda-package ooda-language ooda-bridge ooda-verify`
+   is the canonical order. `ooda-standard` ships as
+   `ooda-standard-linux-x86_64.tar.gz` into `$OPENOODA_HOME/ooda-standard`
+   (`OODA_STANDARD_DIR`, exported as `OODA_STANDARD_ROOT`).
 3. **Master SHA256SUMS** — one hub manifest at
    `openOODA/install/releases/latest/download/SHA256SUMS`
    (`HUB_SUMS_URL`, cached per-run). `sums_ensure` fetches it, `sums_expected`
@@ -30,8 +34,11 @@ its contract before any release advances.
    curl|bash offline fallback `|| echo "X.Y.Z"` inside `install.sh` must equal
    it (kept in sync by `bump-version.yml`). `--version` prints exactly
    `openOODA installer $(cat VERSION)`.
-5. **`versions.toml`** — optional `name = "vX.Y.Z"` pins read by `load_pins`;
-   absent pins default to the hub release.
+5. **`versions.toml`** — canonical 70-package shipped version ledger (`ooda-<word> =
+   "vX.Y.Z"`) across `@core`/`@system`/`@apps`, read by `load_pins`; primary
+   downloads resolve from the single `openOODA/install` `latest`/`hub` release
+   (master `SHA256SUMS`), with loaded tags serving as per-repo fallback on
+   `openOODA-core` components.
 
 ## Conformance Surface
 
@@ -50,11 +57,11 @@ its contract before any release advances.
 ## Build & Verify
 
 ```sh
-make build && make test   # oodac builds both suites; suites + flag smoke run
-make check                # oodac check every .oo page + bash -n shell gate
+make build && make test   # ooda-compiler builds both suites; suites + flag smoke run
+make check                # ooda-compiler check every .oo page + bash -n shell gate
 bash install.sh --dry-run        # simulated install, zero disk writes
 bash install.sh --selftest-sha   # SHA-256 refusal-gate proof
-oohat cycle .                    # 8-hat quorum_mask=255
+ooda-verify cycle . --json       # 8-hat quorum_mask=255
 ```
 
 ## Invariants (Zero Trust)

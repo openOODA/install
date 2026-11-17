@@ -4,7 +4,8 @@
 #   bash publish-hub.sh [pkg ...]
 #
 # With no arguments, publishes every canonical package in
-# $OODA_POLYROOT/openOODA/catalog/groups.oot (@all expansion). Named arguments
+# $OODA_POLYROOT/openOODA/catalog/groups.oot (@all = 70 packages across
+# openOODA-core, openOODA-system, and openOODA-apps). Named arguments
 # publish only those packages. For each package the script locates the
 # repo under $OODA_POLYROOT/openOODA-*/, builds it with `make build` when no
 # binary is present, stages it as <name>-linux-x86_64 (liboodar.a keeps
@@ -26,8 +27,7 @@ set -euo pipefail
 ROOT="${OO_PROJECTS_ROOT:-${OODA_POLYROOT:-$HOME/openOODA-src}}"
 CATALOG="$ROOT/openOODA/catalog"
 GROUPS_FILE="$CATALOG/groups.oot"
-ORG_DIRS=(openOODA-core openOODA-kernel openOODA-OS openOODA-tools \
-          openOODA-DE openOODA-apps openOODA-cloud openOODA-agents)
+ORG_DIRS=(openOODA-core openOODA-system openOODA-apps)
 RELEASE_REPO="openOODA/install"
 RELEASE_TAG="${OO_HUB_RELEASE:-hub}"
 DRY_RUN="${OO_DRY_RUN:-0}"
@@ -95,17 +95,19 @@ find_repo() {  # $1 = package name → prints repo dir or nothing
   return 1
 }
 
-# Binary basenames a repo may produce, in preference order. oolsp's product
-# binary is ooda-lsp; oodar's product is the liboodar.a archive.
+# Binary basenames a repo may produce, in preference order. ooda-runtime's
+# product is the liboodar.a archive; the canonical names are tried first and
+# the retired oo* spellings kept as fallbacks for stale build trees.
 bin_candidates() {
   case "$1" in
-    oodac)  printf 'oodac\n';;
-    oodar)  printf 'liboodar.a\n';;
-    oolsp)  printf 'oolsp\nooda-lsp\n';;
-    oofs)   printf 'oofs\noofs-linux-x86_64\noocp\noocp-linux-x86_64\n';;
-    oohw)   printf 'oohw\noohw-linux-x86_64\noohwinfo\noohwinfo-linux-x86_64\n';;
-    ooperm) printf 'ooperm\nooperm-linux-x86_64\noochmod\noochmod-linux-x86_64\n';;
-    *)      printf '%s\n%s-linux-x86_64\n' "$1" "$1";;
+    ooda-compiler)   printf 'ooda-compiler\noodac\n';;
+    ooda-runtime)    printf 'liboodar.a\n';;
+    ooda-language)   printf 'ooda-language\nooda-lsp\noolsp\n';;
+    ooda-bridge)     printf 'ooda-bridge\nooda-mcp\noomcp\n';;
+    ooda-filesystem) printf 'ooda-filesystem\nooda-filesystem-linux-x86_64\noofs\noofs-linux-x86_64\noocp\noocp-linux-x86_64\n';;
+    ooda-hardware)   printf 'ooda-hardware\nooda-hardware-linux-x86_64\noohw\noohw-linux-x86_64\noohwinfo\noohwinfo-linux-x86_64\n';;
+    ooda-disk)       printf 'ooda-disk\nooda-disk-linux-x86_64\nooperm\nooperm-linux-x86_64\noochmod\noochmod-linux-x86_64\n';;
+    *)               printf '%s\n%s-linux-x86_64\n' "$1" "$1";;
   esac
 }
 
@@ -137,22 +139,22 @@ ensure_binary() {  # $1 = package name → prints path to built binary
 
 stage_pkg() {  # $1 = package name
   local pkg="$1" bin asset
-  if [[ "$pkg" == "oostd" ]]; then
+  if [[ "$pkg" == "ooda-standard" ]]; then
     local repo
-    repo="$(find_repo oostd)" || die "no repo for oostd"
-    asset="oostd-linux-x86_64.tar.gz"
+    repo="$(find_repo ooda-standard)" || die "no repo for ooda-standard"
+    asset="ooda-standard-linux-x86_64.tar.gz"
     ( cd "$repo" && tar --exclude='.git' --exclude='.ooda-cache' --exclude='bin' --exclude='dist' -czf "$STAGE/$asset" . )
     chmod 0644 "$STAGE/$asset"
     say "staged $asset <- $repo (source archive)"
     return 0
   fi
   bin="$(ensure_binary "$pkg")"
-  if [[ "$pkg" == "oodar" ]]; then asset="liboodar.a"; else asset="${pkg}-linux-x86_64"; fi
+  if [[ "$pkg" == "ooda-runtime" ]]; then asset="liboodar.a"; else asset="${pkg}-linux-x86_64"; fi
   cp -f "$bin" "$STAGE/$asset"
   chmod 0644 "$STAGE/$asset"
   say "staged $asset <- $bin"
   # Sibling persona binaries (bin/<pkg>-<persona>) colocate with the main
-  # asset: multi-binary tools exec their siblings at runtime (oodeploy
+  # asset: multi-binary tools exec their siblings at runtime (ooda-container
   # forwards build/infer/sched under ProcessCap). Test binaries never match
   # this glob (test_* stem), and repos without siblings stage nothing extra.
   local repo sib sibbase
@@ -167,17 +169,17 @@ stage_pkg() {  # $1 = package name
 }
 
 stage_images() {
-  # 1. Stage ooda-os-x86_64.iso (bootable UEFI/BIOS ISO9660 image packed by ooflash)
+  # 1. Stage ooda-os-x86_64.iso (bootable UEFI/BIOS ISO9660 image packed by ooda-flasher)
   local iso_dir="$STAGE/iso-root"
   mkdir -p "$iso_dir/EFI/BOOT" "$iso_dir/boot" "$iso_dir/bin"
-  [[ -f "$STAGE/ooboot-linux-x86_64" ]] && cp -f "$STAGE/ooboot-linux-x86_64" "$iso_dir/EFI/BOOT/BOOTX64.EFI"
-  [[ -f "$STAGE/ooboot-linux-x86_64" ]] && cp -f "$STAGE/ooboot-linux-x86_64" "$iso_dir/boot/eltorito.img"
-  [[ -f "$STAGE/ooboot-linux-x86_64" ]] && cp -f "$STAGE/ooboot-linux-x86_64" "$iso_dir/boot/efi.img"
-  [[ -f "$STAGE/ookernel-linux-x86_64" ]] && cp -f "$STAGE/ookernel-linux-x86_64" "$iso_dir/boot/ookernel"
-  [[ -f "$STAGE/ooinit-linux-x86_64" ]] && cp -f "$STAGE/ooinit-linux-x86_64" "$iso_dir/bin/ooinit"
-  [[ -f "$STAGE/oosh-linux-x86_64" ]] && cp -f "$STAGE/oosh-linux-x86_64" "$iso_dir/bin/oosh"
-  if [[ -x "$ROOT/openOODA-apps/ooflash/bin/ooflash" ]]; then
-    "$ROOT/openOODA-apps/ooflash/bin/ooflash" pack-iso "$iso_dir" -o "$STAGE/ooda-os-x86_64.iso" >/dev/null 2>&1 || true
+  [[ -f "$STAGE/ooda-boot-linux-x86_64" ]] && cp -f "$STAGE/ooda-boot-linux-x86_64" "$iso_dir/EFI/BOOT/BOOTX64.EFI"
+  [[ -f "$STAGE/ooda-boot-linux-x86_64" ]] && cp -f "$STAGE/ooda-boot-linux-x86_64" "$iso_dir/boot/eltorito.img"
+  [[ -f "$STAGE/ooda-boot-linux-x86_64" ]] && cp -f "$STAGE/ooda-boot-linux-x86_64" "$iso_dir/boot/efi.img"
+  [[ -f "$STAGE/ooda-kernel-linux-x86_64" ]] && cp -f "$STAGE/ooda-kernel-linux-x86_64" "$iso_dir/boot/ooda-kernel"
+  [[ -f "$STAGE/ooda-start-linux-x86_64" ]] && cp -f "$STAGE/ooda-start-linux-x86_64" "$iso_dir/bin/ooda-start"
+  [[ -f "$STAGE/ooda-shell-linux-x86_64" ]] && cp -f "$STAGE/ooda-shell-linux-x86_64" "$iso_dir/bin/ooda-shell"
+  if [[ -x "$ROOT/openOODA-apps/ooda-flasher/bin/ooda-flasher" ]]; then
+    "$ROOT/openOODA-apps/ooda-flasher/bin/ooda-flasher" pack-iso "$iso_dir" -o "$STAGE/ooda-os-x86_64.iso" >/dev/null 2>&1 || true
     rm -f "$STAGE/ooda-os-x86_64.iso.manifest"
   fi
   rm -rf "$iso_dir"
@@ -188,8 +190,8 @@ stage_images() {
 
   # 2. Stage ooda-buildbox-x86_64.tar.gz (hermetic L0 buildbox container rootfs)
   local bb_dir="$STAGE/buildbox-root"
-  mkdir -p "$bb_dir/bin" "$bb_dir/lib" "$bb_dir/oostd"
-  for c in ooda oodac oopm oolsp oomcp oocontainer oohat oosh; do
+  mkdir -p "$bb_dir/bin" "$bb_dir/lib" "$bb_dir/ooda-standard"
+  for c in ooda ooda-compiler ooda-package ooda-language ooda-bridge ooda-verify ooda-container ooda-shell; do
     [[ -f "$STAGE/${c}-linux-x86_64" ]] && cp -f "$STAGE/${c}-linux-x86_64" "$bb_dir/bin/$c" && chmod 0755 "$bb_dir/bin/$c"
   done
   [[ -f "$STAGE/liboodar.a" ]] && cp -f "$STAGE/liboodar.a" "$bb_dir/lib/liboodar.a"
@@ -213,10 +215,10 @@ stage_images() {
   fi
   # 4. Stage canonical capability table unconditionally so subset publishes keep hub complete.
   local cap_src=""
-  if [[ -s "$ROOT/openOODA-core/oodar/core/sec/cap/cap_table.oot" ]]; then
-    cap_src="$ROOT/openOODA-core/oodar/core/sec/cap/cap_table.oot"
-  elif [[ -s "$ROOT/oodar/core/sec/cap/cap_table.oot" ]]; then
-    cap_src="$ROOT/oodar/core/sec/cap/cap_table.oot"
+  if [[ -s "$ROOT/openOODA-core/ooda-runtime/core/sec/cap/cap_table.oot" ]]; then
+    cap_src="$ROOT/openOODA-core/ooda-runtime/core/sec/cap/cap_table.oot"
+  elif [[ -s "$ROOT/ooda-runtime/core/sec/cap/cap_table.oot" ]]; then
+    cap_src="$ROOT/ooda-runtime/core/sec/cap/cap_table.oot"
   fi
   if [[ -n "$cap_src" ]]; then
     cp -f "$cap_src" "$STAGE/cap_table.oot"
@@ -290,12 +292,15 @@ prune_assets() {
   while IFS= read -r n; do
     [[ -n "$n" ]] || continue
     case "$n" in
-      ooagent-hud-*|ooquota-*|ootui-*|oocli-*|oocap-*)
+      ooagent-hud-*|ooquota-*|ootui-*|oocli-*|oocap-*|oodac-*|oodar-*|oopm-*|\
+      oolsp-*|oomcp-*|oohat-*|oostd-*|oofs-*|oohw-*|ooperm-*|ooboot-*|\
+      ookernel-*|ooinit-*|oosh-*|oocontainer-*|ooflash-*|opm-*|ooda-lsp-*|\
+      ooda-mcp-*)
         say "deleting retired package asset $n"
         [[ "$DRY_RUN" == "1" ]] || \
           gh release delete-asset "$RELEASE_TAG" "$n" -R "$RELEASE_REPO" -y >/dev/null 2>&1 || true
         ;;
-      SHA256SUMS|SHA256SUMS.sig|liboodar.a|oostd-linux-x86_64.tar.gz|openooda-codex-linux-x86_64.tar.gz|ooda-os-x86_64.iso|ooda-buildbox-x86_64.tar.gz|*-linux-x86_64) ;;
+      SHA256SUMS|SHA256SUMS.sig|liboodar.a|ooda-standard-linux-x86_64.tar.gz|openooda-codex-linux-x86_64.tar.gz|ooda-os-x86_64.iso|ooda-buildbox-x86_64.tar.gz|*-linux-x86_64) ;;
       *)
         say "deleting legacy asset $n"
         [[ "$DRY_RUN" == "1" ]] || \

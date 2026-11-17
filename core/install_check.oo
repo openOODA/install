@@ -4,7 +4,7 @@
 //          four package-manager payload dirs are non-empty, and install.sh keeps its required
 //          fail-closed shape.
 // Setup: Explicit FsReadCap; bounded reads of VERSION, pkg/{apt,dnf,pacman,winget}, and
-//        install.sh; canonical oostd str_extra parse_int_digits for the semver fields; the
+//        install.sh; canonical ooda-standard str_extra parse_int_digits for the semver fields; the
 //        script-surface contracts live on the sibling install_script.oo page.
 // Beats:
 //   1. ins_ver_ok parses "X.Y.Z" into three non-negative digit fields.
@@ -12,7 +12,7 @@
 //   3. ins_repo_ok folds VERSION, payloads, versions.toml, and the full install.sh contract
 //      (shape, flags, L0 binary map, SHA256SUMS gate, VERSION alignment) into one verdict.
 
-import "oostd/core/primitives/str_extra.oo";
+import "ooda-standard/core/primitives/str_extra.oo";
 import "install_script.oo";
 
 pub fn ins_ver_num(ver: String) -> Int {

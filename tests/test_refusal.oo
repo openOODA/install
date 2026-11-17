@@ -37,7 +37,7 @@ fn t_refuse(fs: &FsReadCap) -> Int {
     p = t_expect(!ins_flags_ok(forged), "script missing one canonical flag refused", p);
     p = t_expect(!ins_flag_ok("--selftest-sha) x;;", "--selftest-sha"),
         "parsed-but-undocumented flag refused", p);
-    p = t_expect(!ins_bins_ok("[ooda]=ooda [oodac]=oodac") && !ins_bins_ok(""),
+    p = t_expect(!ins_bins_ok("[ooda]=ooda [ooda-compiler]=ooda-compiler") && !ins_bins_ok(""),
         "drifted L0 binary map refused", p);
     let sums_src: String = "HUB_SUMS_URL download/SHA256SUMS sums_ensure sums_expected( " +
         "sha256sum shasum refuse unsigned install refuse unsigned install refuse unsigned install";

@@ -1,6 +1,87 @@
-# openOODA version overrides for install.sh.
+# Canonical 70-package shipped version ledger for the openOODA ecosystem.
 #
-# All L0–L7 binaries publish to the single canonical release hub at
-# https://github.com/openOODA/install/releases/tag/hub (verified against the
-# master SHA256SUMS manifest). Default tag is "hub".
-# oostd unpacks oostd-linux-x86_64.tar.gz from openOODA/install@hub into $OPENOODA_HOME/oostd.
+# All 70 canonical packages publish to the single release hub at
+# https://github.com/openOODA/install (releases/latest and tag hub, verified
+# against the master SHA256SUMS manifest). Entries below record the shipped
+# release tag per package across @core (openOODA-core), @system (openOODA-system),
+# and @apps (openOODA-apps), and supply fallback tags for per-repo openOODA-core
+# downloads when an asset is absent from the hub.
+# ooda-standard unpacks ooda-standard-linux-x86_64.tar.gz from
+# openOODA/install@hub into $OPENOODA_HOME/ooda-standard.
+
+[packages]
+# @core — openOODA-core (15)
+ooda = "v2.16.0"
+ooda-binary = "v0.2.0"
+ooda-bridge = "v0.7.0"
+ooda-build = "v0.2.0"
+ooda-compiler = "v0.7.0"
+ooda-engine = "v0.3.0"
+ooda-format = "v0.2.0"
+ooda-interface = "v0.3.0"
+ooda-language = "v0.4.0"
+ooda-package = "v2.14.0"
+ooda-provenance = "v0.3.0"
+ooda-runtime = "v5.2.0"
+ooda-sign = "v0.3.0"
+ooda-standard = "v2.0.0"
+ooda-verify = "v0.6.0"
+
+# @system — openOODA-system (37)
+ooda-archive = "v0.3.0"
+ooda-authority = "v0.5.0"
+ooda-boot = "v0.7.0"
+ooda-bus = "v0.4.0"
+ooda-compositor = "v0.5.0"
+ooda-connect = "v0.7.0"
+ooda-container = "v0.5.0"
+ooda-data = "v0.3.0"
+ooda-database = "v0.4.0"
+ooda-disk = "v0.3.0"
+ooda-drivers = "v0.7.0"
+ooda-edit = "v0.3.0"
+ooda-files = "v0.5.0"
+ooda-filesystem = "v0.5.0"
+ooda-firewall = "v0.3.0"
+ooda-hardware = "v0.7.0"
+ooda-health = "v0.4.0"
+ooda-inference = "v0.5.0"
+ooda-kernel = "v0.7.0"
+ooda-list = "v0.3.0"
+ooda-machine = "v0.3.0"
+ooda-modem = "v0.2.0"
+ooda-network = "v0.5.0"
+ooda-panel = "v0.5.0"
+ooda-portal = "v0.5.0"
+ooda-read = "v0.3.0"
+ooda-sandbox = "v0.3.0"
+ooda-screensaver = "v5.1.0"
+ooda-settings = "v0.4.0"
+ooda-shell = "v2.0.0"
+ooda-start = "v0.5.0"
+ooda-terminal = "v0.4.0"
+ooda-text = "v0.4.0"
+ooda-theme = "v0.3.0"
+ooda-vault = "v0.3.0"
+ooda-version = "v0.2.0"
+ooda-web = "v0.4.0"
+
+# @apps — openOODA-apps (18)
+ooda-arcade = "v0.2.0"
+ooda-audio = "v0.4.0"
+ooda-browser = "v0.4.0"
+ooda-calculator = "v0.2.0"
+ooda-camera = "v0.4.0"
+ooda-canvas = "v0.4.0"
+ooda-chat = "v0.4.0"
+ooda-commander = "v0.6.0"
+ooda-emulator = "v0.2.0"
+ooda-flasher = "v0.3.0"
+ooda-office = "v0.4.0"
+ooda-passwords = "v0.4.0"
+ooda-player = "v0.5.0"
+ooda-remote = "v0.4.0"
+ooda-store = "v0.4.0"
+ooda-strike = "v0.2.0"
+ooda-studio = "v0.4.0"
+ooda-voxel = "v0.2.0"

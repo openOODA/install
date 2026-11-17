@@ -1,3 +1,10 @@
+openooda (2.0.0-1) unstable; urgency=medium
+
+  * Sync packaging with VERSION 2.0.0.
+  * Canonical ooda-<word> cutover: oodac -> ooda-compiler, oostd -> ooda-standard.
+
+ -- openOODA Authors <ops@openooda.org>  Tue, 17 Nov 2026 00:00:00 +0000
+
 openooda (0.2.9-1) unstable; urgency=medium
 
   * Sync packaging with VERSION 0.2.9.

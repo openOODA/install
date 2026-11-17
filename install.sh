@@ -25,7 +25,7 @@ case "$OPENOODA_HOME" in \~|\~/*)
   ;;
 esac
 BIN_DIR="$OPENOODA_HOME/bin"
-OOSTD_DIR="$OPENOODA_HOME/oostd"
+OODA_STANDARD_DIR="$OPENOODA_HOME/ooda-standard"
 DRY_RUN="${OPENOODA_DRY_RUN:-0}"
 LOG_FILE="$OPENOODA_HOME/install.log"
 NO_MODIFY_SHELL=0
@@ -41,7 +41,7 @@ XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 # fallback below is this script's own version at authoring time, kept in
 # sync by the bump bot (see bump-version.yml), so offline curl|bash shows
 # the right version. Display-only: downloads always use releases/latest.
-VERSION="$(cat "$(dirname "${BASH_SOURCE[0]:-$0}")/VERSION" 2>/dev/null || curl -sSL --max-time 3 "https://raw.githubusercontent.com/openOODA/install/master/VERSION" 2>/dev/null || echo "0.2.9")"
+VERSION="$(cat "$(dirname "${BASH_SOURCE[0]:-$0}")/VERSION" 2>/dev/null || curl -sSL --max-time 3 "https://raw.githubusercontent.com/openOODA/install/master/VERSION" 2>/dev/null || echo "2.0.0")"
 VERSION="$(printf '%s' "$VERSION" | tr -d '\r\n ' | head -c 20)"
 [[ -z "$VERSION" ]] && VERSION="?"
 
@@ -58,20 +58,22 @@ Options:
   --no-modify-shell   do not edit shell rc files
   --keep-stale        don't remove stale openooda binaries in legacy shadow locations (~/.local/bin)
   --clean-stale       same as default — remove stale openooda binaries in legacy shadow locations
-  --uninstall         remove binaries and oostd
+  --uninstall         remove binaries and ooda-standard
   --selftest-sha      prove the SHA-256 sidecar gate refuses missing/empty/
                       forged digests and accepts a match, then exit
   --from-source[=DIR] build + install from a local checkout instead of
                       downloading release binaries (also OPENOODA_SOURCE=DIR).
                       Bare --from-source auto-detects the checkout when this
                       script runs from <checkout>/install/install.sh.
-                      Needs an installed oodac as bootstrap; oodac itself is
-                      kept (the compiler cannot self-rebuild: unique_fns).
+                      Needs an installed ooda-compiler as bootstrap;
+                      ooda-compiler itself is kept (the compiler cannot
+                      self-rebuild: unique_fns).
   --pkg NAME          install one binary-pool package (<name>-linux-x86_64
                       from the openOODA/install release, SHA256SUMS-verified)
   --group @GROUP      install a Fedora-style group profile from
-                      catalog/groups.oot (@core @kernel @os @tools @de
-                      @apps @games @cloud @agents @workstation @all); repeatable
+                      catalog/groups.oot across openOODA-core, openOODA-system,
+                      and openOODA-apps (@core @system @apps @games @desktop
+                      @workstation @all = 70 packages); repeatable
   NO_COLOR=1          disable color
   OPENOODA_DRY_RUN=1  same as --dry-run
   OPENOODA_YES=1      same as --yes
@@ -143,37 +145,40 @@ else
 fi
 _log() { printf '[%s] %s\n' "$(date -Iseconds 2>/dev/null || date)" "$*" >&3 2>/dev/null || true; }
 
-# The 7 L0 binary/archive repos live in the openOODA-core org (plus oostd): ooda is the canonical
-# CLI (it absorbed cli/oocli; tui/ootui and oostd-hw are retired). The
-# openOODA/<repo> and openOODA/openOODA umbrella URLs 404 for these assets.
-# Resolution order is a local dist file, then `gh release download` from
-# openOODA-core/<repo>, then the HTTPS asset URL on that same repo.
-declare -A REPOS=([ooda]=ooda [oodac]=oodac [oodar]=oodar [oopm]=oopm [oolsp]=oolsp [oomcp]=oomcp [oohat]=oohat)
+# The 7 L0 components live in the openOODA-core org under canonical
+# `ooda-<word>` repo names (plus ooda-standard, the stdlib source archive):
+# ooda is the canonical CLI (it absorbed cli/oocli; tui/ootui and oostd-hw
+# are retired). The openOODA/<repo> and openOODA/openOODA umbrella URLs 404
+# for these assets. Resolution order is a local dist file, then
+# `gh release download` from the install hub, then the HTTPS asset URL.
+declare -A REPOS=([ooda]=ooda [ooda-compiler]=ooda-compiler [ooda-runtime]=ooda-runtime [ooda-package]=ooda-package [ooda-language]=ooda-language [ooda-bridge]=ooda-bridge [ooda-verify]=ooda-verify)
 # Dest names match the canonical L0 binary names. ASSETS is the release
 # stem when it differs: the hub publishes <pkg>-linux-x86_64 per binary and
 # liboodar.a verbatim; every asset verifies against the single master
 # SHA256SUMS at the install release, not per-file .sha256 sidecars.
-declare -A BINARIES=([ooda]=ooda [oodac]=oodac [oodar]=liboodar.a [oopm]=oopm [oolsp]=oolsp [oomcp]=oomcp [oohat]=oohat)
-declare -A ASSETS=([oodar]=liboodar.a)
+declare -A BINARIES=([ooda]=ooda [ooda-compiler]=ooda-compiler [ooda-runtime]=liboodar.a [ooda-package]=ooda-package [ooda-language]=ooda-language [ooda-bridge]=ooda-bridge [ooda-verify]=ooda-verify)
+declare -A ASSETS=([ooda-runtime]=liboodar.a)
 # Binary-pool packages whose hub artifact is NOT a plain
-# <name>-linux-x86_64 executable. The pool ships 104 plain binaries plus
-# three archives (oostd runtime, buildbox, orientation codex) and one ISO.
-# A group profile that names one of these must resolve to its real asset
-# instead of failing on "no SHA256SUMS entry for <name>-linux-x86_64".
-# oodar is absent on purpose: it ships as liboodar.a and is owned by
-# install_component (the L0 path), never by the pool.
-declare -A PKG_ASSET=([oostd]="oostd-linux-x86_64.tar.gz")
+# <name>-linux-x86_64 executable. The pool ships 69 plain binaries plus the
+# ooda-standard source archive (the ISO, buildbox, and codex extras ship
+# beside them). A group profile that names one of these must resolve to its
+# real asset instead of failing on "no SHA256SUMS entry for
+# <name>-linux-x86_64". ooda-runtime is absent on purpose: it ships as
+# liboodar.a and is owned by install_component (the L0 path), never by the pool.
+declare -A PKG_ASSET=([ooda-standard]="ooda-standard-linux-x86_64.tar.gz")
 # Install strategy: "binary" (default) lands an executable in $BIN_DIR;
 # "archive" unpacks a verified tarball into its own runtime root.
-declare -A PKG_KIND=([oostd]="archive")
+declare -A PKG_KIND=([ooda-standard]="archive")
 # Runtime root for archive packages, relative to $OPENOODA_HOME.
-declare -A PKG_ARCHIVE_ROOT=([oostd]="oostd")
+declare -A PKG_ARCHIVE_ROOT=([ooda-standard]="ooda-standard")
 # File that must exist in the unpacked archive for the install to count.
-declare -A PKG_ARCHIVE_ANCHOR=([oostd]="core/anchor.oo")
-# SOURCE_MAIN: repo-root-relative build entry per component, used only by
-# --from-source. oodac has no entry: `oodac build oodac/main.oo` refuses
-# (unique_fns), so from-source keeps the bootstrap compiler as the product.
-declare -A SOURCE_MAIN=([ooda]=ooda/cli/main.oo [oopm]=oopm/cli/main.oo [oolsp]=oolsp/cli/main.oo [oomcp]=oomcp/cli/main.oo [oohat]=oohat/main.oo)
+declare -A PKG_ARCHIVE_ANCHOR=([ooda-standard]="core/anchor.oo")
+# SOURCE_MAIN: checkout-root-relative build entry per component, used only
+# by --from-source. ooda-compiler has no entry: `ooda-compiler build
+# ooda-compiler/main.oo` refuses (unique_fns), so from-source keeps the
+# bootstrap compiler as the product. ooda-runtime builds via make, not
+# SOURCE_MAIN (see install_ooda_runtime_from_source).
+declare -A SOURCE_MAIN=([ooda]=openOODA-core/ooda/cli/main.oo [ooda-package]=openOODA-core/ooda-package/cli/main.oo [ooda-language]=openOODA-core/ooda-language/cli/main.oo [ooda-bridge]=openOODA-core/ooda-bridge/cli/main.oo [ooda-verify]=openOODA-core/ooda-verify/cli/main.oo)
 
 # --- color --------------------------------------------------------------------
 
@@ -328,15 +333,15 @@ print_preamble() {
   else
     printf '  %sOne release hub, one asset per component. Fetch, SHA-256, place.%s\n\n' "$BOLD" "$RESET"
   fi
-  printf '    ooda     ~/.openooda/bin/ooda\n'
-  printf '    oodac    ~/.openooda/bin/oodac\n'
-  printf '    oodar    ~/.openooda/bin/liboodar.a\n'
-  printf '    oostd    ~/.openooda/oostd\n'
-  printf '    oopm     ~/.openooda/bin/oopm\n'
-  printf '    oolsp    ~/.openooda/bin/oolsp\n'
-  printf '    oomcp    ~/.openooda/bin/oomcp\n'
-  printf '    oohat    ~/.openooda/bin/oohat\n'
-  printf '    spec     ~/.openooda/cards/spec.md (spec.md Quick Card)\n'
+  printf '    ooda           ~/.openooda/bin/ooda\n'
+  printf '    ooda-compiler  ~/.openooda/bin/ooda-compiler\n'
+  printf '    ooda-runtime   ~/.openooda/bin/liboodar.a\n'
+  printf '    ooda-standard  ~/.openooda/ooda-standard\n'
+  printf '    ooda-package   ~/.openooda/bin/ooda-package\n'
+  printf '    ooda-language  ~/.openooda/bin/ooda-language\n'
+  printf '    ooda-bridge    ~/.openooda/bin/ooda-bridge\n'
+  printf '    ooda-verify    ~/.openooda/bin/ooda-verify\n'
+  printf '    spec           ~/.openooda/cards/spec.md (spec.md Quick Card)\n'
   if [[ "${FROM_SOURCE:-0}" == "1" ]]; then
     printf '\n  %sEstimated time: 3-8 minutes (local builds). Press Ctrl-C to cancel.%s\n\n' "$DIM" "$RESET"
   else
@@ -471,7 +476,7 @@ declare -A PINS=()
 load_pins() {
   [[ -f "$(dirname "${BASH_SOURCE[0]:-$0}")/versions.toml" ]] || return 0
   while IFS= read -r line; do
-    [[ "$line" =~ ^[[:space:]]*([a-zA-Z]+)[[:space:]]*=[[:space:]]*\"(v[0-9]+\.[0-9]+\.[0-9]+)\" ]] || continue
+    [[ "$line" =~ ^[[:space:]]*([a-zA-Z0-9_-]+)[[:space:]]*=[[:space:]]*\"(v[0-9]+\.[0-9]+\.[0-9]+)\" ]] || continue
     PINS["${BASH_REMATCH[1]}"]="${BASH_REMATCH[2]}"
   done < "$(dirname "${BASH_SOURCE[0]:-$0}")/versions.toml"
 }
@@ -480,8 +485,8 @@ asset_stem() {
   echo "${ASSETS[$1]:-${BINARIES[$1]}}"
 }
 
-# Candidate asset basenames. Releases are inconsistent: mcp publishes
-# stem-os-arch, oodac and oodar publish the bare binary name.
+# Candidate asset basenames. The hub publishes <pkg>-linux-x86_64 per
+# binary; ooda-runtime ships the bare liboodar.a archive name.
 asset_names() {
   local key="$1" stem bin
   stem="$(asset_stem "$key")"
@@ -489,14 +494,17 @@ asset_names() {
   printf '%s\n%s\n%s\n' "${stem}-${OS}-${ARCH}" "$bin" "$stem" | awk '!seen[$0]++'
 }
 
+# Try the single openOODA/install hub release (latest/hub, verified against
+# master SHA256SUMS) first because publish-hub.sh and sync-hub.yml publish
+# prebuilt binaries there; PINS[$key] (from versions.toml) provides the
+# fallback tag for per-repo openOODA-core/${REPOS[$key]} releases.
 release_url_for() {
   local key="$1" name="$2"
   local tag="${PINS[$key]:-latest}"
-  if [[ "$tag" == "latest" ]]; then
-    printf '%s\n' "https://github.com/openOODA/install/releases/latest/download/${name}"
-    printf '%s\n' "https://github.com/openOODA/install/releases/download/hub/${name}"
-  else
-    printf '%s\n' "https://github.com/openOODA/install/releases/download/${tag}/${name}"
+  printf '%s\n' "https://github.com/openOODA/install/releases/latest/download/${name}"
+  printf '%s\n' "https://github.com/openOODA/install/releases/download/hub/${name}"
+  if [[ "$tag" != "latest" && -n "${REPOS[$key]:-}" ]]; then
+    printf '%s\n' "https://github.com/openOODA-core/${REPOS[$key]}/releases/download/${tag}/${name}"
   fi
 }
 
@@ -507,8 +515,9 @@ release_url() {
   release_url_for "$1" "$name"
 }
 
-# First hit wins: OPENOODA_CORE, OPENOODA_DIST, then a checkout-sibling
-# openOODA-core (install.sh lives in <openOODA>/install) and flat dist dirs.
+# First hit wins: OPENOODA_CORE, OPENOODA_DIST, then checkout-sibling org
+# dirs (install.sh lives in <openOODA>/install; product repos live under
+# the openOODA-core/-system/-apps orgs) and flat dist dirs.
 local_dist_file() {
   local key="$1"
   local repo="${REPOS[$key]}"
@@ -522,7 +531,10 @@ local_dist_file() {
   self="${BASH_SOURCE[0]:-$0}"
   if [[ -f "$self" ]]; then
     here="$(cd "$(dirname "$self")" && pwd)"
-    roots+=("$here/../../openOODA-core" "$here/../dist" "$here/dist")
+    roots+=("$here/../../openOODA-core" "$here/../openOODA-core" \
+            "$here/../../openOODA-system" "$here/../openOODA-system" \
+            "$here/../../openOODA-apps" "$here/../openOODA-apps" \
+            "$here/../dist" "$here/dist")
   fi
   for root in "${roots[@]}"; do
     [[ -d "$root" ]] || continue
@@ -545,21 +557,23 @@ local_dist_file() {
 }
 
 # 0 = installed, 1 = no asset (caller may try the next source), 2 = hard fail.
+# Queries the single openOODA/install hub release first (gated strictly by hub
+# master SHA256SUMS), falling back to openOODA-core/${REPOS[$key]}@$tag gated
+# strictly by that release's own .sha256 sidecar (never cross-checked against hub sums).
 install_from_gh() {
   local key="$1" dest="$2"
   command -v gh >/dev/null 2>&1 || return 1
-  local tag="${PINS[$key]:-hub}"
-  [[ "$tag" == "latest" || -z "$tag" ]] && tag="hub"
-  local wd name
+  local tag="${PINS[$key]:-}"
+  [[ "$tag" == "latest" ]] && tag=""
+  local wd name expected actual
   wd=$(mktemp -d 2>/dev/null || echo "/tmp/openooda-gh-$$-$key")
   sums_ensure || true
   while IFS= read -r name; do
     [[ -n "$name" ]] || continue
-    rm -f "$wd/$name"
-    if gh release download "$tag" --repo "openOODA/install" \
-        --pattern "$name" --dir "$wd" --clobber >/dev/null 2>&1 \
+    rm -f "$wd/$name" "$wd/${name}.sha256"
+    if gh release download "hub" --repo "openOODA/install" \
+          --pattern "$name" --dir "$wd" --clobber >/dev/null 2>&1 \
         && [[ -s "$wd/$name" ]]; then
-      local expected actual
       expected=$(sums_expected "$name" || true)
       if [[ -z "$expected" ]]; then
         rm -rf "$wd"
@@ -568,6 +582,26 @@ install_from_gh() {
       fi
       actual=$(sha256sum "$wd/$name" 2>/dev/null | awk '{print $1}')
       if [[ "$actual" != "$expected" ]]; then
+        rm -rf "$wd"
+        err "$key: SHA-256 mismatch for $name"
+        return 2
+      fi
+      mv -f "$wd/$name" "$dest"
+      chmod +x "$dest" 2>/dev/null || true
+      rm -rf "$wd"
+      return 0
+    fi
+    if [[ -n "$tag" && -n "${REPOS[$key]:-}" ]] \
+        && gh release download "$tag" --repo "openOODA-core/${REPOS[$key]}" \
+          --pattern "$name" --pattern "${name}.sha256" --dir "$wd" --clobber >/dev/null 2>&1 \
+        && [[ -s "$wd/$name" ]]; then
+      if [[ ! -s "$wd/${name}.sha256" ]]; then
+        rm -f "$wd/$name" "$wd/${name}.sha256"
+        continue
+      fi
+      expected=$(awk '{print $1}' "$wd/${name}.sha256" | tr -d '\r\n ')
+      actual=$(sha256sum "$wd/$name" 2>/dev/null | awk '{print $1}')
+      if [[ -z "$expected" || "$actual" != "$expected" ]]; then
         rm -rf "$wd"
         err "$key: SHA-256 mismatch for $name"
         return 2
@@ -721,7 +755,7 @@ fetch_and_verify() {
 fetch_repo() {
   local url="$1" dest="$2" verify="$3" branch="$4" wd="$5"
   if [[ "$verify" == "core/anchor.oo" || "$verify" == "anchor.oo" ]]; then
-    local asset="oostd-${OS}-${ARCH}.tar.gz"
+    local asset="ooda-standard-${OS}-${ARCH}.tar.gz"
     local tb="$wd/$asset"
     sums_ensure || true
     local exp; exp="$(sums_expected "$asset")"
@@ -908,7 +942,7 @@ install_component() {
     INSTALLED+=("$key")
   elif [[ "$last_dl" == "404" ]]; then
     skip "$key not yet shipped for $OS-$ARCH"; SKIPPED+=("$key")
-  elif [[ "$key" == "ooda" || "$key" == "oodac" ]]; then
+  elif [[ "$key" == "ooda" || "$key" == "ooda-compiler" ]]; then
     err "$key download failed (http $last_dl) with no existing binary; refusing partial install"
     exit 1
   else
@@ -920,10 +954,10 @@ install_component() {
 # --- binary pool packages (--pkg / --group) -------------------------------------
 #
 # The openOODA/install release is the single binary pool: every canonical
-# package ships as <name>-linux-x86_64 beside the six L0 components, all
+# package ships as <name>-linux-x86_64 beside the seven L0 components, all
 # covered by the one master SHA256SUMS. --pkg installs one package;
 # --group expands a Fedora-style @group profile from catalog/groups.oot
-# (@core @kernel @os @tools @de @apps @games @cloud @agents @workstation @all).
+# (@core @system @apps @games @desktop @workstation @all; @all = 70 pkgs).
 
 GROUPS_OOT=""
 GROUPS_OOT_TRIED=0
@@ -1002,7 +1036,7 @@ install_pkg() {
   # L0 component names are owned by install_component; --pkg covers the
   # wider pool. Installing an L0 name here would skip local-dist/gh paths.
   case " ${!REPOS[@]} " in *" $name "*) return 0;; esac
-  # Archive-backed packages (oostd) ship as a tarball, not an executable.
+  # Archive-backed packages (ooda-standard) ship as a tarball, not an executable.
   # Route them to the unpack path first so the asset name we look up in
   # SHA256SUMS is the asset the hub actually publishes.
   if pkg_is_archive "$name"; then
@@ -1053,7 +1087,7 @@ install_pkg() {
 }
 
 # install_pkg_archive: a pool package that ships as a tarball rather than
-# a plain executable (oostd, the runtime std). The archive is verified
+# a plain executable (ooda-standard, the runtime stdlib). The archive is verified
 # against the master SHA256SUMS — no unsigned installs — then unpacked into
 # its own runtime root under $OPENOODA_HOME. The unpack is checked for the
 # package's anchor file before the install counts as done, and the previous
@@ -1068,7 +1102,7 @@ install_pkg_archive() {
     INSTALLED+=("$name")
     return 0
   fi
-  # From-source installs own the runtime root (install_oostd_from_source);
+  # From-source installs own the runtime root (install_ooda_standard_from_source);
   # unpacking the release tarball here would fight it.
   if [[ "$FROM_SOURCE" == "1" ]]; then
     skip "$name: archive package — the source tree owns $dest_root"
@@ -1138,9 +1172,11 @@ install_pkg_archive() {
 
 # --- from-source install -------------------------------------------------------
 # --from-source[=DIR] builds every component from a local checkout with the
-# already-installed oodac as bootstrap, instead of downloading release
-# binaries. This is how a checkout newer than the release channel (or
-# carrying local fixes) gets onto disk. Sets SRC_DIR + BOOT_OODAC globals.
+# already-installed ooda-compiler as bootstrap, instead of downloading
+# release binaries. This is how a checkout newer than the release channel
+# (or carrying local fixes) gets onto disk. Sets SRC_DIR + BOOT_COMPILER
+# globals. The checkout root carries the 3 package org directories:
+# openOODA-core/<pkg>, openOODA-system/<pkg>, openOODA-apps/<pkg>.
 
 resolve_source_dir() {
   local d="${SOURCE_DIR:-${OPENOODA_SOURCE:-}}"
@@ -1163,10 +1199,13 @@ resolve_source_dir() {
   [[ -n "$d" ]] || { err "from-source: cannot resolve dir: $SOURCE_DIR"; return 1; }
   local missing=()
   local s
-  for s in ooda/cli/main.oo oopm/cli/main.oo oolsp/cli/main.oo oomcp/cli/main.oo oohat/main.oo oodar/Makefile openOODA/AGENTS.md openOODA/cards/spec.md; do
+  for s in openOODA-core/ooda/cli/main.oo openOODA-core/ooda-package/cli/main.oo \
+      openOODA-core/ooda-language/cli/main.oo openOODA-core/ooda-bridge/cli/main.oo \
+      openOODA-core/ooda-verify/cli/main.oo openOODA-core/ooda-runtime/Makefile \
+      openOODA/AGENTS.md openOODA/cards/spec.md; do
     [[ -f "$d/$s" ]] || missing+=("$s")
   done
-  [[ -f "$d/oostd/core/anchor.oo" || -f "$d/oostd/anchor.oo" || -f "$d/oostd/ANCHOR.oo" ]] || missing+=("oostd/core/anchor.oo")
+  [[ -f "$d/openOODA-core/ooda-standard/core/anchor.oo" || -f "$d/openOODA-core/ooda-standard/anchor.oo" || -f "$d/openOODA-core/ooda-standard/ANCHOR.oo" ]] || missing+=("openOODA-core/ooda-standard/core/anchor.oo")
   if [[ ${#missing[@]} -gt 0 ]]; then
     err "from-source: $d is not an openOODA checkout (missing: ${missing[*]})"
     return 1
@@ -1175,26 +1214,26 @@ resolve_source_dir() {
   # the checkout validation above still fails closed on a bogus dir.
   if [[ "$DRY_RUN" == "1" ]]; then
     SRC_DIR="$d"
-    BOOT_OODAC=""
+    BOOT_COMPILER=""
     info "from-source: checkout $SRC_DIR (dry-run: no bootstrap needed)"
     return 0
   fi
   local boot=""
-  if [[ -x "$BIN_DIR/oodac" ]]; then
-    boot="$BIN_DIR/oodac"
-  elif command -v oodac >/dev/null 2>&1; then
-    boot="$(command -v oodac)"
+  if [[ -x "$BIN_DIR/ooda-compiler" ]]; then
+    boot="$BIN_DIR/ooda-compiler"
+  elif command -v ooda-compiler >/dev/null 2>&1; then
+    boot="$(command -v ooda-compiler)"
     if command -v readlink >/dev/null 2>&1; then
       boot="$(readlink -f "$boot" 2>/dev/null || printf '%s' "$boot")"
     fi
   fi
   if [[ -z "$boot" || ! -x "$boot" ]]; then
-    err "from-source needs an installed oodac as bootstrap; run a normal install first"
+    err "from-source needs an installed ooda-compiler as bootstrap; run a normal install first"
     return 1
   fi
   SRC_DIR="$d"
-  BOOT_OODAC="$boot"
-  info "from-source: checkout $SRC_DIR (bootstrap $BOOT_OODAC)"
+  BOOT_COMPILER="$boot"
+  info "from-source: checkout $SRC_DIR (bootstrap $BOOT_COMPILER)"
   return 0
 }
 
@@ -1208,8 +1247,8 @@ build_component_from_source() {
   fi
   step_status "building $key from source"
   local log="$OPENOODA_HOME/build-$key.log"
-  if ( cd "$SRC_DIR" && OODA_COMPILER="$BOOT_OODAC" OO_LIST_AMBIENT_QUOTA="34359738368" \
-      "$BOOT_OODAC" build "$main" -o "$dest.tmp" >"$log" 2>&1 ); then
+  if ( cd "$SRC_DIR" && OODA_COMPILER="$BOOT_COMPILER" OO_LIST_AMBIENT_QUOTA="34359738368" \
+      "$BOOT_COMPILER" build "$main" -o "$dest.tmp" >"$log" 2>&1 ); then
     mv -f "$dest.tmp" "$dest" 2>/dev/null && chmod +x "$dest" 2>/dev/null
     local size; size=$(wc -c < "$dest" 2>/dev/null || echo 0)
     local mb; mb=$(awk -v s="$size" 'BEGIN{printf "%.1f", s/1048576}')
@@ -1223,71 +1262,78 @@ build_component_from_source() {
   fi
 }
 
-install_oodac_from_source() {
-  printf '  %s%s%s (from source)\n' "$BOLD" "oodac" "$RESET"
+install_ooda_compiler_from_source() {
+  printf '  %s%s%s (from source)\n' "$BOLD" "ooda-compiler" "$RESET"
   if [[ "$DRY_RUN" == "1" ]]; then
-    ok "[dry-run] would keep oodac (compiler cannot self-rebuild: unique_fns)"
-    INSTALLED+=("oodac")
+    ok "[dry-run] would keep ooda-compiler (compiler cannot self-rebuild: unique_fns)"
+    INSTALLED+=("ooda-compiler")
     return 0
   fi
-  if [[ -x "$BIN_DIR/oodac" ]]; then
-    ok "oodac kept: compiler cannot self-rebuild (unique_fns) — bootstrap stays as product"
-    INSTALLED+=("oodac")
+  if [[ -x "$BIN_DIR/ooda-compiler" ]]; then
+    ok "ooda-compiler kept: compiler cannot self-rebuild (unique_fns) — bootstrap stays as product"
+    INSTALLED+=("ooda-compiler")
     return 0
   fi
-  # Bootstrap came from PATH (no installed oodac yet): adopt it so the
+  # Bootstrap came from PATH (no installed ooda-compiler yet): adopt it so the
   # prefix is complete and later builds resolve OODA_COMPILER locally.
-  if cp -f "$BOOT_OODAC" "$BIN_DIR/oodac" 2>/dev/null; then
-    chmod +x "$BIN_DIR/oodac" 2>/dev/null || true
-    ok "oodac adopted from PATH ($BOOT_OODAC)"
-    INSTALLED+=("oodac")
+  if cp -f "$BOOT_COMPILER" "$BIN_DIR/ooda-compiler" 2>/dev/null; then
+    chmod +x "$BIN_DIR/ooda-compiler" 2>/dev/null || true
+    ok "ooda-compiler adopted from PATH ($BOOT_COMPILER)"
+    INSTALLED+=("ooda-compiler")
     return 0
   fi
-  err "oodac: cannot place bootstrap compiler in $BIN_DIR"
+  err "ooda-compiler: cannot place bootstrap compiler in $BIN_DIR"
   return 1
 }
 
-install_oodar_from_source() {
-  printf '  %s%s%s (from source)\n' "$BOLD" "oodar" "$RESET"
+install_ooda_runtime_from_source() {
+  printf '  %s%s%s (from source)\n' "$BOLD" "ooda-runtime" "$RESET"
   if [[ "$DRY_RUN" == "1" ]]; then
-    ok "[dry-run] would build liboodar.a via make"
-    INSTALLED+=("oodar")
+    ok "[dry-run] would build liboodar*.a via make"
+    INSTALLED+=("ooda-runtime")
     return 0
   fi
-  step_status "building liboodar.a from source"
-  local log="$OPENOODA_HOME/build-oodar.log" jobs
+  step_status "building liboodar*.a from source"
+  local log="$OPENOODA_HOME/build-ooda-runtime.log" jobs
   jobs=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
-  if ( cd "$SRC_DIR/oodar" && make -j"$jobs" build >"$log" 2>&1 ); then
-    [[ -s "$SRC_DIR/oodar/core/lib/liboodar.a" ]] || { err "oodar: make succeeded but liboodar.a is missing"; return 1; }
-    cp -f "$SRC_DIR/oodar/core/lib/liboodar.a" "$BIN_DIR/liboodar.a.tmp" 2>/dev/null \
-      && mv -f "$BIN_DIR/liboodar.a.tmp" "$BIN_DIR/liboodar.a" 2>/dev/null \
-      && chmod +x "$BIN_DIR/liboodar.a" 2>/dev/null
+  if ( cd "$SRC_DIR/openOODA-core/ooda-runtime" && make -j"$jobs" build >"$log" 2>&1 ); then
+    [[ -s "$SRC_DIR/openOODA-core/ooda-runtime/core/lib/liboodar.a" ]] || { err "ooda-runtime: make succeeded but liboodar.a is missing"; return 1; }
+    # ooda-runtime may emit all 12 liboodar*.a archives; install every one
+    # that was built (liboodar.a alone is the floor).
+    local lib base
+    for lib in "$SRC_DIR"/openOODA-core/ooda-runtime/core/lib/liboodar*.a; do
+      [[ -f "$lib" ]] || continue
+      base="$(basename "$lib")"
+      cp -f "$lib" "$BIN_DIR/$base.tmp" 2>/dev/null \
+        && mv -f "$BIN_DIR/$base.tmp" "$BIN_DIR/$base" 2>/dev/null \
+        && chmod +x "$BIN_DIR/$base" 2>/dev/null
+    done
     local size; size=$(wc -c < "$BIN_DIR/liboodar.a" 2>/dev/null || echo 0)
     local mb; mb=$(awk -v s="$size" 'BEGIN{printf "%.1f", s/1048576}')
-    ok "built liboodar.a from source (${mb} MB)"; INSTALLED+=("oodar")
+    ok "built liboodar.a from source (${mb} MB)"; INSTALLED+=("ooda-runtime")
     BYTES=$((BYTES + size))
   else
-    err "oodar: make failed — last 10 lines of $log:"
+    err "ooda-runtime: make failed — last 10 lines of $log:"
     tail -n 10 "$log" >&2 2>/dev/null || true
     return 1
   fi
 }
 
-install_oostd_from_source() {
+install_ooda_standard_from_source() {
   if [[ "$DRY_RUN" == "1" ]]; then
-    ok "[dry-run] would sync oostd from source"
+    ok "[dry-run] would sync ooda-standard from source"
     return 0
   fi
-  rm -rf "$OOSTD_DIR.new" 2>/dev/null || true
-  cp -rL "$SRC_DIR/oostd" "$OOSTD_DIR.new" 2>/dev/null || { err "oostd sync failed (copy)"; return 1; }
-  if [[ ! -f "$OOSTD_DIR.new/core/anchor.oo" && ! -f "$OOSTD_DIR.new/anchor.oo" && ! -f "$OOSTD_DIR.new/ANCHOR.oo" ]]; then
-    rm -rf "$OOSTD_DIR.new" 2>/dev/null || true
-    err "oostd sync failed (no anchor.oo in source oostd)"
+  rm -rf "$OODA_STANDARD_DIR.new" 2>/dev/null || true
+  cp -rL "$SRC_DIR/openOODA-core/ooda-standard" "$OODA_STANDARD_DIR.new" 2>/dev/null || { err "ooda-standard sync failed (copy)"; return 1; }
+  if [[ ! -f "$OODA_STANDARD_DIR.new/core/anchor.oo" && ! -f "$OODA_STANDARD_DIR.new/anchor.oo" && ! -f "$OODA_STANDARD_DIR.new/ANCHOR.oo" ]]; then
+    rm -rf "$OODA_STANDARD_DIR.new" 2>/dev/null || true
+    err "ooda-standard sync failed (no anchor.oo in source ooda-standard)"
     return 1
   fi
-  rm -rf "$OOSTD_DIR" 2>/dev/null || true
-  mv -f "$OOSTD_DIR.new" "$OOSTD_DIR" 2>/dev/null || { err "oostd sync failed (rename)"; return 1; }
-  ok "oostd synced from source"
+  rm -rf "$OODA_STANDARD_DIR" 2>/dev/null || true
+  mv -f "$OODA_STANDARD_DIR.new" "$OODA_STANDARD_DIR" 2>/dev/null || { err "ooda-standard sync failed (rename)"; return 1; }
+  ok "ooda-standard synced from source"
 }
 
 install_file_from_source() {
@@ -1330,8 +1376,8 @@ setup_shell_rc() {
   gen="$(shell_init_bin)"
   local eval_line='eval "$("$HOME/.openooda/bin/ooda" shell-init bash)"'
   local l1='export PATH="$HOME/.openooda/bin:$PATH"'
-  local l2='export OODA_OOSTD_ROOT="$HOME/.openooda/oostd"'
-  local l3='export OODA_COMPILER="$HOME/.openooda/bin/oodac"'
+  local l2='export OODA_STANDARD_ROOT="$HOME/.openooda/ooda-standard"'
+  local l3='export OODA_COMPILER="$HOME/.openooda/bin/ooda-compiler"'
   # Jail must include /etc (resolv.conf, nsswitch, ssl) and /usr (libnss)
   # or `ooda update`'s child curl cannot resolve DNS. Never expand
   # $OPENOODA_HOME here: that var is often unset in interactive shells.
@@ -1354,13 +1400,13 @@ setup_shell_rc() {
       ok "$(basename "$rc") updated (shell-init)"
       continue
     fi
-    if grep -q '\.local/bin/oodac' "$rc" 2>/dev/null; then
-      sed -i 's|.*\.local/bin/oodac.*|'"$l3"'|' "$rc" 2>/dev/null || true
-      ok "$(basename "$rc") fixed OODA_COMPILER -> ~/.openooda/bin/oodac"
+    if grep -q 'OODA_COMPILER=.*/oodac' "$rc" 2>/dev/null; then
+      sed -i 's|export OODA_COMPILER=.*|'"$l3"'|' "$rc" 2>/dev/null || true
+      ok "$(basename "$rc") fixed OODA_COMPILER -> ~/.openooda/bin/ooda-compiler"
     fi
-    if grep -q 'OODA_STD_ROOT' "$rc" 2>/dev/null; then
-      sed -i 's|export OODA_STD_ROOT=.*|'"$l2"'|g' "$rc" 2>/dev/null || true
-      ok "$(basename "$rc") updated OODA_OOSTD_ROOT -> ~/.openooda/oostd"
+    if grep -q 'OODA_STD_ROOT\|OODA_OOSTD_ROOT' "$rc" 2>/dev/null; then
+      sed -i 's|export OODA_STD_ROOT=.*|'"$l2"'|g; s|export OODA_OOSTD_ROOT=.*|'"$l2"'|g' "$rc" 2>/dev/null || true
+      ok "$(basename "$rc") updated -> OODA_STANDARD_ROOT ~/.openooda/ooda-standard"
     fi
     if grep -Fqx "$l1" "$rc" 2>/dev/null; then
       info "$(basename "$rc") already has openOODA exports"
@@ -1393,8 +1439,8 @@ setup_shell_rc() {
 
 # openOODA
 fish_add_path $HOME/.openooda/bin
-set -gx OODA_OOSTD_ROOT $HOME/.openooda/oostd
-set -gx OODA_COMPILER $HOME/.openooda/bin/oodac
+set -gx OODA_STANDARD_ROOT $HOME/.openooda/ooda-standard
+set -gx OODA_COMPILER $HOME/.openooda/bin/ooda-compiler
 set -gx OODA_FS_READDIR $HOME/.openooda:/etc:/usr
 set -gx OODA_FS_WRITEDIR $HOME
 set -gx OODACODEX $HOME/.openooda/AGENTS.md
@@ -1421,8 +1467,8 @@ FISH_EOF
 
 # openOODA
 $env.PATH = ($env.PATH | split row (char esep) | prepend $"($env.HOME)/.openooda/bin" | uniq)
-$env.OODA_OOSTD_ROOT = $"($env.HOME)/.openooda/oostd"
-$env.OODA_COMPILER = $"($env.HOME)/.openooda/bin/oodac"
+$env.OODA_STANDARD_ROOT = $"($env.HOME)/.openooda/ooda-standard"
+$env.OODA_COMPILER = $"($env.HOME)/.openooda/bin/ooda-compiler"
 $env.OODA_FS_READDIR = $"($env.HOME)/.openooda:/etc:/usr"
 $env.OODA_FS_WRITEDIR = $"($env.HOME)"
 $env.OODACODEX = $"($env.HOME)/.openooda/AGENTS.md"
@@ -1454,8 +1500,8 @@ NU_EOF
 
 # openOODA
 $env:PATH = "$HOME/.openooda/bin" + [IO.Path]::PathSeparator + $env:PATH
-$env:OODA_OOSTD_ROOT = "$HOME/.openooda/oostd"
-$env:OODA_COMPILER = "$HOME/.openooda/bin/oodac"
+$env:OODA_STANDARD_ROOT = "$HOME/.openooda/ooda-standard"
+$env:OODA_COMPILER = "$HOME/.openooda/bin/ooda-compiler"
 $env:OODA_FS_READDIR = "$HOME/.openooda:/etc:/usr"
 $env:OODA_FS_WRITEDIR = "$HOME"
 $env:OODACODEX = "$HOME/.openooda/AGENTS.md"
@@ -1530,9 +1576,11 @@ clean_stale_shadow_binaries() {
   local -a candidates=()
   local c
   for c in "${!REPOS[@]}"; do candidates+=("$c"); done
-  # Legacy names from the pre-~/.openooda/bin layouts. Kept as a floor so
-  # a failed catalog fetch still cleans the old shadows.
-  candidates+=("ooda-lsp" "ooda-mcp" "opm" "bb" "oodac.bak")
+  # Legacy names from the pre-~/.openooda/bin layouts and the pre-rename
+  # oo* component spellings. Kept as a floor so a failed catalog fetch
+  # still cleans the old shadows.
+  candidates+=("ooda-lsp" "ooda-mcp" "opm" "bb" "oodac" "oodac.bak" "oodar" \
+    "oopm" "oolsp" "oomcp" "oohat" "oostd" "openooda" "liboodar.a")
   # The catalog is the authoritative package list. A failed fetch is not
   # fatal here: we fall back to the floor above.
   groups_oot_load >/dev/null 2>&1 || true
@@ -1634,7 +1682,7 @@ assert_path_resolution() {
   local fail=0 checked=0
   for key in "${INSTALLED[@]:-}"; do
     [[ -n "$key" ]] || continue
-    # Archive packages (oostd) are a runtime root, not a $BIN_DIR
+    # Archive packages (ooda-standard) are a runtime root, not a $BIN_DIR
     # executable: there is no `command -v` to resolve, so the path
     # assertion does not apply to them.
     pkg_is_archive "$key" && continue
@@ -1686,7 +1734,7 @@ assert_path_resolution() {
 
 restart_stale_servers() {
   local pids
-  pids=$(ps aux 2>/dev/null | grep -E 'oomcp (serve|--stdio)|oolsp (serve|--stdio)|ooda-mcp --stdio|ooda-lsp --stdio' | grep -v grep | awk '{print $2}') || true
+  pids=$(ps aux 2>/dev/null | grep -E 'ooda-bridge (serve|--stdio)|oomcp (serve|--stdio)|oolsp (serve|--stdio)|ooda-mcp --stdio|ooda-lsp --stdio' | grep -v grep | awk '{print $2}') || true
   if [[ -n "$pids" ]]; then
     info "stale servers: $pids (old binaries in memory, new on disk) — kill to pick up new build"
     # shellcheck disable=SC2086
@@ -1696,13 +1744,13 @@ restart_stale_servers() {
     for pid in $pids; do wait "$pid" 2>/dev/null || true; done
     ok "stale servers reaped (zombies cleared)"
   else
-    info "no stale oomcp/oolsp servers found"
+    info "no stale ooda-bridge servers found"
   fi
-  if ! command -v oodac >/dev/null 2>&1 || [[ "$(command -v oodac 2>/dev/null)" != "$BIN_DIR/oodac" ]]; then
+  if ! command -v ooda-compiler >/dev/null 2>&1 || [[ "$(command -v ooda-compiler 2>/dev/null)" != "$BIN_DIR/ooda-compiler" ]]; then
     warn "run: source ~/.bashrc (or restart shell) to pick up new PATH"
   fi
-  if [[ "${OODA_COMPILER:-}" != "$BIN_DIR/oodac" && "${OODA_COMPILER:-}" != "" ]]; then
-    warn "OODA_COMPILER=$OODA_COMPILER (expected $BIN_DIR/oodac) — restart shell or export OODA_COMPILER=\$HOME/.openooda/bin/oodac"
+  if [[ "${OODA_COMPILER:-}" != "$BIN_DIR/ooda-compiler" && "${OODA_COMPILER:-}" != "" ]]; then
+    warn "OODA_COMPILER=$OODA_COMPILER (expected $BIN_DIR/ooda-compiler) — restart shell or export OODA_COMPILER=\$HOME/.openooda/bin/ooda-compiler"
   fi
 }
 
@@ -1712,7 +1760,7 @@ post_flight() {
   export OODA_FS_READDIR="${OODA_FS_READDIR:-$HOME/.openooda:/etc:/usr}"
   export OODA_FS_WRITEDIR="${OODA_FS_WRITEDIR:-$HOME}"
   local fail=0
-  local bins=(ooda oodac oopm oolsp oomcp oohat)
+  local bins=(ooda ooda-compiler ooda-package ooda-language ooda-bridge ooda-verify)
   for bin in "${bins[@]}"; do
     # Verify by output, not exit code: some tools exit nonzero on --help
     # (opm) or under non-tty stdout (ooda), and a silent stub that exits 0
@@ -1771,18 +1819,18 @@ do_install() {
   if [[ "$FROM_SOURCE" == "1" ]]; then
     step_status "resolving source checkout"
     resolve_source_dir || return 1
-    for key in ooda oodac oodar oopm oolsp oomcp oohat; do
+    for key in ooda ooda-compiler ooda-runtime ooda-package ooda-language ooda-bridge ooda-verify; do
       step_status "installing $key from source"
       case "$key" in
-        oodac) install_oodac_from_source || return 1;;
-        oodar) install_oodar_from_source || return 1;;
+        ooda-compiler) install_ooda_compiler_from_source || return 1;;
+        ooda-runtime) install_ooda_runtime_from_source || return 1;;
         *) build_component_from_source "$key" || return 1;;
       esac
     done
   else
     step_status "loading version pins"
     load_pins
-    for key in ooda oodac oodar oopm oolsp oomcp oohat; do
+    for key in ooda ooda-compiler ooda-runtime ooda-package ooda-language ooda-bridge ooda-verify; do
       step_status "installing $key"
       install_component "$key" || return 1
     done
@@ -1816,9 +1864,11 @@ do_install() {
   fi
 
   # Retired binaries from older installers (cli/tui absorbed into the canonical
-  # ooda CLI; oostd-hw merged into oostd): sweep stale artifacts so PATH stays clean.
+  # ooda CLI; oostd-hw merged into ooda-standard; the oo* component spellings
+  # renamed to canonical ooda-<word> names): sweep stale artifacts so PATH
+  # stays clean. Keep openooda (shipped root binary via --pkg openooda).
   if [[ "$DRY_RUN" != "1" ]]; then
-    for stale in cli tui oocli ootui ooda-tui oostd-hw; do
+    for stale in cli tui oocli ootui ooda-tui oostd-hw oodac oodar oopm oolsp oomcp oohat oostd; do
       if [[ -e "$BIN_DIR/$stale" ]]; then
         rm -f "$BIN_DIR/$stale" 2>/dev/null || true
         ok "removed stale ~/.openooda/bin/$stale (retired)"
@@ -1826,28 +1876,28 @@ do_install() {
     done
   fi
 
-  # step 3: oostd
+  # step 3: ooda-standard
   if [[ "$DRY_RUN" == "1" ]]; then
-    step_status "[dry-run] skipping oostd install"
-    skip "[dry-run] skipping oostd install"
+    step_status "[dry-run] skipping ooda-standard install"
+    skip "[dry-run] skipping ooda-standard install"
   elif [[ "$FROM_SOURCE" == "1" ]]; then
-    step_status "syncing oostd from source"
-    install_oostd_from_source || return 1
-  elif [[ ! -f "$OOSTD_DIR/core/anchor.oo" && ! -f "$OOSTD_DIR/anchor.oo" && ! -f "$OOSTD_DIR/ANCHOR.oo" ]]; then
-    step_status "installing oostd"
-    local wd; wd=$(mktemp -d 2>/dev/null || echo "/tmp/openooda-oostd-$$")
-    ( fetch_repo "https://github.com/openOODA-core/oostd" "$OOSTD_DIR" "core/anchor.oo" "${PINS[oostd]:-}" "$wd" ) &
+    step_status "syncing ooda-standard from source"
+    install_ooda_standard_from_source || return 1
+  elif [[ ! -f "$OODA_STANDARD_DIR/core/anchor.oo" && ! -f "$OODA_STANDARD_DIR/anchor.oo" && ! -f "$OODA_STANDARD_DIR/ANCHOR.oo" ]]; then
+    step_status "installing ooda-standard"
+    local wd; wd=$(mktemp -d 2>/dev/null || echo "/tmp/openooda-std-$$")
+    ( fetch_repo "https://github.com/openOODA-core/ooda-standard" "$OODA_STANDARD_DIR" "core/anchor.oo" "" "$wd" ) &
     spinner $!
     wait $! 2>/dev/null || true
     local status; status=$(cat "$wd/status" 2>/dev/null || echo "fail")
     rm -rf "$wd"
     if [[ "$status" != "ok" ]]; then
-      err "oostd install failed; check $OOSTD_DIR"
+      err "ooda-standard install failed; check $OODA_STANDARD_DIR"
       return 1
     fi
   fi
 
-  # oodar is liboodar.a (install_component above). Do not also clone
+  # ooda-runtime is liboodar.a (install_component above). Do not also clone
   # sources — one repo, one artifact.
 
   # step 3c: orientation codex (MCP servers fail closed without OODACODEX).
@@ -1905,16 +1955,16 @@ do_install() {
     fi
   fi
 
-  # step 3e: capability table (oolsp/oohat read ~/.openooda/cards/cap_table.oot).
+  # step 3e: capability table (ooda-language/ooda-verify read ~/.openooda/cards/cap_table.oot).
   if [[ "$DRY_RUN" == "1" ]]; then
     step_status "[dry-run] skipping cap_table.oot fetch"
     skip "[dry-run] skipping cap_table.oot fetch"
   elif [[ "$FROM_SOURCE" == "1" ]]; then
     step_status "copying capability table from source"
     mkdir -p "$OPENOODA_HOME/cards" 2>/dev/null || true
-    install_file_from_source "oodar/core/sec/cap/cap_table.oot" "$OPENOODA_HOME/cards/cap_table.oot" "cap_table"
+    install_file_from_source "openOODA-core/ooda-runtime/core/sec/cap/cap_table.oot" "$OPENOODA_HOME/cards/cap_table.oot" "cap_table"
   else
-    # openOODA-core/oodar is private; public installs fetch cap_table.oot from openOODA/install@hub.
+    # openOODA-core/ooda-runtime is private; public installs fetch cap_table.oot from openOODA/install@hub.
     step_status "fetching capability table (hub/cap_table.oot)"
     mkdir -p "$OPENOODA_HOME/cards" 2>/dev/null || true
     sums_ensure || true
@@ -1942,7 +1992,7 @@ do_install() {
       if [[ -s "$OPENOODA_HOME/cards/cap_table.oot" ]]; then
         warn "cap_table refresh failed; keeping existing cards/cap_table.oot"
       else
-        warn "cap_table fetch failed; oolsp/oohat cap_table lookup needs network to populate cards/cap_table.oot"
+        warn "cap_table fetch failed; ooda-language/ooda-verify cap_table lookup needs network to populate cards/cap_table.oot"
       fi
     fi
   fi
@@ -1982,7 +2032,7 @@ do_install() {
   # Serialise the cross-subshell state to RESULTS_FILE so the parent
   # print_summary can read what really happened. Without this, the
   # parent sees empty INSTALLED[] and prints "no components installed"
-  # even when all 9 binaries were downloaded and SHA-verified. The
+  # even when all 7 L0 components were downloaded and SHA-verified. The
   # state write is atomic (.tmp + mv) and fail-closed (returns 1 on
   # failure), so the install reports failure rather than printing a
   # misleading summary.
@@ -2070,17 +2120,25 @@ if [[ $DO_UNINSTALL -eq 1 ]]; then
   QUIET=0
   info "uninstall requested — removing $BIN_DIR and toolchain"
   # remove /usr/local/bin shims pointing into BIN_DIR first (else they dangle)
-  for s in /usr/local/bin/ooda /usr/local/bin/oodac /usr/local/bin/opm /usr/local/bin/ooda-lsp /usr/local/bin/ooda-mcp /usr/local/bin/bb; do
+  for s in /usr/local/bin/ooda /usr/local/bin/ooda-compiler /usr/local/bin/ooda-package \
+      /usr/local/bin/ooda-language /usr/local/bin/ooda-bridge /usr/local/bin/ooda-verify \
+      /usr/local/bin/oodac /usr/local/bin/oodar /usr/local/bin/oopm /usr/local/bin/oolsp \
+      /usr/local/bin/oomcp /usr/local/bin/oohat /usr/local/bin/opm /usr/local/bin/ooda-lsp \
+      /usr/local/bin/ooda-mcp /usr/local/bin/bb /usr/local/bin/openooda; do
     if [[ -L "$s" && "$(readlink "$s" 2>/dev/null)" == "$BIN_DIR/"* ]]; then rm -f "$s" 2>/dev/null || true; fi
   done
-  # remove binaries, oostd, spec, and build sources (keep OPENOODA_HOME for logs)
-  rm -rf "$BIN_DIR" "$OOSTD_DIR" "$OPENOODA_HOME/oodar" "$OPENOODA_HOME/cards/spec.md" "$OPENOODA_HOME/cards/cap_table.oot" "$OPENOODA_HOME/AGENTS.md" 2>/dev/null || true
+  # remove binaries, ooda-standard (+ legacy oostd/oodar roots), spec, and
+  # build sources (keep OPENOODA_HOME for logs)
+  rm -rf "$BIN_DIR" "$OODA_STANDARD_DIR" "$OPENOODA_HOME/ooda-runtime" \
+    "$OPENOODA_HOME/oodar" "$OPENOODA_HOME/oostd" \
+    "$OPENOODA_HOME/cards/spec.md" "$OPENOODA_HOME/cards/cap_table.oot" \
+    "$OPENOODA_HOME/AGENTS.md" 2>/dev/null || true
   # surgically remove the # openOODA section from shell rc files
   for rc in "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.zshrc"; do
     if [[ -f "$rc" ]] && grep -q '# openOODA' "$rc" 2>/dev/null; then
       sed -i '/^# openOODA (shell-init)$/,/^# end openOODA$/d' "$rc" 2>/dev/null || true
       sed -i '/# openOODA/,/export OODA_FS_WRITEDIR/d' "$rc" 2>/dev/null || true
-      sed -i '/^export OODACODEX=/d; /^export OODASPEC=/d; /^export OODA_SPEC=/d; /^export OO_LIST_AMBIENT_QUOTA=/d; /^export OODA_FS_READDIR=/d' "$rc" 2>/dev/null || true
+      sed -i '/^export OODACODEX=/d; /^export OODASPEC=/d; /^export OODA_SPEC=/d; /^export OO_LIST_AMBIENT_QUOTA=/d; /^export OODA_FS_READDIR=/d; /^export OODA_STD_ROOT=/d; /^export OODA_OOSTD_ROOT=/d; /^export OODA_STANDARD_ROOT=/d' "$rc" 2>/dev/null || true
       ok "surgically removed openOODA section from $(basename "$rc")"
     fi
   done

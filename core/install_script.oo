@@ -8,7 +8,7 @@
 // Beats:
 //   1. ins_count folds a needle into an occurrence census via str_split.
 //   2. ins_flags_ok demands each canonical flag appear in the arg-parse case and the usage text.
-//   3. ins_bins_ok pins the L0 component map and the oodar -> liboodar.a archive binding.
+//   3. ins_bins_ok pins the L0 component map and the ooda-runtime -> liboodar.a archive binding.
 //   4. ins_sums_ok proves the master SHA256SUMS channel plus the refuse-unsigned gates, and bars
 //      the dead sums_lookup call site from ever returning.
 //   5. ins_script_ok folds every contract into one verdict for ins_repo_ok.
@@ -41,16 +41,18 @@ pub fn ins_flags_ok(src: String) -> Bool {
 }
 
 pub fn ins_bins_ok(src: String) -> Bool {
-    let keys: List[String] = str_split("ooda oodac oodar oopm oolsp oomcp oohat", " ");
+    let keys: List[String] = str_split(
+        "ooda ooda-compiler ooda-runtime ooda-package ooda-language ooda-bridge ooda-verify", " ");
     let mut i: Int = 0;
     while i < list_len(keys) {
         if !str_contains(src, "[" + list_get(keys, i) + "]=") { return false; }
         i = i + 1;
     }
-    if !str_contains(src, "[oodar]=liboodar.a") { return false; }
-    if !str_contains(src, "OOSTD_DIR=\"$OPENOODA_HOME/oostd\"") { return false; }
-    if !str_contains(src, "OODA_OOSTD_ROOT=") { return false; }
-    return str_contains(src, "for key in ooda oodac oodar oopm oolsp oomcp oohat");
+    if !str_contains(src, "[ooda-runtime]=liboodar.a") { return false; }
+    if !str_contains(src, "OODA_STANDARD_DIR=\"$OPENOODA_HOME/ooda-standard\"") { return false; }
+    if !str_contains(src, "OODA_STANDARD_ROOT=") { return false; }
+    return str_contains(src,
+        "for key in ooda ooda-compiler ooda-runtime ooda-package ooda-language ooda-bridge ooda-verify");
 }
 
 pub fn ins_sums_ok(src: String) -> Bool {

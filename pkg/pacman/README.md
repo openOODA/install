@@ -15,7 +15,7 @@ Pre-stage the release tarball and built binaries in `../dist/`, then:
 ```sh
 cd pacman
 makepkg
-sudo pacman -U openooda-0.1.0-1-x86_64.pkg.tar.zst
+sudo pacman -U openooda-2.0.0-1-x86_64.pkg.tar.zst
 ```
 
 Use `makepkg -si` to install dependencies automatically.

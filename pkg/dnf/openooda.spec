@@ -1,5 +1,5 @@
 Name:           openooda
-Version:        0.2.9
+Version:        2.0.0
 Release:        1%{?dist}
 Summary:        openOODA — Primary Systems Language for the AI Era
 URL:            https://openooda.org
@@ -28,8 +28,8 @@ for f in %{_sourcedir}/../dist/*-linux-*; do
       install -m 0755 "$f" "%{buildroot}/usr/bin/$b" ;;
   esac
 done
-git clone --depth 1 https://github.com/openOODA-core/oostd %{buildroot}/usr/lib/openooda/oostd
-rm -rf %{buildroot}/usr/lib/openooda/oostd/.git
+git clone --depth 1 https://github.com/openOODA-core/ooda-standard %{buildroot}/usr/lib/openooda/ooda-standard
+rm -rf %{buildroot}/usr/lib/openooda/ooda-standard/.git
 install -m 0644 %{_sourcedir}/profile.d.sh %{buildroot}/etc/profile.d/openooda.sh
 
 %files
@@ -38,6 +38,8 @@ install -m 0644 %{_sourcedir}/profile.d.sh %{buildroot}/etc/profile.d/openooda.s
 /etc/profile.d/openooda.sh
 
 %changelog
+* Tue Nov 17 2026 openOODA Authors <ops@openooda.org> - 2.0.0-1
+- Sync packaging with VERSION 2.0.0; canonical ooda-<word> cutover (oodac -> ooda-compiler, oostd -> ooda-standard)
 * Sun Nov 15 2026 openOODA Authors <ops@openooda.org> - 0.2.9-1
 - Sync packaging with VERSION 0.2.9
 * Sun Nov 15 2026 openOODA Authors <ops@openooda.org> - 0.2.8-1
