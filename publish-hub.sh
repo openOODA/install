@@ -9,7 +9,8 @@
 # publish only those packages. For each package the script locates the
 # repo under $OODA_POLYROOT/openOODA-*/, builds it with `make build` when no
 # binary is present, stages it as <name>-linux-x86_64 (liboodar.a keeps
-# its name), regenerates the single master SHA256SUMS (+ SHA256SUMS.sig
+# its name; liboodar-*.a slices and optional ooda-runtime-linux-x86_64 also stage
+# when built), regenerates the single master SHA256SUMS (+ SHA256SUMS.sig
 # when a minisign key is available), copies SHA256SUMS into the catalog
 # repo, and uploads everything in place to the single latest GitHub
 # Release on openOODA/install. Legacy per-file .sha256 sidecars and
@@ -18,6 +19,9 @@
 #
 # Env:
 #   OO_PROJECTS_ROOT  default $HOME/openOODA-src
+#   OPENOODA_HOME     default $HOME/.openooda (fallback for OODA_OODAR_ROOT/cards)
+#   OODA_FS_READDIR   optional sandbox read roots passed to ooda-flasher
+#   OODA_FS_WRITEDIR  optional sandbox write roots passed to ooda-flasher
 #   OO_MINISIGN_KEY   path to minisign secret for SHA256SUMS.sig
 #   OO_HUB_RELEASE    release tag on openOODA/install (default: hub)
 #   OO_DRY_RUN=1      stage + print, skip gh upload/delete
@@ -159,6 +163,27 @@ stage_pkg() {  # $1 = package name
   # this glob (test_* stem), and repos without siblings stage nothing extra.
   local repo sib sibbase
   repo="$(find_repo "$pkg")" || return 0
+  if [[ "$pkg" == "ooda-runtime" ]]; then
+    local rdir ar arbase rtbin
+    for rdir in "$repo/core/lib" "$repo/dist" "$repo/bin" "$repo/scripts/lib"; do
+      for ar in "$rdir"/liboodar-*.a; do
+        [[ -f "$ar" && -s "$ar" ]] || continue
+        arbase="$(basename "$ar")"
+        [[ -f "$STAGE/$arbase" ]] && continue
+        cp -f "$ar" "$STAGE/$arbase"
+        chmod 0644 "$STAGE/$arbase"
+        say "staged $arbase <- $ar"
+      done
+    done
+    for rtbin in "$repo/dist/ooda-runtime" "$repo/bin/ooda-runtime"; do
+      if [[ -f "$rtbin" && -s "$rtbin" ]]; then
+        cp -f "$rtbin" "$STAGE/ooda-runtime-linux-x86_64"
+        chmod 0644 "$STAGE/ooda-runtime-linux-x86_64"
+        say "staged ooda-runtime-linux-x86_64 <- $rtbin"
+        break
+      fi
+    done
+  fi
   for sib in "$repo"/bin/"$pkg"-*; do
     [[ -f "$sib" && -x "$sib" ]] || continue
     sibbase="$(basename "$sib")"
@@ -178,8 +203,14 @@ stage_images() {
   [[ -f "$STAGE/ooda-kernel-linux-x86_64" ]] && cp -f "$STAGE/ooda-kernel-linux-x86_64" "$iso_dir/boot/ooda-kernel"
   [[ -f "$STAGE/ooda-start-linux-x86_64" ]] && cp -f "$STAGE/ooda-start-linux-x86_64" "$iso_dir/bin/ooda-start"
   [[ -f "$STAGE/ooda-shell-linux-x86_64" ]] && cp -f "$STAGE/ooda-shell-linux-x86_64" "$iso_dir/bin/ooda-shell"
-  if [[ -x "$ROOT/openOODA-apps/ooda-flasher/bin/ooda-flasher" ]]; then
-    "$ROOT/openOODA-apps/ooda-flasher/bin/ooda-flasher" pack-iso "$iso_dir" -o "$STAGE/ooda-os-x86_64.iso" >/dev/null 2>&1 || true
+  local flasher="$ROOT/openOODA-apps/ooda-flasher/bin/ooda-flasher"
+  if [[ ! -x "$flasher" && -f "$ROOT/openOODA-apps/ooda-flasher/Makefile" ]]; then
+    ( cd "$ROOT/openOODA-apps/ooda-flasher" && make build >/dev/null 2>&1 ) || true
+  fi
+  if [[ -x "$flasher" ]]; then
+    OODA_FS_READDIR="${OODA_FS_READDIR:-$ROOT:${OPENOODA_HOME:-$HOME/.openooda}:/tmp:/proc:/sys:/usr:/etc:/lib:/lib64}:$STAGE" \
+    OODA_FS_WRITEDIR="${OODA_FS_WRITEDIR:+$OODA_FS_WRITEDIR:}$STAGE:/tmp" \
+      "$flasher" pack-iso "$iso_dir" -o "$STAGE/ooda-os-x86_64.iso" >/dev/null 2>&1 || true
     rm -f "$STAGE/ooda-os-x86_64.iso.manifest"
   fi
   rm -rf "$iso_dir"
@@ -219,6 +250,8 @@ stage_images() {
     cap_src="$ROOT/openOODA-core/ooda-runtime/core/sec/cap/cap_table.oot"
   elif [[ -s "$ROOT/ooda-runtime/core/sec/cap/cap_table.oot" ]]; then
     cap_src="$ROOT/ooda-runtime/core/sec/cap/cap_table.oot"
+  elif [[ -s "${OPENOODA_HOME:-$HOME/.openooda}/cards/cap_table.oot" ]]; then
+    cap_src="${OPENOODA_HOME:-$HOME/.openooda}/cards/cap_table.oot"
   fi
   if [[ -n "$cap_src" ]]; then
     cp -f "$cap_src" "$STAGE/cap_table.oot"
@@ -229,29 +262,48 @@ stage_images() {
   fi
 }
 
+is_canonical_asset() {
+  case "$1" in
+    SHA256SUMS|SHA256SUMS.sig|cap_table.oot|liboodar.a|liboodar-*.a|\
+    ooda-standard-linux-x86_64.tar.gz|openooda-codex-linux-x86_64.tar.gz|\
+    ooda-os-x86_64.iso|ooda-buildbox-x86_64.tar.gz|ooda-linux-x86_64|\
+    openooda-linux-x86_64)
+      return 0;;
+    ooda-lsp-*|ooda-mcp-*)
+      return 1;;
+    ooda-*-linux-x86_64)
+      return 0;;
+    *)
+      return 1;;
+  esac
+}
+
 gen_sums() {
   ( cd "$STAGE" && find . -maxdepth 1 -type f ! -name 'SHA256SUMS*' -printf '%f\n' \
       | LC_ALL=C sort | xargs sha256sum > SHA256SUMS.new )
   [[ -s "$STAGE/SHA256SUMS.new" ]] || die "SHA256SUMS generation produced nothing"
-  # Merge with the live hub sums so a single-package publish never shrinks
-  # the master file (regression: partial STAGE used to clobber it). Keep old
-  # entries only for assets still on the hub; staged files get fresh hashes.
-  local prev="$STAGE/.hub_SHA256SUMS.prev" live="$STAGE/.hub_assets.live"
+  # Merge with live canonical hub sums so subset publishes keep un-staged canonical
+  # assets covered while retired pre-rename oo* entries are stripped out.
+  local prev="$STAGE/.hub_SHA256SUMS.prev" live="$STAGE/.hub_assets.live" live_canon="$STAGE/.hub_assets.canon"
   if [[ "$DRY_RUN" != "1" ]] && command -v gh >/dev/null 2>&1 && \
       gh release download "$RELEASE_TAG" -R "$RELEASE_REPO" --pattern 'SHA256SUMS' \
         --clobber -O "$prev" >/dev/null 2>&1 && [[ -s "$prev" ]] && \
       gh release view "$RELEASE_TAG" -R "$RELEASE_REPO" --json assets \
         -q '.assets[].name' >"$live" 2>/dev/null && [[ -s "$live" ]]; then
+    : > "$live_canon"
+    while IFS= read -r asset_name; do
+      [[ -n "$asset_name" ]] && is_canonical_asset "$asset_name" && printf '%s\n' "$asset_name" >> "$live_canon"
+    done < "$live"
     awk 'NR==FNR { fresh[$2]=1; next } !($2 in fresh)' \
       "$STAGE/SHA256SUMS.new" "$prev" | \
-      awk 'NR==FNR { live[$1]=1; next } ($2 in live)' "$live" - | \
+      awk 'NR==FNR { live[$1]=1; next } ($2 in live)' "$live_canon" - | \
       cat - "$STAGE/SHA256SUMS.new" | LC_ALL=C sort -k2 > "$STAGE/SHA256SUMS"
-    say "merged $(wc -l <"$STAGE/SHA256SUMS") master sums entries with live hub state"
+    say "merged $(wc -l <"$STAGE/SHA256SUMS") master sums entries with canonical hub state"
   else
     mv -f "$STAGE/SHA256SUMS.new" "$STAGE/SHA256SUMS"
-    say "no live hub sums to merge (dry run or first publish); shipping staged sums only"
+    say "shipping $(wc -l <"$STAGE/SHA256SUMS") master sums entries from staged release"
   fi
-  rm -f "$STAGE/SHA256SUMS.new" "$prev" "$live"
+  rm -f "$STAGE/SHA256SUMS.new" "$prev" "$live" "$live_canon"
   if [[ -n "${OO_MINISIGN_KEY:-}" && -f "${OO_MINISIGN_KEY}" ]] && command -v minisign >/dev/null 2>&1; then
     ( cd "$STAGE" && minisign -S -s "$OO_MINISIGN_KEY" -m SHA256SUMS -x SHA256SUMS.sig ) && \
       ok "signed SHA256SUMS -> SHA256SUMS.sig" || warn "minisign failed; shipping unsigned sums"
@@ -300,11 +352,14 @@ prune_assets() {
         [[ "$DRY_RUN" == "1" ]] || \
           gh release delete-asset "$RELEASE_TAG" "$n" -R "$RELEASE_REPO" -y >/dev/null 2>&1 || true
         ;;
-      SHA256SUMS|SHA256SUMS.sig|liboodar.a|ooda-standard-linux-x86_64.tar.gz|openooda-codex-linux-x86_64.tar.gz|ooda-os-x86_64.iso|ooda-buildbox-x86_64.tar.gz|*-linux-x86_64) ;;
       *)
-        say "deleting legacy asset $n"
-        [[ "$DRY_RUN" == "1" ]] || \
-          gh release delete-asset "$RELEASE_TAG" "$n" -R "$RELEASE_REPO" -y >/dev/null 2>&1 || true
+        if is_canonical_asset "$n"; then
+          :
+        else
+          say "deleting legacy asset $n"
+          [[ "$DRY_RUN" == "1" ]] || \
+            gh release delete-asset "$RELEASE_TAG" "$n" -R "$RELEASE_REPO" -y >/dev/null 2>&1 || true
+        fi
         ;;
     esac
   done <<< "$names"
