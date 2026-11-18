@@ -147,7 +147,7 @@ stage_pkg() {  # $1 = package name
     local repo
     repo="$(find_repo ooda-standard)" || die "no repo for ooda-standard"
     asset="ooda-standard-linux-x86_64.tar.gz"
-    ( cd "$repo" && tar --exclude='.git' --exclude='.ooda-cache' --exclude='bin' --exclude='dist' -czf "$STAGE/$asset" . )
+    ( cd "$repo" && tar --sort=name --mtime='UTC 2026-01-01' --owner=0 --group=0 --numeric-owner --exclude='.git' --exclude='.ooda-cache' --exclude='bin' --exclude='dist' -cf - . | gzip -n > "$STAGE/$asset" )
     chmod 0644 "$STAGE/$asset"
     say "staged $asset <- $repo (source archive)"
     return 0
@@ -157,11 +157,7 @@ stage_pkg() {  # $1 = package name
   cp -f "$bin" "$STAGE/$asset"
   chmod 0644 "$STAGE/$asset"
   say "staged $asset <- $bin"
-  # Sibling persona binaries (bin/<pkg>-<persona>) colocate with the main
-  # asset: multi-binary tools exec their siblings at runtime (ooda-container
-  # forwards build/infer/sched under ProcessCap). Test binaries never match
-  # this glob (test_* stem), and repos without siblings stage nothing extra.
-  local repo sib sibbase
+  local repo
   repo="$(find_repo "$pkg")" || return 0
   if [[ "$pkg" == "ooda-runtime" ]]; then
     local rdir ar arbase rtbin
@@ -184,53 +180,50 @@ stage_pkg() {  # $1 = package name
       fi
     done
   fi
-  for sib in "$repo"/bin/"$pkg"-*; do
-    [[ -f "$sib" && -x "$sib" ]] || continue
-    sibbase="$(basename "$sib")"
-    cp -f "$sib" "$STAGE/${sibbase}-linux-x86_64"
-    chmod 0644 "$STAGE/${sibbase}-linux-x86_64"
-    say "staged ${sibbase}-linux-x86_64 <- $sib"
-  done
 }
 
 stage_images() {
-  # 1. Stage ooda-os-x86_64.iso (bootable UEFI/BIOS ISO9660 image packed by ooda-flasher)
-  local iso_dir="$STAGE/iso-root"
-  mkdir -p "$iso_dir/EFI/BOOT" "$iso_dir/boot" "$iso_dir/bin"
-  [[ -f "$STAGE/ooda-boot-linux-x86_64" ]] && cp -f "$STAGE/ooda-boot-linux-x86_64" "$iso_dir/EFI/BOOT/BOOTX64.EFI"
-  [[ -f "$STAGE/ooda-boot-linux-x86_64" ]] && cp -f "$STAGE/ooda-boot-linux-x86_64" "$iso_dir/boot/eltorito.img"
-  [[ -f "$STAGE/ooda-boot-linux-x86_64" ]] && cp -f "$STAGE/ooda-boot-linux-x86_64" "$iso_dir/boot/efi.img"
-  [[ -f "$STAGE/ooda-kernel-linux-x86_64" ]] && cp -f "$STAGE/ooda-kernel-linux-x86_64" "$iso_dir/boot/ooda-kernel"
-  [[ -f "$STAGE/ooda-start-linux-x86_64" ]] && cp -f "$STAGE/ooda-start-linux-x86_64" "$iso_dir/bin/ooda-start"
-  [[ -f "$STAGE/ooda-shell-linux-x86_64" ]] && cp -f "$STAGE/ooda-shell-linux-x86_64" "$iso_dir/bin/ooda-shell"
-  local flasher="$ROOT/openOODA-apps/ooda-flasher/bin/ooda-flasher"
-  if [[ ! -x "$flasher" && -f "$ROOT/openOODA-apps/ooda-flasher/Makefile" ]]; then
-    ( cd "$ROOT/openOODA-apps/ooda-flasher" && make build >/dev/null 2>&1 ) || true
-  fi
-  if [[ -x "$flasher" ]]; then
-    OODA_FS_READDIR="${OODA_FS_READDIR:-$ROOT:${OPENOODA_HOME:-$HOME/.openooda}:/tmp:/proc:/sys:/usr:/etc:/lib:/lib64}:$STAGE" \
-    OODA_FS_WRITEDIR="${OODA_FS_WRITEDIR:+$OODA_FS_WRITEDIR:}$STAGE:/tmp" \
-      "$flasher" pack-iso "$iso_dir" -o "$STAGE/ooda-os-x86_64.iso" >/dev/null 2>&1 || true
-    rm -f "$STAGE/ooda-os-x86_64.iso.manifest"
-  fi
-  rm -rf "$iso_dir"
-  if [[ -s "$STAGE/ooda-os-x86_64.iso" ]]; then
-    chmod 0644 "$STAGE/ooda-os-x86_64.iso"
-    say "staged ooda-os-x86_64.iso (bootable ISO9660 image)"
+  # 1. Stage ooda-os-x86_64.iso (only on publishes carrying boot + kernel binaries)
+  if [[ -f "$STAGE/ooda-boot-linux-x86_64" && -f "$STAGE/ooda-kernel-linux-x86_64" ]]; then
+    local iso_dir="$STAGE/iso-root"
+    mkdir -p "$iso_dir/EFI/BOOT" "$iso_dir/boot" "$iso_dir/bin"
+    cp -f "$STAGE/ooda-boot-linux-x86_64" "$iso_dir/EFI/BOOT/BOOTX64.EFI"
+    cp -f "$STAGE/ooda-boot-linux-x86_64" "$iso_dir/boot/eltorito.img"
+    cp -f "$STAGE/ooda-boot-linux-x86_64" "$iso_dir/boot/efi.img"
+    cp -f "$STAGE/ooda-kernel-linux-x86_64" "$iso_dir/boot/ooda-kernel"
+    [[ -f "$STAGE/ooda-start-linux-x86_64" ]] && cp -f "$STAGE/ooda-start-linux-x86_64" "$iso_dir/bin/ooda-start"
+    [[ -f "$STAGE/ooda-shell-linux-x86_64" ]] && cp -f "$STAGE/ooda-shell-linux-x86_64" "$iso_dir/bin/ooda-shell"
+    local flasher="$ROOT/openOODA-apps/ooda-flasher/bin/ooda-flasher"
+    if [[ ! -x "$flasher" && -f "$ROOT/openOODA-apps/ooda-flasher/Makefile" ]]; then
+      ( cd "$ROOT/openOODA-apps/ooda-flasher" && make build >/dev/null 2>&1 ) || true
+    fi
+    if [[ -x "$flasher" ]]; then
+      OODA_FS_READDIR="${OODA_FS_READDIR:-$ROOT:${OPENOODA_HOME:-$HOME/.openooda}:/tmp:/proc:/sys:/usr:/etc:/lib:/lib64}:$STAGE" \
+      OODA_FS_WRITEDIR="${OODA_FS_WRITEDIR:+$OODA_FS_WRITEDIR:}$STAGE:/tmp" \
+        "$flasher" pack-iso "$iso_dir" -o "$STAGE/ooda-os-x86_64.iso" >/dev/null 2>&1 || true
+      rm -f "$STAGE/ooda-os-x86_64.iso.manifest"
+    fi
+    rm -rf "$iso_dir"
+    if [[ -s "$STAGE/ooda-os-x86_64.iso" ]]; then
+      chmod 0644 "$STAGE/ooda-os-x86_64.iso"
+      say "staged ooda-os-x86_64.iso (bootable ISO9660 image)"
+    fi
   fi
 
-  # 2. Stage ooda-buildbox-x86_64.tar.gz (hermetic L0 buildbox container rootfs)
-  local bb_dir="$STAGE/buildbox-root"
-  mkdir -p "$bb_dir/bin" "$bb_dir/lib" "$bb_dir/ooda-standard"
-  for c in ooda ooda-compiler ooda-package ooda-language ooda-bridge ooda-verify ooda-container ooda-shell; do
-    [[ -f "$STAGE/${c}-linux-x86_64" ]] && cp -f "$STAGE/${c}-linux-x86_64" "$bb_dir/bin/$c" && chmod 0755 "$bb_dir/bin/$c"
-  done
-  [[ -f "$STAGE/liboodar.a" ]] && cp -f "$STAGE/liboodar.a" "$bb_dir/lib/liboodar.a"
-  [[ -f "$ROOT/openOODA/openOODA/AGENTS.md" ]] && cp -f "$ROOT/openOODA/openOODA/AGENTS.md" "$bb_dir/AGENTS.md"
-  ( cd "$bb_dir" && tar -czf "$STAGE/ooda-buildbox-x86_64.tar.gz" . )
-  rm -rf "$bb_dir"
-  chmod 0644 "$STAGE/ooda-buildbox-x86_64.tar.gz"
-  say "staged ooda-buildbox-x86_64.tar.gz (hermetic buildbox container bundle)"
+  # 2. Stage ooda-buildbox-x86_64.tar.gz (only when core buildbox toolchain + liboodar.a are staged)
+  if [[ -f "$STAGE/ooda-linux-x86_64" && -f "$STAGE/ooda-compiler-linux-x86_64" && -f "$STAGE/liboodar.a" ]]; then
+    local bb_dir="$STAGE/buildbox-root"
+    mkdir -p "$bb_dir/bin" "$bb_dir/lib" "$bb_dir/ooda-standard"
+    for c in ooda ooda-compiler ooda-package ooda-language ooda-bridge ooda-verify ooda-container ooda-shell; do
+      [[ -f "$STAGE/${c}-linux-x86_64" ]] && cp -f "$STAGE/${c}-linux-x86_64" "$bb_dir/bin/$c" && chmod 0755 "$bb_dir/bin/$c"
+    done
+    cp -f "$STAGE/liboodar.a" "$bb_dir/lib/liboodar.a"
+    [[ -f "$ROOT/openOODA/openOODA/AGENTS.md" ]] && cp -f "$ROOT/openOODA/openOODA/AGENTS.md" "$bb_dir/AGENTS.md"
+    ( cd "$bb_dir" && tar --sort=name --mtime='UTC 2026-01-01' --owner=0 --group=0 --numeric-owner -cf - . | gzip -n > "$STAGE/ooda-buildbox-x86_64.tar.gz" )
+    rm -rf "$bb_dir"
+    chmod 0644 "$STAGE/ooda-buildbox-x86_64.tar.gz"
+    say "staged ooda-buildbox-x86_64.tar.gz (hermetic buildbox container bundle)"
+  fi
 
   # 3. Stage openooda root binary + codex bundle (AGENTS.md + cards/)
   if [[ -d "$ROOT/openOODA/openOODA" ]]; then
@@ -240,7 +233,7 @@ stage_images() {
       chmod 0644 "$STAGE/openooda-linux-x86_64"
       say "staged openooda-linux-x86_64 <- $ROOT/openOODA/openOODA/bin/openooda"
     fi
-    ( cd "$ROOT/openOODA/openOODA" && tar -czf "$STAGE/openooda-codex-linux-x86_64.tar.gz" AGENTS.md cards )
+    ( cd "$ROOT/openOODA/openOODA" && tar --sort=name --mtime='UTC 2026-01-01' --owner=0 --group=0 --numeric-owner -cf - AGENTS.md cards | gzip -n > "$STAGE/openooda-codex-linux-x86_64.tar.gz" )
     chmod 0644 "$STAGE/openooda-codex-linux-x86_64.tar.gz"
     say "staged openooda-codex-linux-x86_64.tar.gz <- $ROOT/openOODA/openOODA (AGENTS.md + cards)"
   fi
@@ -271,11 +264,8 @@ is_canonical_asset() {
       return 0;;
     ooda-lsp-*|ooda-mcp-*)
       return 1;;
-    ooda-*-linux-x86_64)
-      return 0;;
-    *)
-      return 1;;
   esac
+  [[ "$1" =~ ^ooda-[a-z]+-linux-x86_64$ ]]
 }
 
 gen_sums() {
