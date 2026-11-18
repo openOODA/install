@@ -130,7 +130,7 @@ ensure_binary() {  # $1 = package name → prints path to built binary
   repo="$(find_repo "$pkg")" || die "no repo for package $pkg under $ROOT/openOODA-*"
   bin="$(locate_binary "$repo" "$pkg" || true)"
   if [[ -z "$bin" && -f "$repo/Makefile" ]]; then
-    say "building $pkg ($(basename "$repo"))"
+    say "building $pkg ($(basename "$repo"))" >&2
     ( cd "$repo" && make build >/dev/null 2>&1 ) || \
       ( cd "$repo" && make >/dev/null 2>&1 ) || true
     bin="$(locate_binary "$repo" "$pkg" || true)"
