@@ -9,12 +9,12 @@ override_dh_auto_install:
 	install -d debian/openooda/usr/lib/openooda
 	install -d debian/openooda/etc/profile.d
 	# Stage binaries from ../dist/*-linux-* (built upstream by the release pipeline).
-	# Strip architecture suffixes (-linux-x86_64, -linux-arm64) and place liboodar.a in /usr/lib/openooda/.
+	# Strip architecture suffixes (-linux-x86_64, -linux-arm64) and place libooda-runtime.a in /usr/lib/openooda/.
 	for f in ../dist/*-linux-*; do \
 		[ -f "$$f" ] || continue; \
 		case "$$f" in \
-			*.a|*liboodar.a*) \
-				install -m 0644 "$$f" debian/openooda/usr/lib/openooda/liboodar.a ;; \
+			*.a|*libooda-runtime.a*) \
+				install -m 0644 "$$f" debian/openooda/usr/lib/openooda/libooda-runtime.a ;; \
 			*) \
 				b=$$(basename "$$f" | sed -E 's/-linux-(x86_64|arm64)$$//'); \
 				install -m 0755 "$$f" "debian/openooda/usr/bin/$$b" ;; \

@@ -7,8 +7,8 @@ export OODAC_BIN
 OODA_READDIR ?= $(HOME)/.openooda:$(CURDIR):/tmp:/usr:/lib:/lib64
 OODA_WRITEDIR ?= $(CURDIR):/tmp
 OO_LIST_AMBIENT_QUOTA ?= 8589934592
-OODA_OODAR_ROOT ?= $(HOME)/.openooda/bin
-export OODA_OODAR_ROOT
+OODA_RUNTIME_ROOT ?= $(HOME)/.openooda/bin
+export OODA_RUNTIME_ROOT
 unexport OODA_OOSTD_ROOT
 OODA_STANDARD_ROOT ?= $(HOME)/.openooda/ooda-standard
 export OODA_STANDARD_ROOT
@@ -17,7 +17,7 @@ TR := .ooda-cache/test_refusal
 ENV := OO_LIST_AMBIENT_QUOTA=$(OO_LIST_AMBIENT_QUOTA) OO_LINT_ROOTS=$(CURDIR) \
 	OODA_COMPILER=$(OODA_COMPILER) OODAC_BIN=$(OODAC_BIN) \
 	OODA_FS_READDIR=$(OODA_READDIR) OODA_FS_WRITEDIR=$(OODA_WRITEDIR) \
-	OODA_OODAR_ROOT=$(OODA_OODAR_ROOT) OODA_STANDARD_ROOT=$(OODA_STANDARD_ROOT) OODA_NO_JAIL=1
+	OODA_RUNTIME_ROOT=$(OODA_RUNTIME_ROOT) OODA_STANDARD_ROOT=$(OODA_STANDARD_ROOT) OODA_NO_JAIL=1
 SRC := $(shell find . -name '*.oo' -not -path './.git/*' -not -path './.ooda-cache/*' -not -path './bin/*' -not -path './dist/*' | sort)
 
 .PHONY: all build test check clean

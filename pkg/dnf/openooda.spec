@@ -21,8 +21,8 @@ mkdir -p %{buildroot}/etc/profile.d
 for f in %{_sourcedir}/../dist/*-linux-*; do
   [ -f "$f" ] || continue
   case "$f" in
-    *.a|*liboodar.a*)
-      install -m 0644 "$f" %{buildroot}/usr/lib/openooda/liboodar.a ;;
+    *.a|*libooda-runtime.a*)
+      install -m 0644 "$f" %{buildroot}/usr/lib/openooda/libooda-runtime.a ;;
     *)
       b=$(basename "$f" | sed -E 's/-linux-(x86_64|arm64)$//')
       install -m 0755 "$f" "%{buildroot}/usr/bin/$b" ;;

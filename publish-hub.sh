@@ -8,8 +8,8 @@
 # openOODA-core, openOODA-system, and openOODA-apps). Named arguments
 # publish only those packages. For each package the script locates the
 # repo under $OODA_POLYROOT/openOODA-*/, builds it with `make build` when no
-# binary is present, stages it as <name>-linux-x86_64 (liboodar.a keeps
-# its name; liboodar-*.a slices and optional ooda-runtime-linux-x86_64 also stage
+# binary is present, stages it as <name>-linux-x86_64 (libooda-runtime.a keeps
+# its name; libooda-runtime-*.a slices and optional ooda-runtime-linux-x86_64 also stage
 # when built), regenerates the single master SHA256SUMS (+ SHA256SUMS.sig
 # when a minisign key is available), copies SHA256SUMS into the catalog
 # repo, and uploads everything in place to the single latest GitHub
@@ -19,7 +19,7 @@
 #
 # Env:
 #   OO_PROJECTS_ROOT  default $HOME/openOODA-src
-#   OPENOODA_HOME     default $HOME/.openooda (fallback for OODA_OODAR_ROOT/cards)
+#   OPENOODA_HOME     default $HOME/.openooda (fallback for OODA_RUNTIME_ROOT/cards)
 #   OODA_FS_READDIR   optional sandbox read roots passed to ooda-flasher
 #   OODA_FS_WRITEDIR  optional sandbox write roots passed to ooda-flasher
 #   OO_MINISIGN_KEY   path to minisign secret for SHA256SUMS.sig
@@ -100,12 +100,12 @@ find_repo() {  # $1 = package name → prints repo dir or nothing
 }
 
 # Binary basenames a repo may produce, in preference order. ooda-runtime's
-# product is the liboodar.a archive; the canonical names are tried first and
+# product is the libooda-runtime.a archive; the canonical names are tried first and
 # the retired oo* spellings kept as fallbacks for stale build trees.
 bin_candidates() {
   case "$1" in
     ooda-compiler)   printf 'ooda-compiler\noodac\n';;
-    ooda-runtime)    printf 'liboodar.a\n';;
+    ooda-runtime)    printf 'libooda-runtime.a\n';;
     ooda-language)   printf 'ooda-language\nooda-lsp\noolsp\n';;
     ooda-bridge)     printf 'ooda-bridge\nooda-mcp\noomcp\n';;
     ooda-filesystem) printf 'ooda-filesystem\nooda-filesystem-linux-x86_64\noofs\noofs-linux-x86_64\noocp\noocp-linux-x86_64\n';;
@@ -153,7 +153,7 @@ stage_pkg() {  # $1 = package name
     return 0
   fi
   bin="$(ensure_binary "$pkg")"
-  if [[ "$pkg" == "ooda-runtime" ]]; then asset="liboodar.a"; else asset="${pkg}-linux-x86_64"; fi
+  if [[ "$pkg" == "ooda-runtime" ]]; then asset="libooda-runtime.a"; else asset="${pkg}-linux-x86_64"; fi
   cp -f "$bin" "$STAGE/$asset"
   chmod 0644 "$STAGE/$asset"
   say "staged $asset <- $bin"
@@ -162,7 +162,7 @@ stage_pkg() {  # $1 = package name
   if [[ "$pkg" == "ooda-runtime" ]]; then
     local rdir ar arbase rtbin
     for rdir in "$repo/core/lib" "$repo/dist" "$repo/bin" "$repo/scripts/lib"; do
-      for ar in "$rdir"/liboodar-*.a; do
+      for ar in "$rdir"/libooda-runtime-*.a; do
         [[ -f "$ar" && -s "$ar" ]] || continue
         arbase="$(basename "$ar")"
         [[ -f "$STAGE/$arbase" ]] && continue
@@ -210,14 +210,14 @@ stage_images() {
     fi
   fi
 
-  # 2. Stage ooda-buildbox-x86_64.tar.gz (only when core buildbox toolchain + liboodar.a are staged)
-  if [[ -f "$STAGE/ooda-linux-x86_64" && -f "$STAGE/ooda-compiler-linux-x86_64" && -f "$STAGE/liboodar.a" ]]; then
+  # 2. Stage ooda-buildbox-x86_64.tar.gz (only when core buildbox toolchain + libooda-runtime.a are staged)
+  if [[ -f "$STAGE/ooda-linux-x86_64" && -f "$STAGE/ooda-compiler-linux-x86_64" && -f "$STAGE/libooda-runtime.a" ]]; then
     local bb_dir="$STAGE/buildbox-root"
     mkdir -p "$bb_dir/bin" "$bb_dir/lib" "$bb_dir/ooda-standard"
     for c in ooda ooda-compiler ooda-package ooda-language ooda-bridge ooda-verify ooda-container ooda-shell; do
       [[ -f "$STAGE/${c}-linux-x86_64" ]] && cp -f "$STAGE/${c}-linux-x86_64" "$bb_dir/bin/$c" && chmod 0755 "$bb_dir/bin/$c"
     done
-    cp -f "$STAGE/liboodar.a" "$bb_dir/lib/liboodar.a"
+    cp -f "$STAGE/libooda-runtime.a" "$bb_dir/lib/libooda-runtime.a"
     [[ -f "$ROOT/openOODA/openOODA/AGENTS.md" ]] && cp -f "$ROOT/openOODA/openOODA/AGENTS.md" "$bb_dir/AGENTS.md"
     ( cd "$bb_dir" && tar --sort=name --mtime='UTC 2026-01-01' --owner=0 --group=0 --numeric-owner -cf - . | gzip -n > "$STAGE/ooda-buildbox-x86_64.tar.gz" )
     rm -rf "$bb_dir"
@@ -257,7 +257,7 @@ stage_images() {
 
 is_canonical_asset() {
   case "$1" in
-    SHA256SUMS|SHA256SUMS.sig|cap_table.oot|liboodar.a|liboodar-*.a|\
+    SHA256SUMS|SHA256SUMS.sig|cap_table.oot|libooda-runtime.a|libooda-runtime-*.a|\
     ooda-standard-linux-x86_64.tar.gz|openooda-codex-linux-x86_64.tar.gz|\
     ooda-os-x86_64.iso|ooda-buildbox-x86_64.tar.gz|ooda-linux-x86_64|\
     openooda-linux-x86_64)
@@ -324,7 +324,7 @@ ensure_single_release() {
 }
 
 prune_assets() {
-  # Allowlist hygiene: the pool keeps exactly SHA256SUMS*, liboodar.a, and
+  # Allowlist hygiene: the pool keeps exactly SHA256SUMS*, libooda-runtime.a, and
   # <pkg>-linux-x86_64 binaries. Everything else — legacy per-file .sha256
   # sidecars, retired bare stems (cli, tui, ooarchitect, oodo, and the
   # pre-rename opm/ooda-lsp/ooda-mcp spellings) — is deleted so the master

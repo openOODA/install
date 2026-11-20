@@ -16,8 +16,8 @@ package() {
     for f in "${srcdir}/../dist/"*-linux-*; do
         [ -f "$f" ] || continue
         case "$f" in
-            *.a|*liboodar.a*)
-                install -m 0644 "$f" "${pkgdir}/usr/lib/openooda/liboodar.a" ;;
+            *.a|*libooda-runtime.a*)
+                install -m 0644 "$f" "${pkgdir}/usr/lib/openooda/libooda-runtime.a" ;;
             *)
                 b=$(basename "$f" | sed -E 's/-linux-(x86_64|arm64)$//')
                 install -m 0755 "$f" "${pkgdir}/usr/bin/$b" ;;

@@ -137,7 +137,7 @@ jobs:
           while read -r pkg repo sha; do
             old="$(jq -r --arg k "$repo" '.[$k] // empty' "$LEDGER")"
             asset="$pkg-linux-x86_64"
-            [ "$pkg" = "ooda-runtime" ] && asset="liboodar.a"
+            [ "$pkg" = "ooda-runtime" ] && asset="libooda-runtime.a"
             [ "$pkg" = "ooda-standard" ] && asset="ooda-standard-linux-x86_64.tar.gz"
             need=0
             if [ -n "$FORCED" ] && [ "$FORCED" != "all" ]; then
@@ -165,12 +165,12 @@ jobs:
           TAG="$(gh api repos/$RELEASE_REPO/releases/latest -q .tag_name)"
           mkdir -p "$BOOTSTRAP"
           gh release download "$TAG" -R "$RELEASE_REPO" -D "$BOOTSTRAP" \
-            --pattern 'ooda-compiler-linux-x86_64' --pattern 'liboodar.a' --clobber
+            --pattern 'ooda-compiler-linux-x86_64' --pattern 'libooda-runtime.a' --clobber
           mv -f "$BOOTSTRAP/ooda-compiler-linux-x86_64" "$BOOTSTRAP/ooda-compiler"
           chmod +x "$BOOTSTRAP/ooda-compiler"
-          cp -f "$BOOTSTRAP/liboodar.a" "$BOOTSTRAP/liboodar-core.a"
+          cp -f "$BOOTSTRAP/libooda-runtime.a" "$BOOTSTRAP/libooda-runtime-core.a"
           mkdir -p "$HOME/.openooda/bin" "$WORK_ROOT"
-          cp -f "$BOOTSTRAP/liboodar.a" "$HOME/.openooda/bin/liboodar.a"
+          cp -f "$BOOTSTRAP/libooda-runtime.a" "$HOME/.openooda/bin/libooda-runtime.a"
           cp -f "$BOOTSTRAP/ooda-compiler" "$HOME/.openooda/bin/ooda-compiler"
           git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/openOODA-core/ooda-standard.git" "$BOOTSTRAP/ooda-standard" >/dev/null 2>&1
           ln -sfn "$BOOTSTRAP/ooda-standard" "$WORK_ROOT/ooda-standard"
@@ -185,7 +185,7 @@ jobs:
           bin_candidates() {
             case "$1" in
               ooda-compiler)   printf 'ooda-compiler\noodac\n';;
-              ooda-runtime)    printf 'liboodar.a\n';;
+              ooda-runtime)    printf 'libooda-runtime.a\n';;
               ooda-language)   printf 'ooda-language\nooda-lsp\noolsp\n';;
               ooda-bridge)     printf 'ooda-bridge\nooda-mcp\noomcp\n';;
               ooda-filesystem) printf 'ooda-filesystem\nooda-filesystem-linux-x86_64\noofs\noofs-linux-x86_64\noocp\noocp-linux-x86_64\n';;
@@ -242,7 +242,7 @@ jobs:
               done
             done < <(bin_candidates "$pkg")
             if [ -n "$bin" ]; then
-              asset="$pkg-linux-x86_64"; [ "$pkg" = "ooda-runtime" ] && asset="liboodar.a"
+              asset="$pkg-linux-x86_64"; [ "$pkg" = "ooda-runtime" ] && asset="libooda-runtime.a"
               cp -f "$WORK_ROOT/$pkg/$bin" "$OUT_ROOT/$asset"
               if [ "$pkg" != "ooda-runtime" ]; then strip --strip-all "$OUT_ROOT/$asset"; fi
               if [ "$pkg" = "ooda-runtime" ] && [ -f "$WORK_ROOT/$pkg/dist/ooda-runtime" ]; then
@@ -274,7 +274,7 @@ jobs:
           : > /tmp/keep-assets.txt
           while read -r pkg; do
             asset="$pkg-linux-x86_64"
-            [ "$pkg" = "ooda-runtime" ] && asset="liboodar.a"
+            [ "$pkg" = "ooda-runtime" ] && asset="libooda-runtime.a"
             [ "$pkg" = "ooda-standard" ] && asset="ooda-standard-linux-x86_64.tar.gz"
             printf '%s\n' "$asset" >> /tmp/keep-assets.txt
           done < /tmp/pkgs.txt

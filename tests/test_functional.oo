@@ -36,7 +36,7 @@ fn t_install(fs: &FsReadCap) -> Int {
     let src: String = match sr { Ok(s) => s, Err(_) => "" };
     p = t_expect(sr.is_ok() && ins_script_shape(src), "install.sh fail-closed shape", p);
     p = t_expect(ins_flags_ok(src), "all eight canonical flags parsed + documented", p);
-    p = t_expect(ins_bins_ok(src), "L0 binary map ooda..ooda-verify + liboodar.a", p);
+    p = t_expect(ins_bins_ok(src), "L0 binary map ooda..ooda-verify + libooda-runtime.a", p);
     p = t_expect(ins_sums_ok(src), "master SHA256SUMS gate wired", p);
     p = t_expect(ins_ver_aligned(src, ver), "embedded fallback == VERSION", p);
     p = t_expect(ins_repo_ok(fs), "repo conformance verdict", p);

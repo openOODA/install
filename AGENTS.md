@@ -16,7 +16,7 @@ its contract before any release advances.
    operand refuses (`--pkg --group` exits 1), unknown flags exit 1, and
    trailing positionals after `--` refuse.
 2. **L0 binary map** — `REPOS`/`BINARIES` bind `ooda`, `ooda-compiler`,
-   `ooda-runtime`→`liboodar.a`, `ooda-package`, `ooda-language`,
+   `ooda-runtime`→`libooda-runtime.a`, `ooda-package`, `ooda-language`,
    `ooda-bridge`, `ooda-verify`; the install loop
    `for key in ooda ooda-compiler ooda-runtime ooda-package ooda-language ooda-bridge ooda-verify`
    is the canonical order. `ooda-standard` ships as
@@ -47,7 +47,7 @@ its contract before any release advances.
 - `core/install_script.oo` — pure-source contracts: `ins_script_shape`
   (shebang + `set -euo pipefail` + `do_install` + `ensure_sysdep`),
   `ins_flags_ok` (all 8 canonical flags parsed and documented),
-  `ins_bins_ok` (L0 map + `liboodar.a` + install loop), `ins_sums_ok`
+  `ins_bins_ok` (L0 map + `libooda-runtime.a` + install loop), `ins_sums_ok`
   (SHA256SUMS channel + refusal strings + zero `sums_lookup` call sites),
   `ins_ver_aligned` (fallback == VERSION), `ins_script_ok` fold.
 - `tests/test_functional.oo` — 10 positive assertions on the shipped tree.

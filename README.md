@@ -8,7 +8,7 @@ Universal installer, OS ISO & Buildbox distribution hub, and native package mana
 curl -fsSL https://openOODA.org/install.sh | bash
 ```
 
-Installs the `L0` core toolchain (`ooda`, `ooda-compiler`, `ooda-runtime` (`liboodar.a`), `ooda-package`, `ooda-language`, `ooda-bridge`, `ooda-verify`, and the `ooda-standard` library tree) into `~/.openooda/bin` and verifies every binary against [`SHA256SUMS`](https://github.com/openOODA/install/releases/download/hub/SHA256SUMS).
+Installs the `L0` core toolchain (`ooda`, `ooda-compiler`, `ooda-runtime` (`libooda-runtime.a`), `ooda-package`, `ooda-language`, `ooda-bridge`, `ooda-verify`, and the `ooda-standard` library tree) into `~/.openooda/bin` and verifies every binary against [`SHA256SUMS`](https://github.com/openOODA/install/releases/download/hub/SHA256SUMS).
 
 `ooda-standard` ships the expanded scientific & mathematical discovery library: `ooda-standard/core/math/{exact,geometry,blas,fft,algebra,graph_topology}/...`, `ooda-standard/core/proofs/...`, `ooda-standard/core/science/{phys,chem,bio,comm,econ}/...`, frontier AI-for-science `ooda-standard/core/app/ai/...`, 2D/3D engine physics `ooda-standard/core/app/ui/game_engine/...` (`collision_{aabb,circle,gjk,sat}` + `ecs_*`), `ooda-standard/core/collection/...`, and `ooda-standard/sec/{hash,capability,pqc,symmetric}/...`.
 

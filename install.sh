@@ -154,17 +154,17 @@ _log() { printf '[%s] %s\n' "$(date -Iseconds 2>/dev/null || date)" "$*" >&3 2>/
 declare -A REPOS=([ooda]=ooda [ooda-compiler]=ooda-compiler [ooda-runtime]=ooda-runtime [ooda-package]=ooda-package [ooda-language]=ooda-language [ooda-bridge]=ooda-bridge [ooda-verify]=ooda-verify)
 # Dest names match the canonical L0 binary names. ASSETS is the release
 # stem when it differs: the hub publishes <pkg>-linux-x86_64 per binary and
-# liboodar.a verbatim; every asset verifies against the single master
+# libooda-runtime.a verbatim; every asset verifies against the single master
 # SHA256SUMS at the install release, not per-file .sha256 sidecars.
-declare -A BINARIES=([ooda]=ooda [ooda-compiler]=ooda-compiler [ooda-runtime]=liboodar.a [ooda-package]=ooda-package [ooda-language]=ooda-language [ooda-bridge]=ooda-bridge [ooda-verify]=ooda-verify)
-declare -A ASSETS=([ooda-runtime]=liboodar.a)
+declare -A BINARIES=([ooda]=ooda [ooda-compiler]=ooda-compiler [ooda-runtime]=libooda-runtime.a [ooda-package]=ooda-package [ooda-language]=ooda-language [ooda-bridge]=ooda-bridge [ooda-verify]=ooda-verify)
+declare -A ASSETS=([ooda-runtime]=libooda-runtime.a)
 # Binary-pool packages whose hub artifact is NOT a plain
 # <name>-linux-x86_64 executable. The pool ships 69 plain binaries plus the
 # ooda-standard source archive (the ISO, buildbox, and codex extras ship
 # beside them). A group profile that names one of these must resolve to its
 # real asset instead of failing on "no SHA256SUMS entry for
 # <name>-linux-x86_64". ooda-runtime is absent on purpose: it ships as
-# liboodar.a and is owned by install_component (the L0 path), never by the pool.
+# libooda-runtime.a and is owned by install_component (the L0 path), never by the pool.
 declare -A PKG_ASSET=([ooda-standard]="ooda-standard-linux-x86_64.tar.gz")
 # Install strategy: "binary" (default) lands an executable in $BIN_DIR;
 # "archive" unpacks a verified tarball into its own runtime root.
@@ -335,7 +335,7 @@ print_preamble() {
   fi
   printf '    ooda           ~/.openooda/bin/ooda\n'
   printf '    ooda-compiler  ~/.openooda/bin/ooda-compiler\n'
-  printf '    ooda-runtime   ~/.openooda/bin/liboodar.a\n'
+  printf '    ooda-runtime   ~/.openooda/bin/libooda-runtime.a\n'
   printf '    ooda-standard  ~/.openooda/ooda-standard\n'
   printf '    ooda-package   ~/.openooda/bin/ooda-package\n'
   printf '    ooda-language  ~/.openooda/bin/ooda-language\n'
@@ -486,7 +486,7 @@ asset_stem() {
 }
 
 # Candidate asset basenames. The hub publishes <pkg>-linux-x86_64 per
-# binary; ooda-runtime ships the bare liboodar.a archive name.
+# binary; ooda-runtime ships the bare libooda-runtime.a archive name.
 asset_names() {
   local key="$1" stem bin
   stem="$(asset_stem "$key")"
@@ -1289,28 +1289,28 @@ install_ooda_compiler_from_source() {
 install_ooda_runtime_from_source() {
   printf '  %s%s%s (from source)\n' "$BOLD" "ooda-runtime" "$RESET"
   if [[ "$DRY_RUN" == "1" ]]; then
-    ok "[dry-run] would build liboodar*.a via make"
+    ok "[dry-run] would build libooda-runtime*.a via make"
     INSTALLED+=("ooda-runtime")
     return 0
   fi
-  step_status "building liboodar*.a from source"
+  step_status "building libooda-runtime*.a from source"
   local log="$OPENOODA_HOME/build-ooda-runtime.log" jobs
   jobs=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
   if ( cd "$SRC_DIR/openOODA-core/ooda-runtime" && make -j"$jobs" build >"$log" 2>&1 ); then
-    [[ -s "$SRC_DIR/openOODA-core/ooda-runtime/core/lib/liboodar.a" ]] || { err "ooda-runtime: make succeeded but liboodar.a is missing"; return 1; }
-    # ooda-runtime may emit all 12 liboodar*.a archives; install every one
-    # that was built (liboodar.a alone is the floor).
+    [[ -s "$SRC_DIR/openOODA-core/ooda-runtime/core/lib/libooda-runtime.a" ]] || { err "ooda-runtime: make succeeded but libooda-runtime.a is missing"; return 1; }
+    # ooda-runtime may emit all 14 libooda-runtime*.a archives; install every one
+    # that was built (libooda-runtime.a alone is the floor).
     local lib base
-    for lib in "$SRC_DIR"/openOODA-core/ooda-runtime/core/lib/liboodar*.a; do
+    for lib in "$SRC_DIR"/openOODA-core/ooda-runtime/core/lib/libooda-runtime*.a; do
       [[ -f "$lib" ]] || continue
       base="$(basename "$lib")"
       cp -f "$lib" "$BIN_DIR/$base.tmp" 2>/dev/null \
         && mv -f "$BIN_DIR/$base.tmp" "$BIN_DIR/$base" 2>/dev/null \
         && chmod +x "$BIN_DIR/$base" 2>/dev/null
     done
-    local size; size=$(wc -c < "$BIN_DIR/liboodar.a" 2>/dev/null || echo 0)
+    local size; size=$(wc -c < "$BIN_DIR/libooda-runtime.a" 2>/dev/null || echo 0)
     local mb; mb=$(awk -v s="$size" 'BEGIN{printf "%.1f", s/1048576}')
-    ok "built liboodar.a from source (${mb} MB)"; INSTALLED+=("ooda-runtime")
+    ok "built libooda-runtime.a from source (${mb} MB)"; INSTALLED+=("ooda-runtime")
     BYTES=$((BYTES + size))
   else
     err "ooda-runtime: make failed — last 10 lines of $log:"
@@ -1897,7 +1897,7 @@ do_install() {
     fi
   fi
 
-  # ooda-runtime is liboodar.a (install_component above). Do not also clone
+  # ooda-runtime is libooda-runtime.a (install_component above). Do not also clone
   # sources — one repo, one artifact.
 
   # step 3c: orientation codex (MCP servers fail closed without OODACODEX).
