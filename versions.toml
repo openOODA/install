@@ -30,7 +30,7 @@ ooda-verify = "v0.7.0"
 # @system — openOODA-system (37)
 ooda-archive = "v0.3.0"
 ooda-authority = "v0.5.0"
-ooda-boot = "v0.7.0"
+ooda-boot = "v0.8.0"
 ooda-bus = "v0.4.0"
 ooda-compositor = "v0.5.0"
 ooda-connect = "v0.7.0"
