@@ -11,7 +11,7 @@
 
 [packages]
 # @core — openOODA-core (15)
-ooda = "v2.16.0"
+ooda = "v2.17.0"
 ooda-binary = "v0.2.0"
 ooda-bridge = "v0.7.0"
 ooda-build = "v0.2.0"
