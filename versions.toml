@@ -24,7 +24,7 @@ ooda-package = "v2.15.0"
 ooda-provenance = "v0.3.0"
 ooda-runtime = "v5.7.0"
 ooda-sign = "v0.3.0"
-ooda-standard = "v2.2.0"
+ooda-standard = "v2.2.1"
 ooda-verify = "v0.7.0"
 
 # @system — openOODA-system (37)
