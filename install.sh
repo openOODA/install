@@ -278,6 +278,10 @@ dump_results() {
     if [[ ${#SKIPPED[@]} -gt 0 ]]; then
       for x in "${SKIPPED[@]}"; do printf '  %q\n' "$x"; done
     fi
+    printf ')\nMISSING_DEPS=(\n'
+    if [[ ${#MISSING_DEPS[@]} -gt 0 ]]; then
+      for x in "${MISSING_DEPS[@]}"; do printf '  %q\n' "$x"; done
+    fi
     printf ')\nBYTES=%s\n' "${BYTES:-0}"
   } > "$tmp" 2>/dev/null; then
     err "dump_results: failed to write state to $tmp"
@@ -349,30 +353,72 @@ print_preamble() {
   fi
 }
 
+sysdep_install_hint() {
+  local pm_pkg="$1"
+  if [[ "${OS:-linux}" == "darwin" && "$pm_pkg" == "clang" ]]; then
+    printf 'xcode-select --install'
+  elif command -v apt-get >/dev/null 2>&1; then
+    printf 'sudo apt-get install -y %s' "$pm_pkg"
+  elif command -v dnf >/dev/null 2>&1; then
+    printf 'sudo dnf install -y %s' "$pm_pkg"
+  elif command -v pacman >/dev/null 2>&1; then
+    printf 'sudo pacman -S --needed %s' "$pm_pkg"
+  elif command -v apk >/dev/null 2>&1; then
+    printf 'sudo apk add %s' "$pm_pkg"
+  elif command -v zypper >/dev/null 2>&1; then
+    printf 'sudo zypper install -y %s' "$pm_pkg"
+  elif command -v brew >/dev/null 2>&1; then
+    printf 'brew install %s' "$pm_pkg"
+  else
+    printf 'install %s using your package manager' "$pm_pkg"
+  fi
+}
+
 ensure_sysdep() {
-  local cmd="$1" pm_pkg="$2"
+  local cmd="$1" pm_pkg="$2" mode="${3:-required}" hint
   command -v "$cmd" >/dev/null 2>&1 && { ok "$cmd present"; return 0; }
+  hint=$(sysdep_install_hint "$pm_pkg")
   if [[ "$(id -u 2>/dev/null || echo 1)" != "0" ]]; then
-    err "$cmd missing and not root — install it, then re-run (e.g. sudo apt-get install -y $pm_pkg)"
+    if [[ "$mode" == "optional" ]]; then
+      warn "$cmd not found — continuing binary install (install later with: $hint)"
+      MISSING_DEPS+=("$cmd ($hint)")
+      return 0
+    fi
+    err "$cmd missing and not root — install it, then re-run (e.g. $hint)"
     return 1
   fi
   info "installing $pm_pkg (provides $cmd) ..."
   if command -v apt-get >/dev/null 2>&1; then
-    apt-get update -qq 2>&1 | tail -n 1
-    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "$pm_pkg" 2>&1 | tail -n 1
+    apt-get update -qq 2>&1 | tail -n 1 || true
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "$pm_pkg" 2>&1 | tail -n 1 || true
   elif command -v dnf >/dev/null 2>&1; then
-    dnf install -y -q "$pm_pkg" 2>&1 | tail -n 1
+    dnf install -y -q "$pm_pkg" 2>&1 | tail -n 1 || true
   elif command -v pacman >/dev/null 2>&1; then
-    pacman -Sy --noconfirm --needed "$pm_pkg" 2>&1 | tail -n 1
+    pacman -Sy --noconfirm --needed "$pm_pkg" 2>&1 | tail -n 1 || true
   elif command -v apk >/dev/null 2>&1; then
-    apk add --no-cache "$pm_pkg" 2>&1 | tail -n 1
+    apk add --no-cache "$pm_pkg" 2>&1 | tail -n 1 || true
+  elif command -v zypper >/dev/null 2>&1; then
+    zypper --non-interactive install "$pm_pkg" 2>&1 | tail -n 1 || true
   elif command -v brew >/dev/null 2>&1; then
-    brew install "$pm_pkg" 2>&1 | tail -n 1
+    brew install "$pm_pkg" 2>&1 | tail -n 1 || true
   else
+    if [[ "$mode" == "optional" ]]; then
+      warn "no supported package manager to install $pm_pkg ($cmd) — continuing binary install"
+      MISSING_DEPS+=("$cmd ($hint)")
+      return 0
+    fi
     err "no supported package manager (need $cmd) — install $pm_pkg, then re-run"
     return 1
   fi
-  command -v "$cmd" >/dev/null 2>&1 || { err "$cmd still missing after installing $pm_pkg"; return 1; }
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    if [[ "$mode" == "optional" ]]; then
+      warn "$cmd still missing after installing $pm_pkg — continuing binary install"
+      MISSING_DEPS+=("$cmd ($hint)")
+      return 0
+    fi
+    err "$cmd still missing after installing $pm_pkg"
+    return 1
+  fi
   ok "$cmd installed via $pm_pkg"
 }
 
@@ -381,9 +427,12 @@ pre_flight() {
   if ! command -v curl >/dev/null 2>&1; then
     err "pre-flight: curl not found in PATH (required)"; need_fail=1
   fi
-  for bin in git python3 clang; do
+  if ! command -v clang >/dev/null 2>&1; then
+    warn "pre-flight: clang not found (clang >= 15 needed for 'ooda-compiler build'; optional for prebuilt binary install)"
+  fi
+  for bin in git python3; do
     if ! command -v "$bin" >/dev/null 2>&1; then
-      warn "pre-flight: $bin not found (clang >= 15 recommended for sovereign LLVM compiler backend)"
+      warn "pre-flight: $bin not found (optional)"
     fi
   done
   if ! command -v sha256sum >/dev/null 2>&1 && ! command -v shasum >/dev/null 2>&1; then
@@ -642,7 +691,9 @@ whatnew() {
 
 INSTALLED=()
 SKIPPED=()
+MISSING_DEPS=()
 BYTES=0
+INSTALL_RC=0
 
 # dest file, sidecar file, component key. 0 = match; 1 = refuse.
 sha256_check() {
@@ -1807,12 +1858,12 @@ do_install() {
     skip "[dry-run] skipping sysdep ensure (clang, git)"
   elif [[ "$FROM_SOURCE" == "1" ]]; then
     step_status "ensuring make + clang are installed (from-source builds)"
-    ensure_sysdep make make || return 1
-    ensure_sysdep clang clang || return 1
+    ensure_sysdep make make required || return 1
+    ensure_sysdep clang clang required || return 1
   else
-    step_status "ensuring clang/git are installed"
-    ensure_sysdep clang clang || return 1
-    ensure_sysdep git git || return 1
+    step_status "checking optional build deps (clang, git)"
+    ensure_sysdep clang clang optional
+    ensure_sysdep git git optional
   fi
 
   # step 2: components
@@ -2071,6 +2122,12 @@ print_summary() {
     printf '  %s!%s no components installed\n' "$YELLOW" "$RESET"
   fi
   [[ ${#SKIPPED[@]} -gt 0 ]] && printf '  %s✓%s skipped:     %s\n' "$GREEN" "$RESET" "${SKIPPED[*]}"
+  if [[ ${#MISSING_DEPS[@]} -gt 0 ]]; then
+    local dep
+    for dep in "${MISSING_DEPS[@]}"; do
+      printf '  %s!%s optional dep missing: %s (needed to compile .oo sources)\n' "$YELLOW" "$RESET" "$dep"
+    done
+  fi
   if [[ "${FROM_SOURCE:-0}" == "1" ]]; then
     [[ $BYTES -gt 0 ]] && printf '  %s✓%s built:        %s\n' "$GREEN" "$RESET" "$(awk -v b="$BYTES" 'BEGIN{printf "%.1f MB", b/1048576}')"
   else
@@ -2079,7 +2136,9 @@ print_summary() {
   printf '  %s✓%s prefix:      %s\n' "$GREEN" "$RESET" "$OPENOODA_HOME"
   printf '  %s✓%s time:        %ss\n' "$GREEN" "$RESET" "$ELAPSED"
   if [[ "$DRY_RUN" != "1" ]]; then
-    if [[ "${NO_MODIFY_SHELL:-0}" -eq 1 ]]; then
+    if [[ "${INSTALL_RC:-1}" -ne 0 ]]; then
+      printf '  %s!%s shell rc:    not updated (install exited early)\n' "$YELLOW" "$RESET"
+    elif [[ "${NO_MODIFY_SHELL:-0}" -eq 1 ]]; then
       printf '  %s✓%s shell rc:    skipped (--no-modify-shell)\n' "$GREEN" "$RESET"
     else
       printf '  %s✓%s shell rc:    updated (.bak.openooda backups)\n' "$GREEN" "$RESET"
@@ -2221,6 +2280,7 @@ rm -f "$STATUS_FILE" 2>/dev/null || true
 # the user never again sees the silent "no components installed" lie.
 INSTALLED=()
 SKIPPED=()
+MISSING_DEPS=()
 BYTES=0
 if [[ ! -r "$RESULTS_FILE" ]]; then
   err "install state file is missing or unreadable: $RESULTS_FILE"
