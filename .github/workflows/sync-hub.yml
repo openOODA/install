@@ -165,16 +165,15 @@ jobs:
           TAG="$(gh api repos/$RELEASE_REPO/releases/latest -q .tag_name)"
           mkdir -p "$BOOTSTRAP"
           gh release download "$TAG" -R "$RELEASE_REPO" -D "$BOOTSTRAP" \
-            --pattern 'ooda-compiler-linux-x86_64' --pattern 'libooda-runtime.a' --clobber
+            --pattern 'ooda-compiler-linux-x86_64' --pattern 'libooda-runtime*.a' --clobber
           mv -f "$BOOTSTRAP/ooda-compiler-linux-x86_64" "$BOOTSTRAP/ooda-compiler"
           chmod +x "$BOOTSTRAP/ooda-compiler"
-          cp -f "$BOOTSTRAP/libooda-runtime.a" "$BOOTSTRAP/libooda-runtime-core.a"
           mkdir -p "$HOME/.openooda/bin" "$WORK_ROOT"
-          cp -f "$BOOTSTRAP/libooda-runtime.a" "$HOME/.openooda/bin/libooda-runtime.a"
+          cp -f "$BOOTSTRAP"/libooda-runtime*.a "$HOME/.openooda/bin/"
           cp -f "$BOOTSTRAP/ooda-compiler" "$HOME/.openooda/bin/ooda-compiler"
-          git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/openOODA-core/ooda-standard.git" "$BOOTSTRAP/ooda-standard" >/dev/null 2>&1
-          ln -sfn "$BOOTSTRAP/ooda-standard" "$WORK_ROOT/ooda-standard"
-          test -f "$BOOTSTRAP/ooda-standard/core/anchor.oo" && echo "bootstrap ready"
+          git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/openOODA-core/ooda-standard.git" "$HOME/.openooda/ooda-standard" >/dev/null 2>&1
+          ln -sfn "$HOME/.openooda/ooda-standard" "$WORK_ROOT/ooda-standard"
+          test -f "$HOME/.openooda/ooda-standard/core/anchor.oo" && echo "bootstrap ready"
 
       - name: Build changed repos and stage stripped binaries
         if: steps.resolve.outputs.skip == 'false'
@@ -227,11 +226,11 @@ jobs:
             fi
             if [ -f Makefile ]; then
               OODA_COMPILER="$BOOTSTRAP/ooda-compiler" OODA_COMPILER_BIN="$BOOTSTRAP/ooda-compiler" \
-                OODA_STANDARD_ROOT="$BOOTSTRAP/ooda-standard" OODA_RUNTIME_ROOT="$BOOTSTRAP" \
+                OODA_STANDARD_ROOT="$HOME/.openooda/ooda-standard" OODA_RUNTIME_ROOT="$HOME/.openooda/bin" \
                 BOOTSTRAP_FIXED_POINT=0 OO_LIST_AMBIENT_QUOTA=34359738368 OODA_NO_JAIL=1 \
                 make build >/dev/null 2>&1 || \
               OODA_COMPILER="$BOOTSTRAP/ooda-compiler" OODA_COMPILER_BIN="$BOOTSTRAP/ooda-compiler" \
-                OODA_STANDARD_ROOT="$BOOTSTRAP/ooda-standard" OODA_RUNTIME_ROOT="$BOOTSTRAP" \
+                OODA_STANDARD_ROOT="$HOME/.openooda/ooda-standard" OODA_RUNTIME_ROOT="$HOME/.openooda/bin" \
                 BOOTSTRAP_FIXED_POINT=0 OO_LIST_AMBIENT_QUOTA=34359738368 OODA_NO_JAIL=1 \
                 make >/dev/null 2>&1 || true
             fi
@@ -285,6 +284,10 @@ jobs:
             "openooda-codex-linux-x86_64.tar.gz" \
             "ooda-os-x86_64.iso" \
             "ooda-buildbox-x86_64.tar.gz" >> /tmp/keep-assets.txt
+          for f in /tmp/prev-out/libooda-runtime*.a; do
+            [ -e "$f" ] || continue
+            printf '%s\n' "$(basename "$f")" >> /tmp/keep-assets.txt
+          done
           for f in /tmp/prev-out/*; do
             [ -e "$f" ] || continue
             base="$(basename "$f")"
