@@ -64,7 +64,7 @@ ooda-text = "v0.4.0"
 ooda-theme = "v0.3.0"
 ooda-vault = "v0.5.0"
 ooda-version = "v0.2.0"
-ooda-web = "v0.4.0"
+ooda-web = "v0.5.0"
 
 # @apps — openOODA-apps (18)
 ooda-arcade = "v0.2.0"
