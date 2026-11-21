@@ -36,9 +36,9 @@ jobs:
       GH_TOKEN: ${{ secrets.OODA_ORG_TOKEN }}
       RELEASE_REPO: openOODA/install
       CATALOG_REPO: openOODA/catalog
-      BOOTSTRAP: /tmp/ooda-bootstrap
-      WORK_ROOT: /tmp/build-work
-      OUT_ROOT: /tmp/hub-out
+      BOOTSTRAP: $HOME/.openooda/bootstrap
+      WORK_ROOT: $HOME/.openooda/build-work
+      OUT_ROOT: $HOME/.openooda/hub-out
     steps:
       - name: Checkout install and catalog
         uses: actions/checkout@v4
@@ -225,12 +225,18 @@ jobs:
               fi
             fi
             if [ -f Makefile ]; then
+              # Every product builds against the published runtime libraries.
+              # ooda-runtime is the exception: it packs those libraries itself,
+              # so its root is its own tree and the published archives are only
+              # the bootstrap it starts from.
+              RUNTIME_ENV="OODA_RUNTIME_ROOT=$HOME/.openooda/bin"
+              [ "$pkg" = "ooda-runtime" ] && RUNTIME_ENV="BOOTSTRAP_RUNTIME_ROOT=$HOME/.openooda/bin"
               OODA_COMPILER="$BOOTSTRAP/ooda-compiler" OODA_COMPILER_BIN="$BOOTSTRAP/ooda-compiler" \
-                OODA_STANDARD_ROOT="$HOME/.openooda/ooda-standard" OODA_RUNTIME_ROOT="$HOME/.openooda/bin" \
+                OODA_STANDARD_ROOT="$HOME/.openooda/ooda-standard" $RUNTIME_ENV \
                 BOOTSTRAP_FIXED_POINT=0 OO_LIST_AMBIENT_QUOTA=34359738368 OODA_NO_JAIL=1 \
                 make build >/dev/null 2>&1 || \
               OODA_COMPILER="$BOOTSTRAP/ooda-compiler" OODA_COMPILER_BIN="$BOOTSTRAP/ooda-compiler" \
-                OODA_STANDARD_ROOT="$HOME/.openooda/ooda-standard" OODA_RUNTIME_ROOT="$HOME/.openooda/bin" \
+                OODA_STANDARD_ROOT="$HOME/.openooda/ooda-standard" $RUNTIME_ENV \
                 BOOTSTRAP_FIXED_POINT=0 OO_LIST_AMBIENT_QUOTA=34359738368 OODA_NO_JAIL=1 \
                 make >/dev/null 2>&1 || true
             fi
