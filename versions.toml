@@ -22,9 +22,9 @@ ooda-interface = "v0.3.0"
 ooda-language = "v0.5.0"
 ooda-package = "v2.16.0"
 ooda-provenance = "v0.3.0"
-ooda-runtime = "v5.12.1"
+ooda-runtime = "v5.13.0"
 ooda-sign = "v0.3.0"
-ooda-standard = "v2.9.1"
+ooda-standard = "v2.10.0"
 ooda-verify = "v0.12.0"
 
 # @system — openOODA-system (37)
