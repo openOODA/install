@@ -41,7 +41,7 @@ XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 # fallback below is this script's own version at authoring time, kept in
 # sync by the bump bot (see bump-version.yml), so offline curl|bash shows
 # the right version. Display-only: downloads always use releases/latest.
-VERSION="$(cat "$(dirname "${BASH_SOURCE[0]:-$0}")/VERSION" 2>/dev/null || curl -sSL --max-time 3 "https://raw.githubusercontent.com/openOODA/install/master/VERSION" 2>/dev/null || echo "2.1.1")"
+VERSION="$(cat "$(dirname "${BASH_SOURCE[0]:-$0}")/VERSION" 2>/dev/null || curl -sSL --max-time 3 "https://raw.githubusercontent.com/openOODA/install/master/VERSION" 2>/dev/null || echo "2.2.0")"
 VERSION="$(printf '%s' "$VERSION" | tr -d '\r\n ' | head -c 20)"
 [[ -z "$VERSION" ]] && VERSION="?"
 
@@ -73,7 +73,7 @@ Options:
   --group @GROUP      install a Fedora-style group profile from
                       catalog/groups.oot across openOODA-core, openOODA-system,
                       and openOODA-apps (@core @system @apps @games @desktop
-                      @workstation @all = 70 packages); repeatable
+                      @workstation @all = 69 packages); repeatable
   NO_COLOR=1          disable color
   OPENOODA_DRY_RUN=1  same as --dry-run
   OPENOODA_YES=1      same as --yes
@@ -1008,7 +1008,7 @@ install_component() {
 # package ships as <name>-linux-x86_64 beside the seven L0 components, all
 # covered by the one master SHA256SUMS. --pkg installs one package;
 # --group expands a Fedora-style @group profile from catalog/groups.oot
-# (@core @system @apps @games @desktop @workstation @all; @all = 70 pkgs).
+# (@core @system @apps @games @desktop @workstation @all; @all = 69 pkgs).
 
 GROUPS_OOT=""
 GROUPS_OOT_TRIED=0

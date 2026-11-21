@@ -17,7 +17,9 @@ pub fn pub_is_canonical_asset(name: String) -> Bool {
         name == "openooda-linux-x86_64" { return true; }
     if str_starts_with(name, "libooda-runtime-") && str_ends_with(name, ".a") { return true; }
     if str_starts_with(name, "ooda-lsp-") || str_starts_with(name, "ooda-mcp-") ||
-        str_starts_with(name, "ooda-edit-") || str_starts_with(name, "ooda-canvas-") { return false; }
+        str_starts_with(name, "ooda-edit-") || str_starts_with(name, "ooda-canvas-") ||
+        str_starts_with(name, "ooda-store-") || str_starts_with(name, "ooda-audio-") ||
+        str_starts_with(name, "ooda-player-") { return false; }
     if !str_starts_with(name, "ooda-") || !str_ends_with(name, "-linux-x86_64") { return false; }
     let stem: String = str_slice(name, 5, chars_len(name) - 13);
     if stem == "" { return false; }

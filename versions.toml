@@ -1,6 +1,6 @@
-# Canonical 70-package shipped version ledger for the openOODA ecosystem.
+# Canonical 69-package shipped version ledger for the openOODA ecosystem.
 #
-# All 70 canonical packages publish to the single release hub at
+# All 69 canonical packages publish to the single release hub at
 # https://github.com/openOODA/install (releases/latest and tag hub, verified
 # against the master SHA256SUMS manifest). Entries below record the shipped
 # release tag per package across @core (openOODA-core), @system (openOODA-system),
@@ -66,9 +66,8 @@ ooda-vault = "v0.5.0"
 ooda-version = "v0.2.0"
 ooda-web = "v0.5.0"
 
-# @apps — openOODA-apps (18)
+# @apps — openOODA-apps (17)
 ooda-arcade = "v0.2.0"
-ooda-audio = "v0.4.0"
 ooda-browser = "v0.4.0"
 ooda-calculator = "v0.2.0"
 ooda-camera = "v0.5.0"
@@ -78,10 +77,10 @@ ooda-emulator = "v0.2.0"
 ooda-flasher = "v0.4.0"
 ooda-office = "v0.4.0"
 ooda-passwords = "v0.4.0"
-ooda-photos = "v0.6.3"
+ooda-photos = "v0.7.0"
 ooda-player = "v0.5.0"
 ooda-remote = "v0.5.0"
-ooda-store = "v0.8.2"
+ooda-software = "v0.9.0"
 ooda-strike = "v0.2.0"
 ooda-studio = "v0.4.0"
 ooda-voxel = "v0.2.0"

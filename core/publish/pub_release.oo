@@ -13,7 +13,8 @@ pub fn pub_is_retired_asset(name: String) -> Bool {
     let pfxs: List[String] = ["ooagent-", "ooquota-", "ootui-", "oocli-", "oocap-", "oodac-",
         "oodar-", "oopm-", "oolsp-", "oomcp-", "oohat-", "oostd-", "oofs-", "oohw-", "ooperm-",
         "ooboot-", "ookernel-", "ooinit-", "oosh-", "oocontainer-", "ooflash-", "opm-",
-        "ooda-lsp-", "ooda-mcp-", "ooda-edit-", "ooda-canvas-"];
+        "ooda-lsp-", "ooda-mcp-", "ooda-edit-", "ooda-canvas-",
+        "ooda-store-", "ooda-audio-", "ooda-player-"];
     let mut i: Int = 0;
     while i < list_len(pfxs) {
         if str_starts_with(name, list_get(pfxs, i)) { return true; }

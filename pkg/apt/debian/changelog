@@ -1,3 +1,11 @@
+openooda (2.2.0-1) unstable; urgency=medium
+
+  * Sync packaging with VERSION 2.2.0.
+  * Retire ooda-audio, cut over ooda-store -> ooda-software (v0.9.0),
+    and update ooda-photos (v0.7.0) with personal-cloud sync (69 packages).
+
+ -- openOODA Authors <ops@openooda.org>  Sat, 21 Nov 2026 00:00:00 +0000
+
 openooda (2.1.1-1) unstable; urgency=medium
 
   * Sync packaging with VERSION 2.1.1.
