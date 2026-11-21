@@ -219,12 +219,21 @@ jobs:
               echo "warn: clone failed for $repo"; continue
             fi
             cd "$WORK_ROOT/$pkg"
+            # What this run actually built: the commit it came from and the
+            # version, capabilities and dependencies the package declares there.
+            built_sha="$(git rev-parse HEAD 2>/dev/null || echo "")"
+            pkg_ver=""; pkg_caps=""; pkg_deps=""
+            if [ -f ooda.pkg ]; then
+              pkg_ver="$(sed -n 's/^version=//p' ooda.pkg | head -1)"
+              pkg_caps="$(sed -n 's/^caps=//p' ooda.pkg | head -1)"
+              pkg_deps="$(sed -n 's/^deps=//p' ooda.pkg | head -1)"
+            fi
             if [ "$pkg" = "ooda-standard" ]; then
               if [ -f core/anchor.oo ] && tar --exclude='.git' --exclude='.ooda-cache' --exclude='bin' --exclude='dist' \
                   -czf "$OUT_ROOT/ooda-standard-linux-x86_64.tar.gz.tmp" . && [ -s "$OUT_ROOT/ooda-standard-linux-x86_64.tar.gz.tmp" ]; then
                 chmod 0644 "$OUT_ROOT/ooda-standard-linux-x86_64.tar.gz.tmp"
                 mv -f "$OUT_ROOT/ooda-standard-linux-x86_64.tar.gz.tmp" "$OUT_ROOT/ooda-standard-linux-x86_64.tar.gz"
-                printf '%s %s %s\n' "$pkg" "$repo" "$sha" >> /tmp/built.txt
+                printf '%s %s %s %s %s %s\n' "$pkg" "$repo" "$built_sha" "$pkg_ver" "$pkg_caps" "$pkg_deps" >> /tmp/built.txt
                 echo "staged ooda-standard -> ooda-standard-linux-x86_64.tar.gz"
               else
                 rm -f "$OUT_ROOT/ooda-standard-linux-x86_64.tar.gz.tmp"
@@ -277,7 +286,7 @@ jobs:
               if [ "$pkg" = "ooda-runtime" ] && [ -s "$WORK_ROOT/$pkg/core/sec/cap/cap_table.oot" ]; then
                 cp -f "$WORK_ROOT/$pkg/core/sec/cap/cap_table.oot" "$OUT_ROOT/cap_table.oot"
               fi
-              printf '%s %s %s\n' "$pkg" "$repo" "$sha" >> /tmp/built.txt
+              printf '%s %s %s %s %s %s\n' "$pkg" "$repo" "$built_sha" "$pkg_ver" "$pkg_caps" "$pkg_deps" >> /tmp/built.txt
               echo "built $pkg -> $asset"
             else
               echo "error: no binary produced for $pkg" >&2
@@ -350,25 +359,96 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/openOODA/catalog.git"
           python3 - <<'PY'
-          import json
+          import base64, json, os, urllib.request
+
+          TOKEN = os.environ["GH_TOKEN"]
+
+          def api(path):
+              req = urllib.request.Request(
+                  "https://api.github.com" + path,
+                  headers={"Authorization": "bearer " + TOKEN,
+                           "Accept": "application/vnd.github+json",
+                           "User-Agent": "sync-hub"})
+              return json.loads(urllib.request.urlopen(req, timeout=60).read())
+
+          def declares(repo, ref):
+              """What a package declares at a commit: version, caps, deps."""
+              try:
+                  d = api("/repos/%s/contents/ooda.pkg?ref=%s" % (repo, ref))
+                  body = base64.b64decode(d["content"]).decode()
+              except Exception:
+                  return None
+              out = {}
+              for line in body.splitlines():
+                  if "=" in line:
+                      k, v = line.split("=", 1)
+                      out[k] = v
+              return out
+
           merged = json.load(open('/tmp/COMMIT_LEDGER.json'))
           pkg2repo = {}
           for line in open('/tmp/repo-map.txt'):
               p = line.split()
               if len(p) == 2:
                   pkg2repo[p[0]] = p[1]
+          # What this run built, and what each package declares at the commit
+          # this index attests.
+          built = {}
           for line in open('/tmp/built.txt'):
               p = line.split()
+              if len(p) >= 6:
+                  built[p[0]] = {"repo": p[1], "sha": p[2], "ver": p[3], "caps": p[4], "deps": p[5]}
+              elif len(p) == 3:
+                  built[p[0]] = {"repo": p[1], "sha": p[2], "ver": "", "caps": "", "deps": ""}
+          for pkg, b in built.items():
+              if b["sha"]:
+                  merged[b["repo"]] = b["sha"]
+          resolved = {}
+          for line in open('/tmp/current-sha.txt'):
+              p = line.split()
               if len(p) == 3:
-                  pkg, repo, sha = p
-                  merged[repo] = sha
+                  resolved[p[0]] = p[2]
+          rows = []
+          for line in open('index').read().splitlines():
+              f = line.split("|")
+              if len(f) != 5:
+                  continue
+              name = f[0]
+              b = built.get(name, {})
+              ver = b.get("ver", "")
+              caps = b.get("caps", "")
+              deps = b.get("deps", "")
+              if not ver:
+                  # Not rebuilt this run: attest what the package declares at
+                  # the commit this index already names.
+                  sha = resolved.get(name, "")
+                  repo = pkg2repo.get(name, "")
+                  d = declares(repo, sha) if repo and sha else None
+                  if d:
+                      # A key the descriptor does not carry leaves the
+                      # catalog's value alone; an empty one is honored.
+                      if "version" in d: ver = d["version"]
+                      if "caps" in d: caps = d["caps"]
+                      if "deps" in d: deps = d["deps"]
+              if ver:
+                  rows.append("%s|%s|%s|%s|%s" % (name, ver, caps, deps, f[4]))
+              else:
+                  rows.append(line)
+          with open('index', 'w') as f:
+              f.write("\n".join(rows) + "\n")
           with open('COMMIT_LEDGER', 'w') as f:
               json.dump(merged, f, indent=2, sort_keys=True)
               f.write('\n')
+          print("index reconciled: %d rows" % len(rows))
           PY
+          # The index now names the versions this run built, so the layer
+          # descriptors, their digests and the signature are regenerated from
+          # those rows rather than left to describe an older release.
+          OODA_COMPILER="$HOME/.openooda/bin/ooda-compiler" OODA_RUNTIME_ROOT="$HOME/.openooda/bin" \
+            OODA_STANDARD_ROOT="$HOME/.openooda/ooda-standard" make sync
           cp "$OUT_ROOT/SHA256SUMS" SHA256SUMS
-          git add COMMIT_LEDGER SHA256SUMS
-          if git diff --cached --quiet; then echo "ledger unchanged"; else
-            git commit -m "chore(catalog): sync-hub COMMIT_LEDGER + SHA256SUMS [skip ci]"
+          git add -A
+          if git diff --cached --quiet; then echo "catalog unchanged"; else
+            git commit -m "chore(catalog): sync-hub index, descriptors, ledger + sums [skip ci]"
             git push origin HEAD:master
           fi
