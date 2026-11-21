@@ -247,16 +247,18 @@ jobs:
               # ooda-runtime is the exception: it packs those libraries itself,
               # so its root is its own tree and the published archives are only
               # the bootstrap it starts from.
+              # Passed through env: an unquoted expansion is not recognised as
+              # an assignment prefix, so the shell would try to execute it.
               RUNTIME_ENV="OODA_RUNTIME_ROOT=$HOME/.openooda/bin"
               [ "$pkg" = "ooda-runtime" ] && RUNTIME_ENV="BOOTSTRAP_RUNTIME_ROOT=$HOME/.openooda/bin"
               OODA_COMPILER="$BOOTSTRAP/ooda-compiler" OODA_COMPILER_BIN="$BOOTSTRAP/ooda-compiler" \
-                OODA_STANDARD_ROOT="$HOME/.openooda/ooda-standard" $RUNTIME_ENV \
+                OODA_STANDARD_ROOT="$HOME/.openooda/ooda-standard" \
                 BOOTSTRAP_FIXED_POINT=0 OO_LIST_AMBIENT_QUOTA=34359738368 OODA_NO_JAIL=1 \
-                make build >/dev/null 2>&1 || \
+                env $RUNTIME_ENV make build >/dev/null 2>&1 || \
               OODA_COMPILER="$BOOTSTRAP/ooda-compiler" OODA_COMPILER_BIN="$BOOTSTRAP/ooda-compiler" \
-                OODA_STANDARD_ROOT="$HOME/.openooda/ooda-standard" $RUNTIME_ENV \
+                OODA_STANDARD_ROOT="$HOME/.openooda/ooda-standard" \
                 BOOTSTRAP_FIXED_POINT=0 OO_LIST_AMBIENT_QUOTA=34359738368 OODA_NO_JAIL=1 \
-                make >/dev/null 2>&1 || true
+                env $RUNTIME_ENV make >/dev/null 2>&1 || true
             fi
             bin=""
             while IFS= read -r cand; do
