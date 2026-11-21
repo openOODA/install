@@ -1,0 +1,105 @@
+// # Hub Release Hygiene & Upload Driver
+//
+// Logline: Maintains one active hub release, prunes non-canonical assets, and uploads stage payloads.
+// Setup: Invokes gh CLI exclusively via argv under explicit ProcessCap; FsReadCap lists staged files.
+// Beats:
+//   1. Ensure a single active release tag exists and delete superseded release tags.
+//   2. Prune retired pre-rename and non-canonical assets from the live release pool.
+//   3. Upload all staged release files deterministically and report live asset count.
+
+import "core/publish/pub_sums.oo";
+
+pub fn pub_is_retired_asset(name: String) -> Bool {
+    let pfxs: List[String] = ["ooagent-", "ooquota-", "ootui-", "oocli-", "oocap-", "oodac-",
+        "oodar-", "oopm-", "oolsp-", "oomcp-", "oohat-", "oostd-", "oofs-", "oohw-", "ooperm-",
+        "ooboot-", "ookernel-", "ooinit-", "oosh-", "oocontainer-", "ooflash-", "opm-",
+        "ooda-lsp-", "ooda-mcp-"];
+    let mut i: Int = 0;
+    while i < list_len(pfxs) {
+        if str_starts_with(name, list_get(pfxs, i)) { return true; }
+        i = i + 1;
+    }
+    return false;
+}
+
+pub fn pub_ensure_single_release(sys: &ProcessCap, repo: String, tag: String) -> Result[Int, String] {
+    let lr: Result[String, String] = sys_exec(sys, "gh", "release", "list", "-R", repo,
+        "--limit", "100", "--json", "tagName", "-q", ".[].tagName");
+    let tags_txt: String = match lr { Ok(s) => s, Err(_) => "" };
+    let tags: List[String] = str_split(tags_txt, "\n");
+    let mut found: Bool = false;
+    let mut i: Int = 0;
+    while i < list_len(tags) {
+        if list_get(tags, i) == tag { found = true; }
+        i = i + 1;
+    }
+    if !found {
+        let cav: List[String] = ["release", "create", tag, "-R", repo, "--title", "openOODA binary hub",
+            "--notes", "Single binary pool - SHA256SUMS is the master checksum."];
+        let cr: Result[Int, String] = sys_exec_wait(sys, "gh", cav);
+        if cr.is_err() || cr.val != 0 { return Err("cannot create release " + tag); }
+        println("  created release " + tag);
+    }
+    i = 0;
+    while i < list_len(tags) {
+        let t: String = list_get(tags, i);
+        i = i + 1;
+        if t != "" && t != tag {
+            let dav: List[String] = ["release", "delete", t, "-R", repo, "-y"];
+            let dr: Result[Int, String] = sys_exec_wait(sys, "gh", dav);
+            if dr.is_ok() && dr.val == 0 { println("  deleted older release " + t); }
+        }
+    }
+    return Ok(0);
+}
+
+pub fn pub_prune_assets(sys: &ProcessCap, repo: String, tag: String) -> Result[Int, String] {
+    let vr: Result[String, String] = sys_exec(sys, "gh", "release", "view", tag, "-R", repo,
+        "--json", "assets", "-q", ".assets[].name");
+    if vr.is_err() { return Ok(0); }
+    let names: List[String] = str_split(vr.val, "\n");
+    let mut pruned: Int = 0;
+    let mut i: Int = 0;
+    while i < list_len(names) {
+        let nm: String = list_get(names, i);
+        i = i + 1;
+        if nm == "" { continue; }
+        if pub_is_retired_asset(nm) || !pub_is_canonical_asset(nm) {
+            println("  deleting legacy/retired asset " + nm);
+            let dav: List[String] = ["release", "delete-asset", tag, nm, "-R", repo, "-y"];
+            let _dr: Result[Int, String] = sys_exec_wait(sys, "gh", dav);
+            pruned = pruned + 1;
+        }
+    }
+    return Ok(pruned);
+}
+
+pub fn pub_upload_all(fs_r: &FsReadCap, sys: &ProcessCap, stage: String, repo: String,
+    tag: String) -> Result[Int, String] {
+    let raw: List[String] = oo_fs_read_dir(fs_r, stage);
+    let mut files: List[String] = list_new();
+    let mut i: Int = 0;
+    while i < list_len(raw) {
+        let nm: String = list_get(raw, i);
+        let fp: String = stage + "/" + nm;
+        if nm != "." && !str_starts_with(nm, ".") && !oo_fs_is_dir(fs_r, fp) {
+            files = list_push(files, nm);
+        }
+        i = i + 1;
+    }
+    files = pub_sort_strs(files);
+    i = 0;
+    while i < list_len(files) {
+        let nm: String = list_get(files, i);
+        let fp: String = stage + "/" + nm;
+        println("  upload " + nm);
+        let uav: List[String] = ["release", "upload", tag, fp, "-R", repo, "--clobber"];
+        let ur: Result[Int, String] = sys_exec_wait(sys, "gh", uav);
+        if ur.is_err() || ur.val != 0 { return Err("upload failed for " + nm); }
+        i = i + 1;
+    }
+    let cr: Result[String, String] = sys_exec(sys, "gh", "release", "view", tag, "-R", repo,
+        "--json", "assets", "-q", ".assets | length");
+    if cr.is_ok() { println("  release now carries " + str_trim(cr.val) + " assets"); }
+    return Ok(list_len(files));
+}

@@ -50,8 +50,11 @@ its contract before any release advances.
   `ins_bins_ok` (L0 map + `libooda-runtime.a` + install loop), `ins_sums_ok`
   (SHA256SUMS channel + refusal strings + zero `sums_lookup` call sites),
   `ins_ver_aligned` (fallback == VERSION), `ins_script_ok` fold.
-- `tests/test_functional.oo` — 10 positive assertions on the shipped tree.
-- `tests/test_refusal.oo` — 12 negative-trust assertions on forged inputs.
+- `core/publish/` — pure-`.oo` hub release publisher (`pub_groups.oo`, `pub_stage.oo`,
+  `pub_sums.oo`, `pub_release.oo`, `publish_hub.oo`, `anchor.oo`), invoked via
+  `publish-hub.sh` thin exec shim (`make publish-bin`).
+- `tests/test_functional.oo` — 14 positive assertions on the shipped tree & publisher.
+- `tests/test_refusal.oo` — 15 negative-trust assertions on forged inputs & hub assets.
 - `anchor.oo` — re-exports both checker pages as the repo conformance surface.
 
 ## Build & Verify

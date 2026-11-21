@@ -1,0 +1,234 @@
+// # Hub Asset Staging — Package Artifacts, Archives & Images
+//
+// Logline: Locates built binaries across org trees, copies release payloads cleanly, and packs bundles.
+// Setup: Uses FsReadCap/FsWriteCap for bit-exact copies and ProcessCap + ooda-archive/ooda-flasher for images.
+// Beats:
+//   1. Search openOODA-core, openOODA-system, and openOODA-apps using canonical binary candidate order.
+//   2. Copy <pkg>-linux-x86_64 plus all 15 libooda-runtime*.a archives cleanly in pure .oo.
+//   3. Pack deterministic .tar.gz and .iso bundles using first-party openOODA tools.
+
+fn ps_find_repo(fs_r: &FsReadCap, root: String, pkg: String) -> String {
+    let orgs: List[String] = ["openOODA-core", "openOODA-system", "openOODA-apps"];
+    let mut i: Int = 0;
+    while i < list_len(orgs) {
+        let d: String = root + "/" + list_get(orgs, i) + "/" + pkg;
+        if oo_fs_is_dir(fs_r, d) { return d; }
+        i = i + 1;
+    }
+    return "";
+}
+
+fn ps_cands(pkg: String) -> List[String] {
+    if pkg == "ooda-compiler" { return ["ooda-compiler", "oodac"]; }
+    if pkg == "ooda-runtime" { return ["libooda-runtime.a"]; }
+    if pkg == "ooda-language" { return ["ooda-language", "ooda-lsp", "oolsp"]; }
+    if pkg == "ooda-bridge" { return ["ooda-bridge", "ooda-mcp", "oomcp"]; }
+    if pkg == "ooda-filesystem" {
+        return ["ooda-filesystem", "ooda-filesystem-linux-x86_64", "oofs", "oofs-linux-x86_64"];
+    }
+    if pkg == "ooda-hardware" {
+        return ["ooda-hardware", "ooda-hardware-linux-x86_64", "oohw", "oohw-linux-x86_64"];
+    }
+    if pkg == "ooda-disk" {
+        return ["ooda-disk", "ooda-disk-linux-x86_64", "ooperm", "ooperm-linux-x86_64"];
+    }
+    return [pkg, pkg + "-linux-x86_64"];
+}
+
+fn ps_locate_bin(fs_r: &FsReadCap, repo: String, pkg: String) -> String {
+    let cands: List[String] = ps_cands(pkg);
+    let dirs: List[String] = ["dist/", "bin/", "core/lib/", "scripts/lib/", ""];
+    let mut i: Int = 0;
+    while i < list_len(cands) {
+        let c: String = list_get(cands, i);
+        let mut j: Int = 0;
+        while j < list_len(dirs) {
+            let p: String = repo + "/" + list_get(dirs, j) + c;
+            if path_exists(fs_r, p) && !oo_fs_is_dir(fs_r, p) {
+                let rd: Result[String, String] = read_file(fs_r, p);
+                if rd.is_ok() && bytes_len(rd.val) > 0 { return p; }
+            }
+            j = j + 1;
+        }
+        i = i + 1;
+    }
+    return "";
+}
+
+pub fn pub_copy_file(fs_r: &FsReadCap, fs_w: &FsWriteCap, src: String, dst: String) -> Result[Int, String] {
+    let rd: Result[String, String] = read_file(fs_r, src);
+    if rd.is_err() { return Err("cannot read " + src); }
+    let sz: Int = bytes_len(rd.val);
+    if sz == 0 { return Err("empty asset " + src); }
+    let wr: Result[Void, String] = write_file(fs_w, dst, rd.val);
+    if wr.is_err() { return Err("cannot write " + dst); }
+    return Ok(sz);
+}
+
+fn ps_walk_rels(fs_r: &FsReadCap, root: String, rel: String, skip_b: Bool) -> List[String] {
+    let mut out: List[String] = list_new();
+    let dir: String = if rel == "" { root } else { root + "/" + rel };
+    let ents: List[String] = oo_fs_read_dir(fs_r, dir);
+    let mut i: Int = 0;
+    while i < list_len(ents) {
+        let nm: String = list_get(ents, i);
+        i = i + 1;
+        if nm == "." || nm == "" || nm == ".git" || nm == ".ooda-cache" { continue; }
+        if skip_b && (nm == "bin" || nm == "dist") { continue; }
+        let sub: String = if rel == "" { nm } else { rel + "/" + nm };
+        let full: String = root + "/" + sub;
+        if oo_fs_is_dir(fs_r, full) {
+            let ch: List[String] = ps_walk_rels(fs_r, root, sub, skip_b);
+            let mut k: Int = 0;
+            while k < list_len(ch) {
+                out = list_push(out, list_get(ch, k));
+                k = k + 1;
+            }
+        } else {
+            out = list_push(out, sub);
+        }
+    }
+    return out;
+}
+
+pub fn pub_pack_tgz(fs_r: &FsReadCap, sys: &ProcessCap, home: String, dir: String, out_tgz: String,
+    skip_b: Bool) -> Result[Int, String] {
+    let ar_bin: String = home + "/bin/ooda-archive";
+    if !path_exists(fs_r, ar_bin) { return Err("missing " + ar_bin); }
+    let rels: List[String] = ps_walk_rels(fs_r, dir, "", skip_b);
+    if list_len(rels) == 0 { return Err("no files to archive in " + dir); }
+    let mut av: List[String] = list_new();
+    av = list_push(av, "-C");
+    av = list_push(av, dir);
+    av = list_push(av, ar_bin);
+    av = list_push(av, "-c");
+    av = list_push(av, "-z");
+    av = list_push(av, "--timestamp");
+    av = list_push(av, "0");
+    av = list_push(av, "-f");
+    av = list_push(av, out_tgz);
+    let mut i: Int = 0;
+    while i < list_len(rels) {
+        av = list_push(av, list_get(rels, i));
+        i = i + 1;
+    }
+    let res: Result[Int, String] = sys_exec_wait(sys, "env", av);
+    if res.is_err() || res.val != 0 { return Err("ooda-archive failed for " + out_tgz); }
+    return Ok(list_len(rels));
+}
+
+pub fn pub_stage_pkg(fs_r: &FsReadCap, fs_w: &FsWriteCap, sys: &ProcessCap, root: String, home: String,
+    stage: String, pkg: String) -> Result[String, String] {
+    let repo: String = ps_find_repo(fs_r, root, pkg);
+    if repo == "" { return Err("no repo for package " + pkg); }
+    if pkg == "ooda-standard" {
+        let dst: String = stage + "/ooda-standard-linux-x86_64.tar.gz";
+        let pk: Result[Int, String] = pub_pack_tgz(fs_r, sys, home, repo, dst, true);
+        if pk.is_err() { return Err(match pk { Ok(_) => "", Err(e) => e }); }
+        println("  staged ooda-standard-linux-x86_64.tar.gz <- " + repo);
+        return Ok("ooda-standard-linux-x86_64.tar.gz");
+    }
+    let bin_p: String = ps_locate_bin(fs_r, repo, pkg);
+    if bin_p == "" { return Err("no binary for " + pkg + " in " + repo); }
+    let asset: String = if pkg == "ooda-runtime" { "libooda-runtime.a" } else { pkg + "-linux-x86_64" };
+    let cp0: Result[Int, String] = pub_copy_file(fs_r, fs_w, bin_p, stage + "/" + asset);
+    if cp0.is_err() { return Err(match cp0 { Ok(_) => "", Err(e) => e }); }
+    println("  staged " + asset + " <- " + bin_p);
+    if pkg == "ooda-runtime" {
+        let rdirs: List[String] = ["core/lib", "dist", "bin", "scripts/lib"];
+        let mut d_i: Int = 0;
+        while d_i < list_len(rdirs) {
+            let rd_p: String = repo + "/" + list_get(rdirs, d_i);
+            d_i = d_i + 1;
+            if !oo_fs_is_dir(fs_r, rd_p) { continue; }
+            let es: List[String] = oo_fs_read_dir(fs_r, rd_p);
+            let mut ei: Int = 0;
+            while ei < list_len(es) {
+                let fnm: String = list_get(es, ei);
+                ei = ei + 1;
+                let dst_a: String = stage + "/" + fnm;
+                if str_starts_with(fnm, "libooda-runtime-") && str_ends_with(fnm, ".a") && !path_exists(fs_r, dst_a) {
+                    let _ca: Result[Int, String] = pub_copy_file(fs_r, fs_w, rd_p + "/" + fnm, dst_a);
+                    println("  staged " + fnm + " <- " + rd_p + "/" + fnm);
+                }
+            }
+        }
+        let rt_cands: List[String] = [repo + "/dist/ooda-runtime", repo + "/bin/ooda-runtime"];
+        let mut ri: Int = 0;
+        while ri < list_len(rt_cands) {
+            let rp: String = list_get(rt_cands, ri);
+            ri = ri + 1;
+            if path_exists(fs_r, rp) {
+                let _cr: Result[Int, String] = pub_copy_file(fs_r, fs_w, rp, stage + "/ooda-runtime-linux-x86_64");
+                println("  staged ooda-runtime-linux-x86_64 <- " + rp);
+                break;
+            }
+        }
+    }
+    return Ok(asset);
+}
+
+pub fn pub_stage_images(fs_r: &FsReadCap, fs_w: &FsWriteCap, sys: &ProcessCap, root: String, home: String,
+    stage: String) -> Result[Int, String] {
+    let mut cnt: Int = 0;
+    let boot_p: String = stage + "/ooda-boot-linux-x86_64";
+    let kern_p: String = stage + "/ooda-kernel-linux-x86_64";
+    let flash_p: String = root + "/openOODA-apps/ooda-flasher/bin/ooda-flasher";
+    if path_exists(fs_r, boot_p) && path_exists(fs_r, kern_p) && path_exists(fs_r, flash_p) {
+        let iso_dir: String = stage + "/iso-root";
+        let efi_d: String = iso_dir + "/EFI/BOOT";
+        let boot_d: String = iso_dir + "/boot";
+        let mk_av: List[String] = list_push(list_push(list_push(list_new(), "-p"), efi_d), boot_d);
+        let _mk: Result[Int, String] = sys_exec_wait(sys, "mkdir", mk_av);
+        let _i0: Result[Int, String] = pub_copy_file(fs_r, fs_w, boot_p, efi_d + "/BOOTX64.EFI");
+        let _i1: Result[Int, String] = pub_copy_file(fs_r, fs_w, kern_p, boot_d + "/ooda-kernel");
+        let iso_out: String = stage + "/ooda-os-x86_64.iso";
+        let fav: List[String] = list_push(list_push(list_push(list_push(list_new(), "pack-iso"),
+            iso_dir), "-o"), iso_out);
+        let _fi: Result[Int, String] = sys_exec_wait(sys, flash_p, fav);
+        let rm_av: List[String] = list_push(list_push(list_new(), "-rf"), iso_dir);
+        let _rm: Result[Int, String] = sys_exec_wait(sys, "rm", rm_av);
+        if path_exists(fs_r, iso_out) {
+            cnt = cnt + 1;
+            println("  staged ooda-os-x86_64.iso");
+        }
+    }
+    let ooda_root: String = root + "/openOODA/openOODA";
+    if oo_fs_is_dir(fs_r, ooda_root) {
+        let obin: String = ooda_root + "/bin/openooda";
+        if path_exists(fs_r, obin) {
+            let _co: Result[Int, String] = pub_copy_file(fs_r, fs_w, obin, stage + "/openooda-linux-x86_64");
+            cnt = cnt + 1;
+        }
+        let cdx: String = stage + "/codex-root";
+        let csub: String = cdx + "/cards";
+        let _mk2: Result[Int, String] = sys_exec_wait(sys, "mkdir", list_push(list_push(list_new(), "-p"), csub));
+        if path_exists(fs_r, ooda_root + "/AGENTS.md") {
+            let _ca: Result[Int, String] = pub_copy_file(fs_r, fs_w, ooda_root + "/AGENTS.md", cdx + "/AGENTS.md");
+        }
+        let cards: List[String] = oo_fs_read_dir(fs_r, ooda_root + "/cards");
+        let mut ci: Int = 0;
+        while ci < list_len(cards) {
+            let cn: String = list_get(cards, ci);
+            ci = ci + 1;
+            if str_ends_with(cn, ".md") {
+                let _cc: Result[Int, String] = pub_copy_file(fs_r, fs_w, ooda_root + "/cards/" + cn, csub + "/" + cn);
+            }
+        }
+        let cdx_tgz: String = stage + "/openooda-codex-linux-x86_64.tar.gz";
+        let _pk: Result[Int, String] = pub_pack_tgz(fs_r, sys, home, cdx, cdx_tgz, false);
+        let _rm2: Result[Int, String] = sys_exec_wait(sys, "rm", list_push(list_push(list_new(), "-rf"), cdx));
+        if path_exists(fs_r, cdx_tgz) {
+            cnt = cnt + 1;
+            println("  staged openooda-codex-linux-x86_64.tar.gz");
+        }
+    }
+    let cap_a: String = root + "/openOODA-core/ooda-runtime/core/sec/cap/cap_table.oot";
+    let cap_b: String = home + "/cards/cap_table.oot";
+    let cap_src: String = if path_exists(fs_r, cap_a) { cap_a } else if path_exists(fs_r, cap_b) { cap_b } else { "" };
+    if cap_src != "" {
+        let _cp: Result[Int, String] = pub_copy_file(fs_r, fs_w, cap_src, stage + "/cap_table.oot");
+        cnt = cnt + 1;
+    }
+    return Ok(cnt);
+}

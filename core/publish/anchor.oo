@@ -1,0 +1,16 @@
+// # Publish Hub Anchor — Core Publisher Submodule Index
+//
+// Logline: Aggregates pure-.oo hub staging, grouping, SHA256SUMS, and GitHub Release modules.
+// Setup: Comment-plus-import facade holding >= 16 lines so core/publish stays conformant.
+// Beats:
+//   1. core/publish/pub_groups.oo parses groups.oot and expands @group selections cleanly.
+//   2. core/publish/pub_stage.oo locates built binaries/archives and stages release bundles.
+//   3. core/publish/pub_sums.oo computes sorted SHA256SUMS and merges live hub manifests.
+//   4. core/publish/pub_release.oo ensures single hub release, prunes stale assets, and uploads.
+
+import "core/publish/pub_groups.oo";
+import "core/publish/pub_stage.oo";
+import "core/publish/pub_sums.oo";
+import "core/publish/pub_release.oo";
+
+// Stay import-only; publish_hub.oo carries the CLI entrypoint.

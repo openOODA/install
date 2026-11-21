@@ -1,0 +1,180 @@
+// # Hub Canonical Allowlist & SHA256SUMS Generator/Merger
+//
+// Logline: Computes pure-.oo SHA256SUMS for staged assets and merges cleanly with live hub state.
+// Setup: Imports sha256_hex from ooda-standard and enforces canonical asset allowlist rules.
+// Beats:
+//   1. Classify canonical hub asset names while rejecting retired pre-rename spellings.
+//   2. Compute deterministic lowercase SHA256SUMS lines sorted lexicographically by asset name.
+//   3. Merge fresh staged hashes with still-live canonical hub entries and update catalog/SHA256SUMS.
+
+import "ooda-standard/sec/hash/sha256.oo";
+
+pub fn pub_is_canonical_asset(name: String) -> Bool {
+    if name == "SHA256SUMS" || name == "SHA256SUMS.sig" || name == "cap_table.oot" ||
+        name == "libooda-runtime.a" || name == "ooda-standard-linux-x86_64.tar.gz" ||
+        name == "openooda-codex-linux-x86_64.tar.gz" || name == "ooda-os-x86_64.iso" ||
+        name == "ooda-buildbox-x86_64.tar.gz" || name == "ooda-linux-x86_64" ||
+        name == "openooda-linux-x86_64" { return true; }
+    if str_starts_with(name, "libooda-runtime-") && str_ends_with(name, ".a") { return true; }
+    if str_starts_with(name, "ooda-lsp-") || str_starts_with(name, "ooda-mcp-") { return false; }
+    if !str_starts_with(name, "ooda-") || !str_ends_with(name, "-linux-x86_64") { return false; }
+    let stem: String = str_slice(name, 5, chars_len(name) - 13);
+    if stem == "" { return false; }
+    let mut i: Int = 0;
+    while i < bytes_len(stem) {
+        let b: Int = byte_at(stem, i);
+        if b < 97 || b > 122 { return false; }
+        i = i + 1;
+    }
+    return true;
+}
+
+pub fn pub_str_lt(a: String, b: String) -> Bool {
+    let la: Int = bytes_len(a);
+    let lb: Int = bytes_len(b);
+    let lim: Int = if la < lb { la } else { lb };
+    let mut i: Int = 0;
+    while i < lim {
+        if byte_at(a, i) != byte_at(b, i) { return byte_at(a, i) < byte_at(b, i); }
+        i = i + 1;
+    }
+    return la < lb;
+}
+
+pub fn pub_sort_strs(xs0: List[String]) -> List[String] {
+    let mut xs: List[String] = xs0;
+    let n: Int = list_len(xs);
+    let mut i: Int = 0;
+    while i < n {
+        let mut j: Int = i + 1;
+        while j < n {
+            let a: String = list_get(xs, i);
+            let b: String = list_get(xs, j);
+            if pub_str_lt(b, a) {
+                xs = list_set(xs, i, b);
+                xs = list_set(xs, j, a);
+            }
+            j = j + 1;
+        }
+        i = i + 1;
+    }
+    return xs;
+}
+
+fn ps_entry_name(ln: String) -> String {
+    let n: Int = chars_len(ln);
+    let mut i: Int = 64;
+    while i < n && (char_at(ln, i) == " " || char_at(ln, i) == "*") { i = i + 1; }
+    return str_slice(ln, i, n);
+}
+
+fn ps_merge_lines(fresh: List[String], prev: String, live: String) -> String {
+    let mut fset: String = "\t";
+    let mut rows: List[String] = list_new();
+    let mut i: Int = 0;
+    while i < list_len(fresh) {
+        let row: String = list_get(fresh, i);
+        fset = fset + ps_entry_name(row) + "\t";
+        rows = list_push(rows, row);
+        i = i + 1;
+    }
+    let mut lset: String = "\t";
+    let lns: List[String] = str_split(live, "\n");
+    i = 0;
+    while i < list_len(lns) {
+        let nm: String = list_get(lns, i);
+        if nm != "" && pub_is_canonical_asset(nm) { lset = lset + nm + "\t"; }
+        i = i + 1;
+    }
+    let pns: List[String] = str_split(prev, "\n");
+    i = 0;
+    while i < list_len(pns) {
+        let p_row: String = list_get(pns, i);
+        if chars_len(p_row) > 65 {
+            let nm: String = ps_entry_name(p_row);
+            if !str_contains(fset, "\t" + nm + "\t") && str_contains(lset, "\t" + nm + "\t") {
+                rows = list_push(rows, p_row);
+            }
+        }
+        i = i + 1;
+    }
+    let mut k: Int = 0;
+    while k < list_len(rows) {
+        let mut m: Int = k + 1;
+        while m < list_len(rows) {
+            let ra: String = list_get(rows, k);
+            let rb: String = list_get(rows, m);
+            if pub_str_lt(ps_entry_name(rb), ps_entry_name(ra)) {
+                rows = list_set(rows, k, rb);
+                rows = list_set(rows, m, ra);
+            }
+            m = m + 1;
+        }
+        k = k + 1;
+    }
+    let mut out: String = "";
+    k = 0;
+    while k < list_len(rows) {
+        out = out + list_get(rows, k) + "\n";
+        k = k + 1;
+    }
+    return out;
+}
+
+pub fn pub_gen_sums(fs_r: &FsReadCap, fs_w: &FsWriteCap, sys: &ProcessCap, env: &EnvCap,
+    stage: String, catalog: String, tag: String, dry_run: Bool) -> Result[Int, String] {
+    let repo: String = "openOODA/install";
+    let raw_files: List[String] = oo_fs_read_dir(fs_r, stage);
+    let mut names: List[String] = list_new();
+    let mut i: Int = 0;
+    while i < list_len(raw_files) {
+        let nm: String = list_get(raw_files, i);
+        if nm != "." && nm != "" && !str_starts_with(nm, "SHA256SUMS") &&
+            !str_starts_with(nm, ".") && !oo_fs_is_dir(fs_r, stage + "/" + nm) {
+            names = list_push(names, nm);
+        }
+        i = i + 1;
+    }
+    names = pub_sort_strs(names);
+    if list_len(names) == 0 { return Err("SHA256SUMS generation produced nothing"); }
+    let mut fresh: List[String] = list_new();
+    i = 0;
+    while i < list_len(names) {
+        let nm: String = list_get(names, i);
+        let rd: Result[String, String] = read_file(fs_r, stage + "/" + nm);
+        if rd.is_ok() { fresh = list_push(fresh, sha256_hex(rd.val) + "  " + nm); }
+        i = i + 1;
+    }
+    let mut merged: String = "";
+    if !dry_run {
+        let prev_p: String = stage + "/.hub_SHA256SUMS.prev";
+        let d_av: List[String] = ["release", "download", tag, "-R", repo, "--pattern", "SHA256SUMS",
+            "--clobber", "-O", prev_p];
+        let dr: Result[Int, String] = sys_exec_wait(sys, "gh", d_av);
+        let vr: Result[String, String] = sys_exec(sys, "gh", "release", "view", tag, "-R", repo,
+            "--json", "assets", "-q", ".assets[].name");
+        if dr.is_ok() && dr.val == 0 && vr.is_ok() && path_exists(fs_r, prev_p) {
+            let pr: Result[String, String] = read_file(fs_r, prev_p);
+            if pr.is_ok() { merged = ps_merge_lines(fresh, pr.val, vr.val); }
+        }
+        let _: Result[String, String] = sys_exec(sys, "rm", "-f", prev_p);
+    }
+    if merged == "" {
+        i = 0;
+        while i < list_len(fresh) {
+            merged = merged + list_get(fresh, i) + "\n";
+            i = i + 1;
+        }
+    }
+    if write_file(fs_w, stage + "/SHA256SUMS", merged).is_err() { return Err("failed writing SHA256SUMS"); }
+    if !dry_run {
+        let _cp: Result[Void, String] = write_file(fs_w, catalog + "/SHA256SUMS", merged);
+    }
+    let mkey: String = match env_get(env, "OO_MINISIGN_KEY") { Ok(s) => s, Err(_) => "" };
+    if mkey != "" && path_exists(fs_r, mkey) {
+        let mav: List[String] = ["-C", stage, "minisign", "-S", "-s", mkey, "-m", "SHA256SUMS",
+            "-x", "SHA256SUMS.sig"];
+        let _ms: Result[Int, String] = sys_exec_wait(sys, "env", mav);
+    }
+    return Ok(list_len(str_split(merged, "\n")) - 1);
+}

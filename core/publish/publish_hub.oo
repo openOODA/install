@@ -1,0 +1,102 @@
+// # Publish Hub CLI Entrypoint
+//
+// Logline: Pure-.oo hub release publisher orchestrating group expansion, staging, sums, and uploads.
+// Setup: Replaces publish-hub.sh business logic under FsReadCap/FsWriteCap/ProcessCap/EnvCap.
+// Beats:
+//   1. Resolve root/home/release/dry-run environment variables with safe defaults.
+//   2. Stage selected packages, images, and merged master SHA256SUMS in an isolated tmp dir.
+//   3. Upload assets when OO_DRY_RUN != 1 and clean temporary stage before returning.
+
+import "core/publish/anchor.oo";
+
+fn ph_env_or(env: &EnvCap, key: String, fallback: String) -> String {
+    let r: Result[String, String] = env_get(env, key);
+    if r.is_ok() && r.val != "" { return r.val; }
+    return fallback;
+}
+
+fn ph_mk_stage(sys: &ProcessCap, env: &EnvCap) -> Result[String, String] {
+    let tmp0: String = ph_env_or(env, "TMPDIR", "/tmp");
+    let pat: String = tmp0 + "/openooda-hub.XXXXXX";
+    let r: Result[String, String] = sys_exec(sys, "mktemp", "-d", pat);
+    if r.is_err() { return Err("cannot allocate temporary stage dir"); }
+    let d: String = pub_trim(r.val);
+    if !pub_clean_path(d) || d == "" { return Err("invalid stage dir"); }
+    return Ok(d);
+}
+
+fn ph_cleanup(sys: &ProcessCap, stage: String) -> Void {
+    if stage != "" && pub_clean_path(stage) {
+        let av: List[String] = list_push(list_push(list_new(), "-rf"), stage);
+        let _rm: Result[Int, String] = sys_exec_wait(sys, "rm", av);
+    }
+}
+
+fn ph_stage_pkgs(fs_r: &FsReadCap, fs_w: &FsWriteCap, sys: &ProcessCap, root: String,
+    home: String, stage: String, pkgs: List[String]) -> Result[Int, String] {
+    let mut i: Int = 0;
+    while i < list_len(pkgs) {
+        let st_r: Result[String, String] = pub_stage_pkg(fs_r, fs_w, sys, root, home, stage, list_get(pkgs, i));
+        if st_r.is_err() { return Err(match st_r { Ok(_) => "", Err(e) => e }); }
+        i = i + 1;
+    }
+    let _im: Result[Int, String] = pub_stage_images(fs_r, fs_w, sys, root, home, stage);
+    return Ok(list_len(pkgs));
+}
+
+pub fn main(fs_r: &FsReadCap, fs_w: &FsWriteCap, sys: &ProcessCap, env: &EnvCap,
+    args: List[String]) -> Result[Int, String] {
+    let hm: String = ph_env_or(env, "HOME", "/home/jeryd");
+    let poly: String = ph_env_or(env, "OODA_POLYROOT", hm + "/openOODA-src");
+    let root: String = ph_env_or(env, "OO_PROJECTS_ROOT", poly);
+    let home: String = ph_env_or(env, "OPENOODA_HOME", hm + "/.openooda");
+    let tag: String = ph_env_or(env, "OO_HUB_RELEASE", "hub");
+    let dry_v: String = ph_env_or(env, "OO_DRY_RUN", "0");
+    let dry: Bool = dry_v == "1";
+    let repo: String = "openOODA/install";
+    let catalog: String = root + "/openOODA/catalog";
+    println("  openOODA hub publish -> " + repo + "@" + tag);
+    let pr: Result[List[String], String] = pub_select_pkgs(fs_r, catalog + "/groups.oot", args);
+    if pr.is_err() || list_len(pr.val) == 0 {
+        println("  ✗ " + (match pr { Ok(_) => "empty package selection", Err(e) => e }));
+        return Ok(1);
+    }
+    let sr: Result[String, String] = ph_mk_stage(sys, env);
+    if sr.is_err() {
+        println("  ✗ " + (match sr { Ok(_) => "", Err(e) => e }));
+        return Ok(1);
+    }
+    let stage: String = sr.val;
+    let stg_r: Result[Int, String] = ph_stage_pkgs(fs_r, fs_w, sys, root, home, stage, pr.val);
+    if stg_r.is_err() {
+        println("  ✗ " + (match stg_r { Ok(_) => "", Err(e) => e }));
+        ph_cleanup(sys, stage);
+        return Ok(1);
+    }
+    let sm_r: Result[Int, String] = pub_gen_sums(fs_r, fs_w, sys, env, stage, catalog, tag, dry);
+    if sm_r.is_err() {
+        println("  ✗ " + (match sm_r { Ok(_) => "", Err(e) => e }));
+        ph_cleanup(sys, stage);
+        return Ok(1);
+    }
+    println("  ✓ staged " + stg_r.val.to_string() + " package(s), sums entries=" + sm_r.val.to_string());
+    if dry {
+        println("  [dry-run] would ensure single release, prune legacy assets, and upload staged payloads");
+        ph_cleanup(sys, stage);
+        return Ok(0);
+    }
+    let er: Result[Int, String] = pub_ensure_single_release(sys, repo, tag);
+    if er.is_err() {
+        ph_cleanup(sys, stage);
+        return Ok(1);
+    }
+    let _prn: Result[Int, String] = pub_prune_assets(sys, repo, tag);
+    let ur: Result[Int, String] = pub_upload_all(fs_r, sys, stage, repo, tag);
+    ph_cleanup(sys, stage);
+    if ur.is_err() {
+        println("  ✗ " + (match ur { Ok(_) => "", Err(e) => e }));
+        return Ok(1);
+    }
+    println("  ✓ hub publish complete");
+    return Ok(0);
+}

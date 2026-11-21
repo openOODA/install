@@ -13,6 +13,7 @@
 
 import "core/install_check.oo";
 import "core/install_script.oo";
+import "core/publish/anchor.oo";
 
 fn t_expect(cond: Bool, label: String, p: Int) -> Int {
     if cond {
@@ -43,12 +44,35 @@ fn t_install(fs: &FsReadCap) -> Int {
     return p;
 }
 
+fn t_publish(fs: &FsReadCap) -> Int {
+    let mut p: Int = 0;
+    let defs: List[String] = list_push(list_push(list_new(), "a\t@b foo"), "b\tbar foo");
+    let er: Result[List[String], String] = pub_groups_expand(defs, "a");
+    let exp_ok: Bool = er.is_ok() && list_len(er.val) == 2 &&
+        list_get(er.val, 0) == "foo" && list_get(er.val, 1) == "bar";
+    p = t_expect(exp_ok, "pub_groups_expand transitive + dedup", p);
+    let can_ok: Bool = pub_is_canonical_asset("libooda-runtime-wasm32.a") &&
+        pub_is_canonical_asset("ooda-compiler-linux-x86_64") &&
+        pub_is_canonical_asset("SHA256SUMS") && pub_is_canonical_asset("cap_table.oot");
+    p = t_expect(can_ok, "pub_is_canonical_asset accepts wasm32/compiler/sums/cap", p);
+    let ret_ok: Bool = pub_is_retired_asset("oodac-linux-x86_64") &&
+        pub_is_retired_asset("ooda-lsp-linux-x86_64") &&
+        !pub_is_retired_asset("ooda-compiler-linux-x86_64");
+    p = t_expect(ret_ok, "pub_is_retired_asset flags retired and keeps canonical", p);
+    let phr: Result[String, String] = oo_read_file(fs, "publish-hub.sh");
+    let psh: String = match phr { Ok(s) => s, Err(_) => "" };
+    p = t_expect(phr.is_ok() && str_contains(psh, "publish-bin") &&
+        str_contains(psh, ".ooda-cache/publish-hub"),
+        "publish-hub.sh delegates to pure-.oo publish-bin", p);
+    return p;
+}
+
 pub fn main(fs: &FsReadCap, _args: List[String]) -> Result[Int, String] {
-    let p: Int = t_install(fs);
-    if p == 10 {
-        println("PASS: functional suite (10/10 assertions)");
+    let p: Int = t_install(fs) + t_publish(fs);
+    if p == 14 {
+        println("PASS: functional suite (14/14 assertions)");
         return Ok(0);
     }
-    println("FAIL: functional suite (" + p.to_string() + "/10 assertions)");
+    println("FAIL: functional suite (" + p.to_string() + "/14 assertions)");
     return Ok(2);
 }
