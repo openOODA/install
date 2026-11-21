@@ -1,3 +1,11 @@
+openooda (2.1.1-1) unstable; urgency=medium
+
+  * Sync packaging with VERSION 2.1.1.
+  * Align ooda-settings (v0.6.2), ooda-notepad (v0.6.2), ooda-photos (v0.6.3),
+    and ooda-store (v0.8.2) with ooda-interface and ooda-standard GUI chrome.
+
+ -- openOODA Authors <ops@openooda.org>  Sat, 21 Nov 2026 00:00:00 +0000
+
 openooda (2.1.0-1) unstable; urgency=medium
 
   * Sync packaging with VERSION 2.1.0.
