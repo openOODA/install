@@ -36,9 +36,6 @@ jobs:
       GH_TOKEN: ${{ secrets.OODA_ORG_TOKEN }}
       RELEASE_REPO: openOODA/install
       CATALOG_REPO: openOODA/catalog
-      BOOTSTRAP: $HOME/.openooda/bootstrap
-      WORK_ROOT: $HOME/.openooda/build-work
-      OUT_ROOT: $HOME/.openooda/hub-out
     steps:
       - name: Checkout install and catalog
         uses: actions/checkout@v4
@@ -58,6 +55,13 @@ jobs:
         id: resolve
         run: |
           set -euo pipefail
+          # The compiler trusts a root only when it can name it, and it
+          # refuses a root under /tmp, so every root lives under $HOME.
+          # GitHub does not expand $HOME in an env: block, so they are set
+          # here where the shell expands them.
+          BOOTSTRAP="$HOME/.openooda/bootstrap"
+          WORK_ROOT="$HOME/.openooda/build-work"
+          OUT_ROOT="$HOME/.openooda/hub-out"
           cd catalog
           declare -A GDEF=()
           while IFS= read -r line; do
@@ -162,6 +166,13 @@ jobs:
         if: steps.resolve.outputs.skip == 'false'
         run: |
           set -euo pipefail
+          # The compiler trusts a root only when it can name it, and it
+          # refuses a root under /tmp, so every root lives under $HOME.
+          # GitHub does not expand $HOME in an env: block, so they are set
+          # here where the shell expands them.
+          BOOTSTRAP="$HOME/.openooda/bootstrap"
+          WORK_ROOT="$HOME/.openooda/build-work"
+          OUT_ROOT="$HOME/.openooda/hub-out"
           TAG="$(gh api repos/$RELEASE_REPO/releases/latest -q .tag_name)"
           mkdir -p "$BOOTSTRAP"
           gh release download "$TAG" -R "$RELEASE_REPO" -D "$BOOTSTRAP" \
@@ -179,6 +190,13 @@ jobs:
         if: steps.resolve.outputs.skip == 'false'
         run: |
           set -uo pipefail
+          # The compiler trusts a root only when it can name it, and it
+          # refuses a root under /tmp, so every root lives under $HOME.
+          # GitHub does not expand $HOME in an env: block, so they are set
+          # here where the shell expands them.
+          BOOTSTRAP="$HOME/.openooda/bootstrap"
+          WORK_ROOT="$HOME/.openooda/build-work"
+          OUT_ROOT="$HOME/.openooda/hub-out"
           mkdir -p "$WORK_ROOT" "$OUT_ROOT"
           : > /tmp/built.txt
           bin_candidates() {
@@ -272,6 +290,13 @@ jobs:
         if: steps.resolve.outputs.skip == 'false'
         run: |
           set -euo pipefail
+          # The compiler trusts a root only when it can name it, and it
+          # refuses a root under /tmp, so every root lives under $HOME.
+          # GitHub does not expand $HOME in an env: block, so they are set
+          # here where the shell expands them.
+          BOOTSTRAP="$HOME/.openooda/bootstrap"
+          WORK_ROOT="$HOME/.openooda/build-work"
+          OUT_ROOT="$HOME/.openooda/hub-out"
           TAG="$(gh api repos/$RELEASE_REPO/releases/latest -q .tag_name)"
           mkdir -p "$OUT_ROOT" /tmp/prev-out
           gh release download "$TAG" -R "$RELEASE_REPO" -D /tmp/prev-out --clobber
@@ -311,6 +336,13 @@ jobs:
         if: steps.resolve.outputs.skip == 'false'
         run: |
           set -euo pipefail
+          # The compiler trusts a root only when it can name it, and it
+          # refuses a root under /tmp, so every root lives under $HOME.
+          # GitHub does not expand $HOME in an env: block, so they are set
+          # here where the shell expands them.
+          BOOTSTRAP="$HOME/.openooda/bootstrap"
+          WORK_ROOT="$HOME/.openooda/build-work"
+          OUT_ROOT="$HOME/.openooda/hub-out"
           cd catalog
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -332,7 +364,7 @@ jobs:
               json.dump(merged, f, indent=2, sort_keys=True)
               f.write('\n')
           PY
-          cp /tmp/hub-out/SHA256SUMS SHA256SUMS
+          cp "$OUT_ROOT/SHA256SUMS" SHA256SUMS
           git add COMMIT_LEDGER SHA256SUMS
           if git diff --cached --quiet; then echo "ledger unchanged"; else
             git commit -m "chore(catalog): sync-hub COMMIT_LEDGER + SHA256SUMS [skip ci]"
