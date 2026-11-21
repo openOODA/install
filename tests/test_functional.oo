@@ -57,6 +57,8 @@ fn t_publish(fs: &FsReadCap) -> Int {
     p = t_expect(can_ok, "pub_is_canonical_asset accepts wasm32/compiler/sums/cap", p);
     let ret_ok: Bool = pub_is_retired_asset("oodac-linux-x86_64") &&
         pub_is_retired_asset("ooda-lsp-linux-x86_64") &&
+        pub_is_retired_asset("ooda-edit-linux-x86_64") &&
+        pub_is_retired_asset("ooda-canvas-linux-x86_64") &&
         !pub_is_retired_asset("ooda-compiler-linux-x86_64");
     p = t_expect(ret_ok, "pub_is_retired_asset flags retired and keeps canonical", p);
     let phr: Result[String, String] = oo_read_file(fs, "publish-hub.sh");

@@ -1,5 +1,5 @@
 Name:           openooda
-Version:        2.0.0
+Version:        2.1.0
 Release:        1%{?dist}
 Summary:        openOODA — Primary Systems Language for the AI Era
 URL:            https://openooda.org

@@ -61,6 +61,8 @@ fn t_refuse_pub() -> Int {
     p = t_expect(!pub_clean_path("") && !pub_clean_path("../etc"),
         "empty and traversal publish paths refused", p);
     let bad_asset: Bool = !pub_is_canonical_asset("ooda-lsp-linux-x86_64") &&
+        !pub_is_canonical_asset("ooda-edit-linux-x86_64") &&
+        !pub_is_canonical_asset("ooda-canvas-linux-x86_64") &&
         !pub_is_canonical_asset("ooda-compiler-linux-x86_64.sha256") &&
         !pub_is_canonical_asset("ooda-bad_name-linux-x86_64");
     p = t_expect(bad_asset, "non-canonical hub assets refused", p);
