@@ -1,5 +1,5 @@
 Name:           openooda
-Version:        2.3.0
+Version:        2.4.0
 Release:        1%{?dist}
 Summary:        openOODA — Primary Systems Language for the AI Era
 URL:            https://openooda.org
@@ -38,6 +38,8 @@ install -m 0644 %{_sourcedir}/profile.d.sh %{buildroot}/etc/profile.d/openooda.s
 /etc/profile.d/openooda.sh
 
 %changelog
+* Sat Nov 21 2026 openOODA Authors <ops@openooda.org> - 2.4.0-1
+- Sync packaging with VERSION 2.4.0; ship ooda-calendar v0.1.0, ooda-flasher v0.5.0, ooda-screenshot v0.1.0 (72 pkgs)
 * Sat Nov 21 2026 openOODA Authors <ops@openooda.org> - 2.3.0-1
 - Sync packaging with VERSION 2.3.0; ship ooda-clock v0.1.0, ooda-calculator v0.3.0, ooda-passwords v0.5.0, and ooda-voxel v0.2.1 feedback (70 pkgs)
 * Sat Nov 21 2026 openOODA Authors <ops@openooda.org> - 2.2.0-1

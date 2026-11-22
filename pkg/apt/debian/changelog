@@ -1,3 +1,11 @@
+openooda (2.4.0-1) unstable; urgency=medium
+
+  * Sync packaging with VERSION 2.4.0.
+  * Ship Wave 2 apps (ooda-calendar v0.1.0, ooda-flasher v0.5.0,
+    ooda-screenshot v0.1.0) with COSMIC Wayland GUIs and Feedback (72 packages).
+
+ -- openOODA Authors <ops@openooda.org>  Sat, 21 Nov 2026 00:00:00 +0000
+
 openooda (2.3.0-1) unstable; urgency=medium
 
   * Sync packaging with VERSION 2.3.0.
