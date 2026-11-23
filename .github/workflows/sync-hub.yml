@@ -95,10 +95,10 @@ jobs:
               sleep $((tries * 4))
             done
           }
-          ORGS="openOODA-core openOODA-system openOODA-apps"
+          ORGS="openOODA-core openOODA-system openOODA-apps openOODA-games"
           : > /tmp/repo-map.txt
           for org in $ORGS; do
-            gh_retry gh api "orgs/$org/repos?per_page=100" --paginate -q '.[].name' | while read -r r; do
+            gh_retry gh api "orgs/$org/repos?per_page=100" --paginate -q '.[] | select(.archived == false) | .name' | while read -r r; do
               printf '%s %s/%s\n' "$r" "$org" "$r" >> /tmp/repo-map.txt
             done
           done
@@ -207,7 +207,6 @@ jobs:
               ooda-bridge)     printf 'ooda-bridge\nooda-mcp\noomcp\n';;
               ooda-filesystem) printf 'ooda-filesystem\nooda-filesystem-linux-x86_64\noofs\noofs-linux-x86_64\noocp\noocp-linux-x86_64\n';;
               ooda-hardware)   printf 'ooda-hardware\nooda-hardware-linux-x86_64\noohw\noohw-linux-x86_64\noohwinfo\noohwinfo-linux-x86_64\n';;
-              ooda-disk)       printf 'ooda-disk\nooda-disk-linux-x86_64\nooperm\nooperm-linux-x86_64\noochmod\noochmod-linux-x86_64\n';;
               *)               printf '%s\n%s-linux-x86_64\n' "$1" "$1";;
             esac
           }
