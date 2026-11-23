@@ -10,6 +10,7 @@
 import "core/publish/pub_sums.oo";
 
 pub fn pub_is_retired_asset(name: String) -> Bool {
+    if pub_is_archived_asset(name) { return true; }
     let pfxs: List[String] = ["ooagent-", "ooquota-", "ootui-", "oocli-", "oocap-", "oodac-",
         "oodar-", "oopm-", "oolsp-", "oomcp-", "oohat-", "oostd-", "oofs-", "oohw-", "ooperm-",
         "ooboot-", "ookernel-", "ooinit-", "oosh-", "oocontainer-", "ooflash-", "opm-",

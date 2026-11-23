@@ -63,6 +63,9 @@ fn t_refuse_pub() -> Int {
     let bad_asset: Bool = !pub_is_canonical_asset("ooda-lsp-linux-x86_64") &&
         !pub_is_canonical_asset("ooda-edit-linux-x86_64") &&
         !pub_is_canonical_asset("ooda-canvas-linux-x86_64") &&
+        !pub_is_canonical_asset("ooda-binary-linux-x86_64") &&
+        !pub_is_canonical_asset("ooda-sandbox-linux-x86_64") &&
+        !pub_is_canonical_asset("ooda-emulator-linux-x86_64") &&
         !pub_is_canonical_asset("ooda-compiler-linux-x86_64.sha256") &&
         !pub_is_canonical_asset("ooda-bad_name-linux-x86_64");
     p = t_expect(bad_asset, "non-canonical hub assets refused", p);

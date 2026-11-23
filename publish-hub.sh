@@ -12,6 +12,6 @@ else
   done
 fi
 if [[ "$need_build" == "1" ]]; then
-  env -u OODA_OODAR_ROOT -u OODA_OOSTD_ROOT make -C "$DIR" -s publish-bin
+  make -C "$DIR" -s publish-bin
 fi
-exec env -u OODA_OODAR_ROOT -u OODA_OOSTD_ROOT OODA_NO_JAIL=1 "$BIN" "$@"
+exec env OODA_NO_JAIL=1 "$BIN" "$@"

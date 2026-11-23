@@ -3,12 +3,12 @@
 // Logline: Locates built binaries across org trees, copies release payloads cleanly, and packs bundles.
 // Setup: Uses FsReadCap/FsWriteCap for bit-exact copies and ProcessCap + ooda-archive/ooda-flasher for images.
 // Beats:
-//   1. Search openOODA-core, openOODA-system, and openOODA-apps using canonical binary candidate order.
+//   1. Search openOODA-core, openOODA-system, openOODA-apps, and openOODA-games cleanly.
 //   2. Copy <pkg>-linux-x86_64 plus all 15 libooda-runtime*.a archives cleanly in pure .oo.
 //   3. Pack deterministic .tar.gz and .iso bundles using first-party openOODA tools.
 
 fn ps_find_repo(fs_r: &FsReadCap, root: String, pkg: String) -> String {
-    let orgs: List[String] = ["openOODA-core", "openOODA-system", "openOODA-apps"];
+    let orgs: List[String] = ["openOODA-core", "openOODA-system", "openOODA-apps", "openOODA-games"];
     let mut i: Int = 0;
     while i < list_len(orgs) {
         let d: String = root + "/" + list_get(orgs, i) + "/" + pkg;
@@ -28,9 +28,6 @@ fn ps_cands(pkg: String) -> List[String] {
     }
     if pkg == "ooda-hardware" {
         return ["ooda-hardware", "ooda-hardware-linux-x86_64", "oohw", "oohw-linux-x86_64"];
-    }
-    if pkg == "ooda-disk" {
-        return ["ooda-disk", "ooda-disk-linux-x86_64", "ooperm", "ooperm-linux-x86_64"];
     }
     return [pkg, pkg + "-linux-x86_64"];
 }

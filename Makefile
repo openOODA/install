@@ -8,8 +8,6 @@ OODA_WRITEDIR ?= $(CURDIR):/tmp
 OO_LIST_AMBIENT_QUOTA ?= 8589934592
 OODA_RUNTIME_ROOT ?= $(HOME)/.openooda/bin
 export OODA_RUNTIME_ROOT
-unexport OODA_OODAR_ROOT
-unexport OODA_OOSTD_ROOT
 OODA_STANDARD_ROOT ?= $(HOME)/.openooda/ooda-standard
 export OODA_STANDARD_ROOT
 TF := .ooda-cache/test_functional
@@ -43,8 +41,8 @@ $(TR): $(SRC)
 	$(ENV) $(RESOLVED_COMP) build tests/test_refusal.oo -o $(TR)
 
 test: build
-	@PATH=/nonexistent $(ENV) ./$(TF) | grep -q "PASS: functional" && echo "PASS: functional suite (PATH=/nonexistent)"
-	@PATH=/nonexistent $(ENV) ./$(TR) | grep -q "PASS: refusal" && echo "PASS: refusal suite (PATH=/nonexistent)"
+	@OODA_LEAK_CHECK=1 PATH=/nonexistent $(ENV) ./$(TF) | grep -q "PASS: functional" && echo "PASS: functional suite (PATH=/nonexistent + OODA_LEAK_CHECK=1)"
+	@OODA_LEAK_CHECK=1 PATH=/nonexistent $(ENV) ./$(TR) | grep -q "PASS: refusal" && echo "PASS: refusal suite (PATH=/nonexistent + OODA_LEAK_CHECK=1)"
 	@bash install.sh --help | grep -q -- "--selftest-sha" && echo "PASS: --help documents --selftest-sha"
 	@bash install.sh --version | grep -qF "openOODA installer $$(cat VERSION)" && echo "PASS: --version aligns with VERSION"
 	@bash install.sh --selftest-sha | grep -q "selftest-sha" && echo "PASS: --selftest-sha"

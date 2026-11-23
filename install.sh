@@ -41,7 +41,7 @@ XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 # fallback below is this script's own version at authoring time, kept in
 # sync by the bump bot (see bump-version.yml), so offline curl|bash shows
 # the right version. Display-only: downloads always use releases/latest.
-VERSION="$(cat "$(dirname "${BASH_SOURCE[0]:-$0}")/VERSION" 2>/dev/null || curl -sSL --max-time 3 "https://raw.githubusercontent.com/openOODA/install/master/VERSION" 2>/dev/null || echo "2.5.0")"
+VERSION="$(cat "$(dirname "${BASH_SOURCE[0]:-$0}")/VERSION" 2>/dev/null || curl -sSL --max-time 3 "https://raw.githubusercontent.com/openOODA/install/master/VERSION" 2>/dev/null || echo "2.6.0")"
 VERSION="$(printf '%s' "$VERSION" | tr -d '\r\n ' | head -c 20)"
 [[ -z "$VERSION" ]] && VERSION="?"
 
@@ -72,8 +72,8 @@ Options:
                       from the openOODA/install release, SHA256SUMS-verified)
   --group @GROUP      install a Fedora-style group profile from
                       catalog/groups.oot across openOODA-core, openOODA-system,
-                      and openOODA-apps (@core @system @apps @games @desktop
-                      @workstation @all = 72 packages); repeatable
+                      openOODA-apps, and openOODA-games (@core @system @apps
+                      @games @desktop @workstation @all = 65 pkgs); repeatable
   NO_COLOR=1          disable color
   OPENOODA_DRY_RUN=1  same as --dry-run
   OPENOODA_YES=1      same as --yes
@@ -159,7 +159,7 @@ declare -A REPOS=([ooda]=ooda [ooda-compiler]=ooda-compiler [ooda-runtime]=ooda-
 declare -A BINARIES=([ooda]=ooda [ooda-compiler]=ooda-compiler [ooda-runtime]=libooda-runtime.a [ooda-package]=ooda-package [ooda-language]=ooda-language [ooda-bridge]=ooda-bridge [ooda-verify]=ooda-verify)
 declare -A ASSETS=([ooda-runtime]=libooda-runtime.a)
 # Binary-pool packages whose hub artifact is NOT a plain
-# <name>-linux-x86_64 executable. The pool ships 72 plain binaries plus the
+# <name>-linux-x86_64 executable. The pool ships 65 canonical packages plus the
 # ooda-standard source archive (the ISO, buildbox, and codex extras ship
 # beside them). A group profile that names one of these must resolve to its
 # real asset instead of failing on "no SHA256SUMS entry for
@@ -583,6 +583,7 @@ local_dist_file() {
     roots+=("$here/../../openOODA-core" "$here/../openOODA-core" \
             "$here/../../openOODA-system" "$here/../openOODA-system" \
             "$here/../../openOODA-apps" "$here/../openOODA-apps" \
+            "$here/../../openOODA-games" "$here/../openOODA-games" \
             "$here/../dist" "$here/dist")
   fi
   for root in "${roots[@]}"; do
@@ -1008,7 +1009,7 @@ install_component() {
 # package ships as <name>-linux-x86_64 beside the seven L0 components, all
 # covered by the one master SHA256SUMS. --pkg installs one package;
 # --group expands a Fedora-style @group profile from catalog/groups.oot
-# (@core @system @apps @games @desktop @workstation @all; @all = 72 pkgs).
+# (@core @system @apps @games @desktop @workstation @all; @all = 65 pkgs).
 
 GROUPS_OOT=""
 GROUPS_OOT_TRIED=0
@@ -1226,8 +1227,9 @@ install_pkg_archive() {
 # already-installed ooda-compiler as bootstrap, instead of downloading
 # release binaries. This is how a checkout newer than the release channel
 # (or carrying local fixes) gets onto disk. Sets SRC_DIR + BOOT_COMPILER
-# globals. The checkout root carries the 3 package org directories:
-# openOODA-core/<pkg>, openOODA-system/<pkg>, openOODA-apps/<pkg>.
+# globals. The checkout root carries the 4 package org directories:
+# openOODA-core/<pkg>, openOODA-system/<pkg>, openOODA-apps/<pkg>,
+# openOODA-games/<pkg>.
 
 resolve_source_dir() {
   local d="${SOURCE_DIR:-${OPENOODA_SOURCE:-}}"
@@ -1919,7 +1921,10 @@ do_install() {
   # renamed to canonical ooda-<word> names): sweep stale artifacts so PATH
   # stays clean. Keep openooda (shipped root binary via --pkg openooda).
   if [[ "$DRY_RUN" != "1" ]]; then
-    for stale in cli tui oocli ootui ooda-tui oostd-hw oodac oodar oopm oolsp oomcp oohat oostd; do
+    for stale in cli tui oocli ootui ooda-tui oostd-hw oodac oodar oopm oolsp oomcp oohat oostd \
+        ooda-binary ooda-build ooda-format ooda-provenance ooda-modem ooda-disk ooda-list \
+        ooda-sandbox ooda-text ooda-read ooda-machine ooda-audio ooda-canvas ooda-edit \
+        ooda-player ooda-store ooda-console ooda-emulator; do
       if [[ -e "$BIN_DIR/$stale" ]]; then
         rm -f "$BIN_DIR/$stale" 2>/dev/null || true
         ok "removed stale ~/.openooda/bin/$stale (retired)"

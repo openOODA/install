@@ -1,89 +1,84 @@
-# Canonical 72-package shipped version ledger for the openOODA ecosystem.
+# Canonical 65-package shipped version ledger for the openOODA ecosystem.
 #
-# All 72 canonical packages publish to the single release hub at
+# All 65 canonical packages publish to the single release hub at
 # https://github.com/openOODA/install (releases/latest and tag hub, verified
 # against the master SHA256SUMS manifest). Entries below record the shipped
 # release tag per package across @core (openOODA-core), @system (openOODA-system),
-# and @apps (openOODA-apps), and supply fallback tags for per-repo openOODA-core
-# downloads when an asset is absent from the hub.
+# @apps (openOODA-apps), and @games (openOODA-games), and supply fallback tags for
+# per-repo openOODA-core downloads when an asset is absent from the hub.
 # ooda-standard unpacks ooda-standard-linux-x86_64.tar.gz from
 # openOODA/install@hub into $OPENOODA_HOME/ooda-standard.
 
 [packages]
-# @core — openOODA-core (15)
-ooda = "v2.17.3"
-ooda-binary = "v0.2.2"
+# @core — openOODA-core (11)
+ooda = "v2.18.1"
 ooda-bridge = "v0.7.2"
-ooda-build = "v0.2.2"
 ooda-compiler = "v0.17.0"
-ooda-engine = "v0.3.2"
-ooda-format = "v0.2.2"
 ooda-interface = "v0.6.2"
-ooda-language = "v0.5.0"
-ooda-package = "v2.16.3"
-ooda-provenance = "v0.3.2"
+ooda-language = "v0.5.1"
+ooda-package = "v2.16.4"
 ooda-runtime = "v5.18.0"
-ooda-sign = "v0.3.2"
+ooda-sign = "v0.4.0"
 ooda-standard = "v2.17.0"
-ooda-verify = "v1.0.0"
+ooda-verify = "v1.0.2"
+ooda-version = "v0.2.3"
 
-# @system — openOODA-system (36)
+# @system — openOODA-system (26)
 ooda-archive = "v0.3.2"
-ooda-authority = "v0.6.0"
-ooda-boot = "v0.9.0"
+ooda-authority = "v0.6.1"
+ooda-boot = "v0.9.1"
 ooda-bus = "v0.15.0"
 ooda-compositor = "v0.10.0"
 ooda-connect = "v0.10.0"
-ooda-container = "v0.9.0"
-ooda-data = "v0.3.2"
+ooda-container = "v0.10.0"
+ooda-data = "v0.4.0"
 ooda-database = "v0.4.3"
-ooda-disk = "v0.4.0"
-ooda-drivers = "v0.15.0"
-ooda-files = "v0.5.2"
-ooda-filesystem = "v0.8.0"
+ooda-drivers = "v0.16.0"
+ooda-filesystem = "v0.9.0"
 ooda-firewall = "v0.8.0"
-ooda-hardware = "v0.10.0"
-ooda-health = "v0.5.0"
-ooda-inference = "v0.10.1"
+ooda-hardware = "v0.11.0"
+ooda-health = "v0.6.0"
+ooda-inference = "v0.10.2"
 ooda-kernel = "v0.19.0"
-ooda-list = "v0.3.2"
-ooda-machine = "v0.3.2"
-ooda-modem = "v0.2.2"
 ooda-network = "v0.12.0"
-ooda-notepad = "v0.6.2"
 ooda-panel = "v0.6.2"
 ooda-portal = "v0.8.0"
-ooda-read = "v0.3.2"
-ooda-sandbox = "v0.4.0"
 ooda-screensaver = "v5.4.0"
-ooda-settings = "v0.6.2"
-ooda-shell = "v2.0.3"
-ooda-start = "v0.9.0"
-ooda-text = "v0.4.2"
+ooda-settings = "v0.6.3"
+ooda-shell = "v2.2.0"
+ooda-start = "v0.10.0"
 ooda-theme = "v0.3.2"
-ooda-vault = "v0.5.0"
-ooda-version = "v0.2.2"
+ooda-vault = "v0.5.1"
 ooda-web = "v0.6.0"
 
-# @apps — openOODA-apps (21)
-ooda-arcade = "v0.2.0"
-ooda-browser = "v0.4.0"
+# @apps — openOODA-apps (19)
+ooda-browser = "v0.7.0"
 ooda-calculator = "v0.3.0"
 ooda-calendar = "v0.1.0"
 ooda-camera = "v0.6.0"
-ooda-chat = "v0.4.0"
+ooda-chat = "v0.4.1"
 ooda-clock = "v0.1.0"
-ooda-commander = "v0.6.0"
+ooda-code = "v0.3.1"
+ooda-files = "v0.5.3"
 ooda-flasher = "v0.5.0"
 ooda-media = "v0.6.1"
-ooda-office = "v0.4.0"
+ooda-notepad = "v0.6.4"
+ooda-office = "v0.4.1"
 ooda-passwords = "v0.5.0"
 ooda-photos = "v0.7.0"
-ooda-remote = "v0.5.0"
-ooda-retro = "v0.2.1"
+ooda-remote = "v0.5.1"
 ooda-screenshot = "v0.1.0"
-ooda-software = "v0.9.0"
-ooda-strike = "v0.2.0"
-ooda-studio = "v0.4.0"
+ooda-software = "v0.10.0"
+ooda-studio = "v0.4.1"
 ooda-terminal = "v1.0.0"
-ooda-voxel = "v0.2.1"
+
+# @games — openOODA-games (9)
+ooda-arcade = "v0.2.2"
+ooda-capella = "v0.1.0"
+ooda-commander = "v0.6.2"
+ooda-engine = "v0.3.3"
+ooda-island = "v0.2.1"
+ooda-retro = "v0.2.2"
+ooda-ski = "v0.1.0"
+ooda-strike = "v0.2.2"
+ooda-voxel = "v0.3.1"

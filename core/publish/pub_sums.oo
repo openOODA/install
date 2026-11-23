@@ -9,7 +9,21 @@
 
 import "ooda-standard/sec/hash/sha256.oo";
 
+pub fn pub_is_archived_asset(name: String) -> Bool {
+    let pfxs: List[String] = ["ooda-binary-", "ooda-build-", "ooda-format-",
+        "ooda-provenance-", "ooda-modem-", "ooda-disk-", "ooda-list-",
+        "ooda-sandbox-", "ooda-text-", "ooda-read-", "ooda-machine-",
+        "ooda-console-", "ooda-emulator-"];
+    let mut i: Int = 0;
+    while i < list_len(pfxs) {
+        if str_starts_with(name, list_get(pfxs, i)) { return true; }
+        i = i + 1;
+    }
+    return false;
+}
+
 pub fn pub_is_canonical_asset(name: String) -> Bool {
+    if pub_is_archived_asset(name) { return false; }
     if name == "SHA256SUMS" || name == "SHA256SUMS.sig" || name == "cap_table.oot" ||
         name == "libooda-runtime.a" || name == "ooda-standard-linux-x86_64.tar.gz" ||
         name == "openooda-codex-linux-x86_64.tar.gz" || name == "ooda-os-x86_64.iso" ||
