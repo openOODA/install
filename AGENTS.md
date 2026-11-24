@@ -34,7 +34,7 @@ its contract before any release advances.
    curl|bash offline fallback `|| echo "X.Y.Z"` inside `install.sh` must equal
    it (kept in sync by `bump-version.yml`). `--version` prints exactly
    `openOODA installer $(cat VERSION)`.
-5. **`versions.toml`** — canonical 65-package shipped version ledger (`ooda-<word> =
+5. **`versions.toml`** — canonical 66-package shipped version ledger (`ooda-<word> =
    "vX.Y.Z"`) across `@core`/`@system`/`@apps`/`@games`, read by `load_pins`; primary
    downloads resolve from the single `openOODA/install` `latest`/`hub` release
    (master `SHA256SUMS`), with loaded tags serving as per-repo fallback on

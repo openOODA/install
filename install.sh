@@ -73,7 +73,7 @@ Options:
   --group @GROUP      install a Fedora-style group profile from
                       catalog/groups.oot across openOODA-core, openOODA-system,
                       openOODA-apps, and openOODA-games (@core @system @apps
-                      @games @desktop @workstation @all = 65 pkgs); repeatable
+                      @games @desktop @workstation @all = 66 pkgs); repeatable
   NO_COLOR=1          disable color
   OPENOODA_DRY_RUN=1  same as --dry-run
   OPENOODA_YES=1      same as --yes
@@ -159,7 +159,7 @@ declare -A REPOS=([ooda]=ooda [ooda-compiler]=ooda-compiler [ooda-runtime]=ooda-
 declare -A BINARIES=([ooda]=ooda [ooda-compiler]=ooda-compiler [ooda-runtime]=libooda-runtime.a [ooda-package]=ooda-package [ooda-language]=ooda-language [ooda-bridge]=ooda-bridge [ooda-verify]=ooda-verify)
 declare -A ASSETS=([ooda-runtime]=libooda-runtime.a)
 # Binary-pool packages whose hub artifact is NOT a plain
-# <name>-linux-x86_64 executable. The pool ships 65 canonical packages plus the
+# <name>-linux-x86_64 executable. The pool ships 66 canonical packages plus the
 # ooda-standard source archive (the ISO, buildbox, and codex extras ship
 # beside them). A group profile that names one of these must resolve to its
 # real asset instead of failing on "no SHA256SUMS entry for
@@ -1009,7 +1009,7 @@ install_component() {
 # package ships as <name>-linux-x86_64 beside the seven L0 components, all
 # covered by the one master SHA256SUMS. --pkg installs one package;
 # --group expands a Fedora-style @group profile from catalog/groups.oot
-# (@core @system @apps @games @desktop @workstation @all; @all = 65 pkgs).
+# (@core @system @apps @games @desktop @workstation @all; @all = 66 pkgs).
 
 GROUPS_OOT=""
 GROUPS_OOT_TRIED=0
