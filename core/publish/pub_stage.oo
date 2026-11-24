@@ -168,26 +168,16 @@ pub fn pub_stage_pkg(fs_r: &FsReadCap, fs_w: &FsWriteCap, sys: &ProcessCap, root
 pub fn pub_stage_images(fs_r: &FsReadCap, fs_w: &FsWriteCap, sys: &ProcessCap, root: String, home: String,
     stage: String) -> Result[Int, String] {
     let mut cnt: Int = 0;
-    let boot_p: String = stage + "/ooda-boot-linux-x86_64";
-    let kern_p: String = stage + "/ooda-kernel-linux-x86_64";
-    let flash_p: String = root + "/openOODA-apps/ooda-flasher/bin/ooda-flasher";
-    if path_exists(fs_r, boot_p) && path_exists(fs_r, kern_p) && path_exists(fs_r, flash_p) {
-        let iso_dir: String = stage + "/iso-root";
-        let efi_d: String = iso_dir + "/EFI/BOOT";
-        let boot_d: String = iso_dir + "/boot";
-        let mk_av: List[String] = list_push(list_push(list_push(list_new(), "-p"), efi_d), boot_d);
-        let _mk: Result[Int, String] = sys_exec_wait(sys, "mkdir", mk_av);
-        let _i0: Result[Int, String] = pub_copy_file(fs_r, fs_w, boot_p, efi_d + "/BOOTX64.EFI");
-        let _i1: Result[Int, String] = pub_copy_file(fs_r, fs_w, kern_p, boot_d + "/ooda-kernel");
+    let iso_live: String = home + "/images/openooda-live-x86_64.iso";
+    let iso_alt: String = home + "/images/ooda-os-x86_64.iso";
+    let iso_src: String = if path_exists(fs_r, iso_live) { iso_live }
+        else if path_exists(fs_r, iso_alt) { iso_alt } else { "" };
+    if iso_src != "" {
         let iso_out: String = stage + "/ooda-os-x86_64.iso";
-        let fav: List[String] = list_push(list_push(list_push(list_push(list_new(), "pack-iso"),
-            iso_dir), "-o"), iso_out);
-        let _fi: Result[Int, String] = sys_exec_wait(sys, flash_p, fav);
-        let rm_av: List[String] = list_push(list_push(list_new(), "-rf"), iso_dir);
-        let _rm: Result[Int, String] = sys_exec_wait(sys, "rm", rm_av);
+        let _ci: Result[Int, String] = pub_copy_file(fs_r, fs_w, iso_src, iso_out);
         if path_exists(fs_r, iso_out) {
             cnt = cnt + 1;
-            println("  staged ooda-os-x86_64.iso");
+            println("  staged ooda-os-x86_64.iso <- " + iso_src);
         }
     }
     let ooda_root: String = root + "/openOODA/openOODA";
