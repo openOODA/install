@@ -13,7 +13,7 @@
 # @core — openOODA-core (11)
 ooda = "v2.18.2"
 ooda-bridge = "v0.7.2"
-ooda-compiler = "v0.22.0"
+ooda-compiler = "v0.23.0"
 ooda-interface = "v0.7.0"
 ooda-language = "v0.5.1"
 ooda-package = "v2.18.1"
