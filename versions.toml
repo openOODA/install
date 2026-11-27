@@ -19,7 +19,7 @@ ooda-language = "v0.5.1"
 ooda-package = "v2.18.2"
 ooda-runtime = "v5.19.0"
 ooda-sign = "v0.4.0"
-ooda-standard = "v2.23.0"
+ooda-standard = "v2.25.0"
 ooda-verify = "v1.0.2"
 ooda-version = "v0.2.3"
 
