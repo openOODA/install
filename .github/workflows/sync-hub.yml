@@ -298,6 +298,8 @@ jobs:
 
       - name: Publish release assets and master SHA256SUMS
         if: steps.resolve.outputs.skip == 'false'
+        env:
+          OODA_HUB_MINISIGN_KEY: ${{ secrets.OODA_HUB_MINISIGN_KEY }}
         run: |
           set -euo pipefail
           # The compiler trusts a root only when it can name it, and it
@@ -319,6 +321,7 @@ jobs:
             printf '%s\n' "$asset" >> /tmp/keep-assets.txt
           done < /tmp/pkgs.txt
           printf '%s\n' \
+            "ooda-package-linux-x86_64.tar.gz" \
             "ooda-runtime-linux-x86_64" \
             "cap_table.oot" \
             "openooda-linux-x86_64" \
@@ -334,11 +337,27 @@ jobs:
             base="$(basename "$f")"
             if ! grep -qx "$base" /tmp/keep-assets.txt; then rm -f "$f"; fi
           done
-          rm -f /tmp/prev-out/SHA256SUMS /tmp/prev-out/SHA256SUMS.sig
+          rm -f /tmp/prev-out/SHA256SUMS /tmp/prev-out/SHA256SUMS.sig /tmp/prev-out/SHA256SUMS.minisig
           ( cd /tmp/prev-out && find . -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort | xargs -r sha256sum > "$OUT_ROOT/SHA256SUMS" )
           ( cd /tmp/prev-out && sha256sum -c "$OUT_ROOT/SHA256SUMS" --quiet ) && echo "sums self-check OK"
-          rm -rf /tmp/prev-out
           test -s "$OUT_ROOT/SHA256SUMS"
+          if [ -n "${OODA_HUB_MINISIGN_KEY:-}" ]; then
+            PM_SIGNER=""
+            if [ -f "$OUT_ROOT/ooda-package-linux-x86_64" ]; then
+              PM_SIGNER="$OUT_ROOT/ooda-package-linux-x86_64"
+            elif [ -f /tmp/prev-out/ooda-package-linux-x86_64 ]; then
+              PM_SIGNER="/tmp/prev-out/ooda-package-linux-x86_64"
+            fi
+            test -n "$PM_SIGNER"
+            chmod +x "$PM_SIGNER"
+            MS_SK="$(mktemp)"
+            trap 'rm -f "$MS_SK" /tmp/prev-out/SHA256SUMS*' EXIT
+            printf '%s\n' "$OODA_HUB_MINISIGN_KEY" > "$MS_SK"
+            chmod 600 "$MS_SK"
+            "$PM_SIGNER" bot --sign-sums "$OUT_ROOT/SHA256SUMS" --key "$MS_SK" --out "$OUT_ROOT/SHA256SUMS.minisig"
+            rm -f "$MS_SK"
+          fi
+          rm -rf /tmp/prev-out
           gh release upload "$TAG" "$OUT_ROOT"/* --clobber -R "$RELEASE_REPO"
           echo "published $(find "$OUT_ROOT" -maxdepth 1 -type f | wc -l) updated assets"
 
